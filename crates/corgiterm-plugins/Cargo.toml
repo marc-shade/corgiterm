@@ -1,0 +1,33 @@
+[package]
+name = "corgiterm-plugins"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Plugin system for CorgiTerm - WASM and Lua scripting"
+
+[dependencies]
+corgiterm-core = { path = "../corgiterm-core" }
+corgiterm-config = { path = "../corgiterm-config" }
+
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+# WASM runtime
+wasmtime.workspace = true
+
+# Lua scripting
+mlua.workspace = true
+
+# Plugin discovery
+walkdir = "2.5"
+semver = "1.0"
+
+[dev-dependencies]
+tempfile = "3.14"

@@ -1,0 +1,75 @@
+//! # CorgiTerm UI
+//!
+//! GTK4/libadwaita user interface for CorgiTerm.
+//!
+//! Layout:
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │ CorgiTerm - ~/projects/website                        _ □ ✕    │
+//! ├────────────┬────────────────────────────────────────────────────┤
+//! │ PROJECTS   │ [🏠 home] [🔧 dev] [📦 build] [+]                  │
+//! │            ├────────────────────────────────────────────────────┤
+//! │ 📁 website │                                                    │
+//! │   ├ home   │ ~/projects/website $ npm run build                 │
+//! │   ├ dev    │ > corgiterm-website@1.0.0 build                    │
+//! │   └ build  │ > next build                                       │
+//! │            │                                                    │
+//! │ 📁 api     │ ✓ Compiled successfully                            │
+//! │   └ server │                                                    │
+//! │            │ ~/projects/website $                               │
+//! │ + New      │                                                    │
+//! │            ├────────────────────────────────────────────────────┤
+//! │ ─────────  │ 🐕 Type naturally: "show large files"              │
+//! │ 🤖 AI      │                                                    │
+//! └────────────┴────────────────────────────────────────────────────┘
+//! ```
+
+pub mod app;
+pub mod window;
+pub mod sidebar;
+pub mod terminal_view;
+pub mod document_view;
+pub mod tab_bar;
+pub mod ai_panel;
+pub mod dialogs;
+pub mod widgets;
+
+use gtk4::prelude::*;
+use gtk4::{Application, glib};
+
+/// Application ID
+pub const APP_ID: &str = "dev.corgiterm.CorgiTerm";
+
+/// Initialize and run the application
+pub fn run() -> glib::ExitCode {
+    // Initialize GTK
+    gtk4::init().expect("Failed to initialize GTK");
+
+    // Create application
+    let app = Application::builder()
+        .application_id(APP_ID)
+        .build();
+
+    // Connect signals
+    app.connect_activate(|app| {
+        app::build_ui(app);
+    });
+
+    // Run
+    app.run()
+}
+
+/// Application version
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_id() {
+        assert!(APP_ID.contains("corgiterm"));
+    }
+}

@@ -1,0 +1,33 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+*.a
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+*.log
+coverage/
+
+# Editor backup files
+*.bak
+*.orig
+
+# Local configuration
+.env
+.env.local
+config.local.toml

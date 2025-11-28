@@ -1,0 +1,37 @@
+[package]
+name = "corgiterm-ai"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AI integration layer for CorgiTerm - Claude, Codex, Gemini, and local LLMs"
+
+[dependencies]
+corgiterm-core = { path = "../corgiterm-core" }
+corgiterm-config = { path = "../corgiterm-config" }
+
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+async-channel.workspace = true
+uuid.workspace = true
+
+# MCP (Model Context Protocol) support
+jsonrpc-core = "18.0"
+
+# Streaming responses
+tokio-stream = "0.1"
+pin-project-lite = "0.2"
+
+# Rate limiting
+governor = "0.7"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio-test = "0.4"

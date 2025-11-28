@@ -1,0 +1,45 @@
+[package]
+name = "corgiterm-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "GTK4/libadwaita UI for CorgiTerm"
+
+[dependencies]
+corgiterm-core = { path = "../corgiterm-core" }
+corgiterm-config = { path = "../corgiterm-config" }
+corgiterm-ai = { path = "../corgiterm-ai" }
+
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# GTK4 ecosystem
+gtk4.workspace = true
+libadwaita.workspace = true
+glib.workspace = true
+gio.workspace = true
+gdk4.workspace = true
+cairo-rs.workspace = true
+pango.workspace = true
+pangocairo.workspace = true
+
+# GPU text rendering
+wgpu.workspace = true
+glyphon.workspace = true
+
+# Async runtime bridge
+async-channel.workspace = true
+futures.workspace = true
+crossbeam-channel.workspace = true
+
+# System
+libc = "0.2"
+dirs = "5.0"
+
+[dev-dependencies]

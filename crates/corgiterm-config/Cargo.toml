@@ -1,0 +1,35 @@
+[package]
+name = "corgiterm-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Configuration management for CorgiTerm with 500+ settings"
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+figment.workspace = true
+directories.workspace = true
+notify.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+
+# Schema validation
+schemars = "0.8"
+
+# Color handling
+palette = "0.7"
+csscolorparser = "0.7"
+
+# Directories
+dirs = "5.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+pretty_assertions = "1.4"

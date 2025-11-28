@@ -1,0 +1,112 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/corgiterm-core",
+    "crates/corgiterm-ui",
+    "crates/corgiterm-ai",
+    "crates/corgiterm-config",
+    "crates/corgiterm-plugins",
+]
+
+[package]
+name = "corgiterm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description.workspace = true
+default-run = "corgiterm"
+
+[[bin]]
+name = "corgiterm"
+path = "src/main.rs"
+
+[dependencies]
+corgiterm-core = { path = "crates/corgiterm-core" }
+corgiterm-ui = { path = "crates/corgiterm-ui" }
+corgiterm-ai = { path = "crates/corgiterm-ai" }
+corgiterm-config = { path = "crates/corgiterm-config" }
+corgiterm-plugins = { path = "crates/corgiterm-plugins" }
+
+clap = { version = "4.5", features = ["derive"] }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Marc and the CorgiTerm Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/corgiterm/corgiterm"
+homepage = "https://corgiterm.dev"
+description = "A next-generation, AI-powered terminal emulator that makes the command line accessible to everyone"
+keywords = ["terminal", "emulator", "ai", "gtk4", "rust"]
+categories = ["command-line-utilities", "development-tools"]
+
+[workspace.dependencies]
+# Core dependencies
+tokio = { version = "1.41", features = ["full"] }
+async-trait = "0.1"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Terminal emulation
+vte = "0.13"
+alacritty_terminal = "0.24"
+
+# GTK4 UI
+gtk4 = { version = "0.9", features = ["v4_16"] }
+libadwaita = { version = "0.7", features = ["v1_6"] }
+glib = "0.20"
+gio = "0.20"
+gdk4 = "0.9"
+cairo-rs = "0.20"
+pango = "0.20"
+pangocairo = "0.20"
+
+# GPU rendering
+wgpu = "23.0"
+glyphon = "0.7"
+
+# AI integration
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+futures = "0.3"
+async-channel = "2.3"
+
+# Plugin system
+wasmtime = "27.0"
+mlua = { version = "0.10", features = ["lua54", "async", "send"] }
+
+# Configuration
+directories = "5.0"
+notify = "7.0"
+figment = { version = "0.10", features = ["toml", "json", "env"] }
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.11"
+once_cell = "1.20"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3
