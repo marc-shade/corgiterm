@@ -521,6 +521,15 @@ impl Terminal {
     pub fn scrollback(&self) -> &[Vec<Cell>] {
         &self.state.scrollback
     }
+
+    /// Set maximum scrollback lines
+    pub fn set_max_scrollback(&mut self, lines: usize) {
+        self.state.max_scrollback = lines;
+        // Trim if needed
+        while self.state.scrollback.len() > self.state.max_scrollback {
+            self.state.scrollback.remove(0);
+        }
+    }
 }
 
 #[cfg(test)]

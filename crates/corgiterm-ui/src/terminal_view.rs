@@ -120,12 +120,21 @@ impl TerminalView {
             TerminalSize { rows: 24, cols: 80 },
             event_tx,
         )));
+
+        // Apply scrollback setting from config
+        if let Some(config_manager) = crate::app::config_manager() {
+            let scrollback = config_manager.read().config().terminal.scrollback_lines;
+            terminal.borrow_mut().set_max_scrollback(scrollback);
+        }
+
         let event_rx = Rc::new(event_rx);
 
         // Create PTY and spawn shell
+        let shell = crate::app::config_manager()
+            .map(|cm| cm.read().config().general.shell.clone());
         let pty = Rc::new(RefCell::new(None));
         {
-            match Pty::spawn(None, PtySize::default(), working_dir) {
+            match Pty::spawn(shell.as_deref(), PtySize::default(), working_dir) {
                 Ok(p) => {
                     *pty.borrow_mut() = Some(p);
                     tracing::info!("PTY spawned successfully");
@@ -434,18 +443,43 @@ impl TerminalView {
                 let cursor_x = padding + (cursor.1 as f64 * cell_w);
                 let cursor_y = padding + (cursor.0 as f64 * cell_h);
 
+                // Get cursor style from config
+                let cursor_style = crate::app::config_manager()
+                    .map(|cm| cm.read().config().appearance.cursor_style)
+                    .unwrap_or(corgiterm_config::CursorStyle::Block);
+
                 let (accent_r, accent_g, accent_b) = COLORS[3];
                 cr.set_source_rgba(accent_r, accent_g, accent_b, 0.8);
-                cr.rectangle(cursor_x, cursor_y, cell_w, cell_h);
-                cr.fill().ok();
 
-                if cursor.0 < grid.len() && cursor.1 < grid[cursor.0].len() {
-                    let cell = &grid[cursor.0][cursor.1];
-                    if !cell.content.is_empty() {
-                        cr.set_source_rgb(bg_r, bg_g, bg_b);
-                        layout.set_text(&cell.content);
-                        cr.move_to(cursor_x, cursor_y + (cell_h - ascent) / 2.0);
-                        pangocairo::functions::show_layout(cr, &layout);
+                match cursor_style {
+                    corgiterm_config::CursorStyle::Block => {
+                        cr.rectangle(cursor_x, cursor_y, cell_w, cell_h);
+                        cr.fill().ok();
+                        // Draw character in inverse color
+                        if cursor.0 < grid.len() && cursor.1 < grid[cursor.0].len() {
+                            let cell = &grid[cursor.0][cursor.1];
+                            if !cell.content.is_empty() {
+                                cr.set_source_rgb(bg_r, bg_g, bg_b);
+                                layout.set_text(&cell.content);
+                                cr.move_to(cursor_x, cursor_y + (cell_h - ascent) / 2.0);
+                                pangocairo::functions::show_layout(cr, &layout);
+                            }
+                        }
+                    }
+                    corgiterm_config::CursorStyle::Underline => {
+                        let line_height = 2.0;
+                        cr.rectangle(cursor_x, cursor_y + cell_h - line_height, cell_w, line_height);
+                        cr.fill().ok();
+                    }
+                    corgiterm_config::CursorStyle::Bar => {
+                        let bar_width = 2.0;
+                        cr.rectangle(cursor_x, cursor_y, bar_width, cell_h);
+                        cr.fill().ok();
+                    }
+                    corgiterm_config::CursorStyle::Hollow => {
+                        cr.set_line_width(1.0);
+                        cr.rectangle(cursor_x + 0.5, cursor_y + 0.5, cell_w - 1.0, cell_h - 1.0);
+                        cr.stroke().ok();
                     }
                 }
             }
@@ -1126,8 +1160,13 @@ impl TerminalView {
         drag_gesture.connect_drag_end(move |_, _, _| {
             let sel = selection_for_drag_end.borrow();
 
-            // Copy selected text to clipboard if selection is valid
-            if sel.active && sel.start != sel.end {
+            // Check if copy_on_select is enabled
+            let copy_on_select = crate::app::config_manager()
+                .map(|cm| cm.read().config().terminal.copy_on_select)
+                .unwrap_or(false);
+
+            // Copy selected text to clipboard if selection is valid and copy_on_select is enabled
+            if copy_on_select && sel.active && sel.start != sel.end {
                 let term = terminal_for_copy_sel.borrow();
                 let grid = term.grid();
 
@@ -1154,6 +1193,7 @@ impl TerminalView {
                 // Set clipboard
                 let clipboard = drawing_area_for_end.clipboard();
                 clipboard.set_text(text.trim_end());
+                tracing::debug!("Copied selection to clipboard (copy_on_select)");
             }
         });
 

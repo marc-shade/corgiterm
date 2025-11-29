@@ -213,6 +213,61 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     });
 
     appearance_page.add(&font_group);
+
+    // Window appearance group
+    let window_group = libadwaita::PreferencesGroup::builder()
+        .title("Window")
+        .description("Window appearance settings")
+        .build();
+
+    // Get current window settings
+    let (opacity, ligatures) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (config.appearance.opacity, config.appearance.ligatures)
+    } else {
+        (1.0, true)
+    };
+
+    // Opacity
+    let opacity_adj = gtk4::Adjustment::new(opacity as f64, 0.3, 1.0, 0.05, 0.1, 0.0);
+    let opacity_row = libadwaita::SpinRow::builder()
+        .title("Background Opacity")
+        .subtitle("Window transparency (1.0 = opaque)")
+        .adjustment(&opacity_adj)
+        .digits(2)
+        .build();
+    window_group.add(&opacity_row);
+
+    opacity_row.connect_changed(move |row| {
+        let opacity = row.value() as f32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.opacity = opacity;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Opacity changed to: {}", opacity);
+        }
+    });
+
+    // Ligatures
+    let ligatures_row = libadwaita::SwitchRow::builder()
+        .title("Font Ligatures")
+        .subtitle("Enable programming font ligatures (e.g., -> becomes →)")
+        .active(ligatures)
+        .build();
+    window_group.add(&ligatures_row);
+
+    ligatures_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.ligatures = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    appearance_page.add(&window_group);
     dialog.add(&appearance_page);
 
     // Terminal page
@@ -254,6 +309,168 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     });
 
     terminal_page.add(&shell_group);
+
+    // Terminal behavior group
+    let behavior_group = libadwaita::PreferencesGroup::builder()
+        .title("Behavior")
+        .description("Terminal behavior settings")
+        .build();
+
+    // Get current terminal settings
+    let (scrollback, copy_on_select, scroll_on_output, scroll_on_keystroke) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.terminal.scrollback_lines,
+            config.terminal.copy_on_select,
+            config.terminal.scroll_on_output,
+            config.terminal.scroll_on_keystroke,
+        )
+    } else {
+        (10000, false, false, true)
+    };
+
+    // Scrollback lines
+    let scrollback_adj = gtk4::Adjustment::new(scrollback as f64, 100.0, 100000.0, 100.0, 1000.0, 0.0);
+    let scrollback_row = libadwaita::SpinRow::builder()
+        .title("Scrollback Lines")
+        .subtitle("Number of lines to keep in history")
+        .adjustment(&scrollback_adj)
+        .build();
+    behavior_group.add(&scrollback_row);
+
+    scrollback_row.connect_changed(move |row| {
+        let lines = row.value() as usize;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.scrollback_lines = lines;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Scrollback lines changed to: {}", lines);
+        }
+    });
+
+    // Copy on select
+    let copy_select_row = libadwaita::SwitchRow::builder()
+        .title("Copy on Select")
+        .subtitle("Automatically copy selected text")
+        .active(copy_on_select)
+        .build();
+    behavior_group.add(&copy_select_row);
+
+    copy_select_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.copy_on_select = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Scroll on output
+    let scroll_output_row = libadwaita::SwitchRow::builder()
+        .title("Scroll on Output")
+        .subtitle("Auto-scroll when new output appears")
+        .active(scroll_on_output)
+        .build();
+    behavior_group.add(&scroll_output_row);
+
+    scroll_output_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.scroll_on_output = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Scroll on keystroke
+    let scroll_key_row = libadwaita::SwitchRow::builder()
+        .title("Scroll on Keystroke")
+        .subtitle("Auto-scroll when typing")
+        .active(scroll_on_keystroke)
+        .build();
+    behavior_group.add(&scroll_key_row);
+
+    scroll_key_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.scroll_on_keystroke = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    terminal_page.add(&behavior_group);
+
+    // Cursor group
+    let cursor_group = libadwaita::PreferencesGroup::builder()
+        .title("Cursor")
+        .description("Cursor appearance settings")
+        .build();
+
+    // Get current cursor settings
+    let (cursor_style_idx, cursor_blink) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        let idx = match config.appearance.cursor_style {
+            corgiterm_config::CursorStyle::Block => 0,
+            corgiterm_config::CursorStyle::Underline => 1,
+            corgiterm_config::CursorStyle::Bar => 2,
+            corgiterm_config::CursorStyle::Hollow => 3,
+        };
+        (idx, config.appearance.cursor_blink)
+    } else {
+        (0, true)
+    };
+
+    // Cursor style
+    let cursor_row = libadwaita::ComboRow::builder()
+        .title("Cursor Style")
+        .subtitle("Shape of the cursor")
+        .build();
+    let cursor_styles = ["Block", "Underline", "Bar", "Hollow"];
+    cursor_row.set_model(Some(&gtk4::StringList::new(&cursor_styles)));
+    cursor_row.set_selected(cursor_style_idx);
+    cursor_group.add(&cursor_row);
+
+    cursor_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.cursor_style = match selected {
+                    0 => corgiterm_config::CursorStyle::Block,
+                    1 => corgiterm_config::CursorStyle::Underline,
+                    2 => corgiterm_config::CursorStyle::Bar,
+                    3 => corgiterm_config::CursorStyle::Hollow,
+                    _ => corgiterm_config::CursorStyle::Block,
+                };
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Cursor style changed to: {}", cursor_styles[selected]);
+        }
+    });
+
+    // Cursor blink
+    let blink_row = libadwaita::SwitchRow::builder()
+        .title("Cursor Blink")
+        .subtitle("Animate the cursor")
+        .active(cursor_blink)
+        .build();
+    cursor_group.add(&blink_row);
+
+    blink_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.cursor_blink = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    terminal_page.add(&cursor_group);
     dialog.add(&terminal_page);
 
     // AI page
@@ -355,6 +572,86 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
 
     safe_page.add(&safe_group);
     dialog.add(&safe_page);
+
+    // Accessibility page
+    let a11y_page = libadwaita::PreferencesPage::builder()
+        .title("Accessibility")
+        .icon_name("preferences-desktop-accessibility-symbolic")
+        .build();
+
+    let a11y_group = libadwaita::PreferencesGroup::builder()
+        .title("Accessibility Features")
+        .description("Improve usability for all users")
+        .build();
+
+    // Get current accessibility settings
+    let (reduce_motion, high_contrast, focus_indicators) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.accessibility.reduce_motion,
+            config.accessibility.high_contrast,
+            config.accessibility.focus_indicators,
+        )
+    } else {
+        (false, false, true)
+    };
+
+    // Reduce motion
+    let motion_row = libadwaita::SwitchRow::builder()
+        .title("Reduce Motion")
+        .subtitle("Minimize animations")
+        .active(reduce_motion)
+        .build();
+    a11y_group.add(&motion_row);
+
+    motion_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.reduce_motion = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // High contrast
+    let contrast_row = libadwaita::SwitchRow::builder()
+        .title("High Contrast")
+        .subtitle("Increase color contrast for better visibility")
+        .active(high_contrast)
+        .build();
+    a11y_group.add(&contrast_row);
+
+    contrast_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.high_contrast = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Focus indicators
+    let focus_row = libadwaita::SwitchRow::builder()
+        .title("Focus Indicators")
+        .subtitle("Show keyboard focus outlines")
+        .active(focus_indicators)
+        .build();
+    a11y_group.add(&focus_row);
+
+    focus_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.focus_indicators = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    a11y_page.add(&a11y_group);
+    dialog.add(&a11y_page);
 
     dialog.present(Some(parent));
 }
