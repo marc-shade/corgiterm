@@ -581,6 +581,296 @@ impl AiProvider for OllamaProvider {
     }
 }
 
+/// Claude CLI provider (uses `claude` command with OAuth)
+pub struct ClaudeCliProvider {
+    model: String,
+}
+
+impl ClaudeCliProvider {
+    pub fn new(model: Option<String>) -> Self {
+        Self {
+            model: model.unwrap_or_else(|| "claude-sonnet-4-20250514".to_string()),
+        }
+    }
+
+    fn is_cli_available() -> bool {
+        std::process::Command::new("which")
+            .arg("claude")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
+#[async_trait]
+impl AiProvider for ClaudeCliProvider {
+    fn name(&self) -> &str {
+        "claude-cli"
+    }
+
+    async fn is_available(&self) -> bool {
+        Self::is_cli_available()
+    }
+
+    async fn complete(&self, messages: &[Message]) -> Result<AiResponse> {
+        let start = Instant::now();
+
+        // Build prompt from messages
+        let prompt = messages
+            .iter()
+            .map(|m| match m.role {
+                Role::System => format!("System: {}\n", m.content),
+                Role::User => format!("{}\n", m.content),
+                Role::Assistant => format!("Assistant: {}\n", m.content),
+            })
+            .collect::<String>();
+
+        // Execute claude CLI
+        let output = tokio::process::Command::new("claude")
+            .args(["--model", &self.model, "-p", &prompt])
+            .output()
+            .await
+            .map_err(|e| AiError::ApiError(format!("Failed to run claude CLI: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AiError::ApiError(format!("claude CLI error: {}", stderr)));
+        }
+
+        let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        Ok(AiResponse {
+            content,
+            provider: "claude-cli".to_string(),
+            model: self.model.clone(),
+            tokens_used: None,
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+
+    async fn complete_stream(
+        &self,
+        messages: &[Message],
+        callback: Box<dyn Fn(String) + Send>,
+    ) -> Result<AiResponse> {
+        // For CLI, we can't easily stream, so just complete and call callback once
+        let response = self.complete(messages).await?;
+        callback(response.content.clone());
+        Ok(response)
+    }
+}
+
+/// Gemini CLI provider (uses `gemini` command with OAuth)
+pub struct GeminiCliProvider {
+    model: String,
+}
+
+impl GeminiCliProvider {
+    pub fn new(model: Option<String>) -> Self {
+        Self {
+            model: model.unwrap_or_else(|| "gemini-2.0-flash".to_string()),
+        }
+    }
+
+    fn is_cli_available() -> bool {
+        std::process::Command::new("which")
+            .arg("gemini")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
+#[async_trait]
+impl AiProvider for GeminiCliProvider {
+    fn name(&self) -> &str {
+        "gemini-cli"
+    }
+
+    async fn is_available(&self) -> bool {
+        Self::is_cli_available()
+    }
+
+    async fn complete(&self, messages: &[Message]) -> Result<AiResponse> {
+        let start = Instant::now();
+
+        // Build prompt from messages
+        let prompt = messages
+            .iter()
+            .map(|m| match m.role {
+                Role::System => format!("System: {}\n", m.content),
+                Role::User => format!("{}\n", m.content),
+                Role::Assistant => format!("Assistant: {}\n", m.content),
+            })
+            .collect::<String>();
+
+        // Execute gemini CLI (try common CLI names)
+        let output = tokio::process::Command::new("gemini")
+            .args(["--model", &self.model, "-p", &prompt])
+            .output()
+            .await
+            .map_err(|e| AiError::ApiError(format!("Failed to run gemini CLI: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AiError::ApiError(format!("gemini CLI error: {}", stderr)));
+        }
+
+        let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        Ok(AiResponse {
+            content,
+            provider: "gemini-cli".to_string(),
+            model: self.model.clone(),
+            tokens_used: None,
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+
+    async fn complete_stream(
+        &self,
+        messages: &[Message],
+        callback: Box<dyn Fn(String) + Send>,
+    ) -> Result<AiResponse> {
+        let response = self.complete(messages).await?;
+        callback(response.content.clone());
+        Ok(response)
+    }
+}
+
+/// Gemini API provider
+pub struct GeminiProvider {
+    client: Client,
+    api_key: String,
+    model: String,
+}
+
+impl GeminiProvider {
+    pub fn new(api_key: String, model: Option<String>) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+            model: model.unwrap_or_else(|| "gemini-2.0-flash".to_string()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct GeminiRequest {
+    contents: Vec<GeminiContent>,
+}
+
+#[derive(Serialize)]
+struct GeminiContent {
+    role: String,
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(Serialize)]
+struct GeminiPart {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct GeminiResponse {
+    candidates: Vec<GeminiCandidate>,
+}
+
+#[derive(Deserialize)]
+struct GeminiCandidate {
+    content: GeminiContentResponse,
+}
+
+#[derive(Deserialize)]
+struct GeminiContentResponse {
+    parts: Vec<GeminiPartResponse>,
+}
+
+#[derive(Deserialize)]
+struct GeminiPartResponse {
+    text: String,
+}
+
+#[async_trait]
+impl AiProvider for GeminiProvider {
+    fn name(&self) -> &str {
+        "gemini"
+    }
+
+    async fn is_available(&self) -> bool {
+        !self.api_key.is_empty()
+    }
+
+    async fn complete(&self, messages: &[Message]) -> Result<AiResponse> {
+        let start = Instant::now();
+
+        // Convert messages to Gemini format
+        let contents: Vec<GeminiContent> = messages
+            .iter()
+            .filter(|m| m.role != Role::System) // Gemini doesn't have system role in contents
+            .map(|m| GeminiContent {
+                role: match m.role {
+                    Role::User => "user".to_string(),
+                    Role::Assistant => "model".to_string(),
+                    Role::System => "user".to_string(), // Shouldn't happen
+                },
+                parts: vec![GeminiPart {
+                    text: m.content.clone(),
+                }],
+            })
+            .collect();
+
+        let request = GeminiRequest { contents };
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            self.model, self.api_key
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(AiError::ApiError(format!("{}: {}", status, text)));
+        }
+
+        let gemini_response: GeminiResponse = response.json().await?;
+
+        let content = gemini_response
+            .candidates
+            .first()
+            .and_then(|c| c.content.parts.first())
+            .map(|p| p.text.clone())
+            .unwrap_or_default();
+
+        Ok(AiResponse {
+            content,
+            provider: "gemini".to_string(),
+            model: self.model.clone(),
+            tokens_used: None,
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+
+    async fn complete_stream(
+        &self,
+        messages: &[Message],
+        callback: Box<dyn Fn(String) + Send>,
+    ) -> Result<AiResponse> {
+        // Gemini streaming is more complex, fall back to non-streaming for now
+        let response = self.complete(messages).await?;
+        callback(response.content.clone());
+        Ok(response)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -601,5 +891,23 @@ mod tests {
     fn test_ollama_provider_name() {
         let provider = OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string());
         assert_eq!(provider.name(), "ollama");
+    }
+
+    #[test]
+    fn test_claude_cli_provider_name() {
+        let provider = ClaudeCliProvider::new(None);
+        assert_eq!(provider.name(), "claude-cli");
+    }
+
+    #[test]
+    fn test_gemini_provider_name() {
+        let provider = GeminiProvider::new("test".to_string(), None);
+        assert_eq!(provider.name(), "gemini");
+    }
+
+    #[test]
+    fn test_gemini_cli_provider_name() {
+        let provider = GeminiCliProvider::new(None);
+        assert_eq!(provider.name(), "gemini-cli");
     }
 }

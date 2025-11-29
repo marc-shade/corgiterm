@@ -2,10 +2,12 @@
 
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Entry, Label, Orientation, ScrolledWindow, TextView, TextBuffer};
+use gtk4::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::ai_manager;
+use corgiterm_ai::{Message, Role};
 
 /// AI panel modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +141,9 @@ impl AiPanel {
                 return;
             }
 
+            // Mark as processing
+            *processing_for_input.borrow_mut() = true;
+
             // Show user message
             let mut end_iter = buffer_for_input.end_iter();
             buffer_for_input.insert(&mut end_iter, &format!("\n📝 You: {}\n", text));
@@ -151,12 +156,15 @@ impl AiPanel {
 
             // Check if AI is available
             if let Some(am) = ai_manager() {
-                let ai_mgr = am.read();
-                let providers = ai_mgr.list_providers();
+                let providers = {
+                    let ai_mgr = am.read();
+                    ai_mgr.list_providers().iter().map(|s| s.to_string()).collect::<Vec<_>>()
+                };
 
                 if providers.is_empty() {
                     let mut end_iter = buffer_for_input.end_iter();
-                    buffer_for_input.insert(&mut end_iter, "\n⚠️ No AI providers configured. Add API keys in Preferences → AI.\n");
+                    buffer_for_input.insert(&mut end_iter, "\n⚠️ No AI providers configured.\n\nTo enable AI:\n• Install `claude` CLI (OAuth login)\n• Install `gemini` CLI (OAuth login)\n• Or add API keys in Preferences → AI\n");
+                    *processing_for_input.borrow_mut() = false;
                     return;
                 }
 
@@ -164,33 +172,133 @@ impl AiPanel {
                 let mut end_iter = buffer_for_input.end_iter();
                 buffer_for_input.insert(&mut end_iter, "\n🤔 Thinking...\n");
 
-                // For now, show a placeholder - async AI calls will be added in a future iteration
-                let response = match current_mode {
-                    AiPanelMode::Chat => format!("🐕 [AI response pending - {} providers available: {}]\n\nTo enable AI, configure your API keys in Preferences → AI.",
-                        providers.len(), providers.join(", ")),
-                    AiPanelMode::Command => format!("💻 [Command translation pending]\n\nProviders: {}", providers.join(", ")),
-                    AiPanelMode::Explain => format!("📖 [Explanation pending]\n\nProviders: {}", providers.join(", ")),
+                // Build messages for AI
+                let system_prompt = match current_mode {
+                    AiPanelMode::Chat => "You are a helpful AI assistant integrated into CorgiTerm, a terminal emulator. Be concise and helpful.".to_string(),
+                    AiPanelMode::Command => "You are a shell command expert. Convert natural language requests into shell commands. Output ONLY the command, no explanation.".to_string(),
+                    AiPanelMode::Explain => "You are a shell command expert. Explain what the given command does in simple, clear terms.".to_string(),
                 };
 
-                // Clear "Thinking..." and show response
-                let start = buffer_for_input.start_iter();
-                let end = buffer_for_input.end_iter();
-                let full_text = buffer_for_input.text(&start, &end, false).to_string();
-                if let Some(pos) = full_text.rfind("🤔 Thinking...") {
-                    let byte_start = pos;
-                    let byte_end = pos + "🤔 Thinking...\n".len();
-                    let mut start_iter = buffer_for_input.start_iter();
-                    let mut end_iter = buffer_for_input.start_iter();
-                    start_iter.set_offset(full_text[..byte_start].chars().count() as i32);
-                    end_iter.set_offset(full_text[..byte_end].chars().count() as i32);
-                    buffer_for_input.delete(&mut start_iter, &mut end_iter);
-                }
+                let messages = vec![
+                    Message { role: Role::System, content: system_prompt },
+                    Message { role: Role::User, content: text.clone() },
+                ];
 
-                let mut end_iter = buffer_for_input.end_iter();
-                buffer_for_input.insert(&mut end_iter, &format!("\n{}\n", response));
+                // Clone what we need for the async block
+                let buffer = buffer_for_input.clone();
+                let processing = processing_for_input.clone();
+                let ai_manager = am.clone();
+
+                // Use crossbeam channel for thread communication
+                let (sender, receiver) = crossbeam_channel::unbounded::<Result<(String, String, u64), (String, String)>>();
+
+                // Spawn blocking work in a thread
+                std::thread::spawn(move || {
+                    // Create a tokio runtime for async work
+                    let rt = match tokio::runtime::Runtime::new() {
+                        Ok(rt) => rt,
+                        Err(e) => {
+                            let _ = sender.send(Err(("runtime".to_string(), e.to_string())));
+                            return;
+                        }
+                    };
+
+                    rt.block_on(async {
+                        let ai_mgr = ai_manager.read();
+                        if let Some(provider) = ai_mgr.default_provider() {
+                            let provider_name = provider.name().to_string();
+                            let result = provider.complete(&messages).await;
+                            drop(ai_mgr);
+
+                            match result {
+                                Ok(response) => {
+                                    let _ = sender.send(Ok((provider_name, response.content, response.latency_ms)));
+                                }
+                                Err(e) => {
+                                    let _ = sender.send(Err((provider_name, e.to_string())));
+                                }
+                            }
+                        } else {
+                            let _ = sender.send(Err(("none".to_string(), "No provider".to_string())));
+                        }
+                    });
+                });
+
+                // Poll for response using glib timeout
+                glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            // Clear "Thinking..." text
+                            let start = buffer.start_iter();
+                            let end = buffer.end_iter();
+                            let full_text = buffer.text(&start, &end, false).to_string();
+                            if let Some(pos) = full_text.rfind("🤔 Thinking...") {
+                                let char_start = full_text[..pos].chars().count() as i32;
+                                let char_end = char_start + "🤔 Thinking...\n".chars().count() as i32;
+                                let mut start_iter = buffer.start_iter();
+                                let mut end_iter = buffer.start_iter();
+                                start_iter.set_offset(char_start);
+                                end_iter.set_offset(char_end);
+                                buffer.delete(&mut start_iter, &mut end_iter);
+                            }
+
+                            // Show response
+                            match result {
+                                Ok((provider_name, content, latency_ms)) => {
+                                    let emoji = match current_mode {
+                                        AiPanelMode::Chat => "🐕",
+                                        AiPanelMode::Command => "💻",
+                                        AiPanelMode::Explain => "📖",
+                                    };
+                                    let mut end_iter = buffer.end_iter();
+                                    buffer.insert(&mut end_iter, &format!(
+                                        "\n{} {} (via {}, {}ms):\n{}\n",
+                                        emoji,
+                                        match current_mode {
+                                            AiPanelMode::Chat => "Assistant",
+                                            AiPanelMode::Command => "Command",
+                                            AiPanelMode::Explain => "Explanation",
+                                        },
+                                        provider_name,
+                                        latency_ms,
+                                        content
+                                    ));
+                                }
+                                Err((provider_name, error)) => {
+                                    let mut end_iter = buffer.end_iter();
+                                    if provider_name == "none" {
+                                        buffer.insert(&mut end_iter, "\n❌ No AI provider available.\n");
+                                    } else {
+                                        buffer.insert(&mut end_iter, &format!(
+                                            "\n❌ Error from {}: {}\n",
+                                            provider_name, error
+                                        ));
+                                    }
+                                }
+                            }
+
+                            // Mark as done processing
+                            *processing.borrow_mut() = false;
+
+                            glib::ControlFlow::Break
+                        }
+                        Err(crossbeam_channel::TryRecvError::Empty) => {
+                            // Keep polling
+                            glib::ControlFlow::Continue
+                        }
+                        Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                            // Channel closed, something went wrong
+                            let mut end_iter = buffer.end_iter();
+                            buffer.insert(&mut end_iter, "\n❌ AI request failed.\n");
+                            *processing.borrow_mut() = false;
+                            glib::ControlFlow::Break
+                        }
+                    }
+                });
             } else {
                 let mut end_iter = buffer_for_input.end_iter();
                 buffer_for_input.insert(&mut end_iter, "\n❌ AI system not initialized.\n");
+                *processing_for_input.borrow_mut() = false;
             }
         });
 

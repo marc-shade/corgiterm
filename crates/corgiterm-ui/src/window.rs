@@ -186,61 +186,182 @@ impl MainWindow {
         let translation_for_change = current_translation.clone();
         let translation_for_activate = current_translation.clone();
 
-        // On text change: debounce and translate with AI
+        // On text change: try pattern matching first, then AI fallback
+        let nl_spinner_for_change = nl_spinner.clone();
         nl_input.connect_changed(move |text| {
             if text.is_empty() {
                 nl_input_for_activate.hide_suggestion();
                 *translation_for_change.borrow_mut() = None;
+                nl_spinner_for_change.set_spinning(false);
+                nl_spinner_for_change.set_visible(false);
                 return;
             }
 
-            // TODO: Add debounce (300ms) before AI call
-            // For now, just show a placeholder suggestion for common patterns
+            // Try quick pattern-based translation first
             let suggestion = quick_translate(text);
             if let Some(cmd) = &suggestion {
                 nl_input_for_activate.show_suggestion(cmd);
+                *translation_for_change.borrow_mut() = suggestion;
+                nl_spinner_for_change.set_spinning(false);
+                nl_spinner_for_change.set_visible(false);
+                return;
             }
-            *translation_for_change.borrow_mut() = suggestion;
+
+            // No pattern match - will use AI on activation
+            // Show hint that AI will be used
+            nl_input_for_activate.show_suggestion("(Press Enter to translate with AI...)");
+            *translation_for_change.borrow_mut() = None;
         });
 
         // On Enter: execute the translated command (with safe mode check)
+        // If no pattern matched, use AI to translate first
         let nl_input_for_exec = nl_input.clone();
         let safe_mode_for_activate = safe_mode.clone();
         let safe_mode_preview_for_activate = safe_mode_preview.clone();
         nl_input.connect_activate(move || {
-            let translation = translation_for_activate.borrow();
-            if let Some(ref cmd) = *translation {
-                // Check if safe mode is enabled
-                let analyzer = safe_mode_for_activate.borrow();
-                if analyzer.enabled {
-                    // Get current working directory from terminal (or use home)
-                    let cwd = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()));
-                    let preview = analyzer.analyze(cmd, &cwd);
+            let translation = translation_for_activate.borrow().clone();
+            let user_text = nl_input_for_exec.text();
 
-                    // Show preview for risky commands
-                    if preview.risk != corgiterm_core::RiskLevel::Safe {
-                        safe_mode_preview_for_activate.show_preview(&preview);
-                        nl_input_for_exec.clear();
+            if user_text.is_empty() {
+                return;
+            }
+
+            if let Some(cmd) = translation {
+                // We have a pattern-matched command - execute it
+                execute_command(&cmd, &user_text, &tabs_for_nl, &safe_mode_for_activate,
+                    &safe_mode_preview_for_activate, &nl_input_for_exec, &nl_status_ref);
+            } else {
+                // No pattern match - use AI to translate
+                // Show spinner
+                nl_spinner_ref.set_spinning(true);
+                nl_spinner_ref.set_visible(true);
+
+                // Check if AI is available
+                if let Some(am) = crate::app::ai_manager() {
+                    let providers = {
+                        let ai_mgr = am.read();
+                        ai_mgr.list_providers().iter().map(|s| s.to_string()).collect::<Vec<_>>()
+                    };
+
+                    if providers.is_empty() {
+                        nl_status_ref.set_text("No AI providers configured");
+                        nl_status_ref.set_visible(true);
+                        nl_spinner_ref.set_spinning(false);
+                        nl_spinner_ref.set_visible(false);
+                        gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(3), {
+                            let status = nl_status_ref.clone();
+                            move || status.set_visible(false)
+                        });
                         return;
                     }
-                }
 
-                // Safe command - execute directly
-                if tabs_for_nl.send_command_to_current(cmd) {
-                    tracing::info!("Executed NL command: {} -> {}", nl_input_for_exec.text(), cmd);
-                    nl_input_for_exec.clear();
-                } else {
-                    nl_status_ref.set_text("No terminal tab selected");
-                    nl_status_ref.set_visible(true);
-                    gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), {
-                        let status = nl_status_ref.clone();
-                        move || status.set_visible(false)
+                    // Build translation prompt
+                    let system_prompt = format!(
+                        "You are a shell command expert. Convert this natural language request into a shell command.\n\
+                        Current shell: {}\n\
+                        OS: {}\n\n\
+                        Rules:\n\
+                        1. Output ONLY the command, nothing else\n\
+                        2. Use safe, standard commands\n\
+                        3. No explanations or markdown",
+                        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()),
+                        std::env::consts::OS
+                    );
+
+                    let messages = vec![
+                        corgiterm_ai::Message { role: corgiterm_ai::Role::System, content: system_prompt },
+                        corgiterm_ai::Message { role: corgiterm_ai::Role::User, content: user_text.clone() },
+                    ];
+
+                    // Clone refs for async handler
+                    let tabs = tabs_for_nl.clone();
+                    let safe_mode = safe_mode_for_activate.clone();
+                    let safe_mode_preview = safe_mode_preview_for_activate.clone();
+                    let nl_input = nl_input_for_exec.clone();
+                    let nl_status = nl_status_ref.clone();
+                    let spinner = nl_spinner_ref.clone();
+                    let user_text_for_log = user_text.clone();
+
+                    // Use crossbeam channel for async AI call
+                    let (sender, receiver) = crossbeam_channel::unbounded::<Result<String, String>>();
+
+                    std::thread::spawn(move || {
+                        let rt = match tokio::runtime::Runtime::new() {
+                            Ok(rt) => rt,
+                            Err(e) => {
+                                let _ = sender.send(Err(e.to_string()));
+                                return;
+                            }
+                        };
+
+                        rt.block_on(async {
+                            let ai_mgr = am.read();
+                            if let Some(provider) = ai_mgr.default_provider() {
+                                match provider.complete(&messages).await {
+                                    Ok(response) => {
+                                        // Clean up the response - remove any markdown or extra text
+                                        let cmd = response.content.trim()
+                                            .trim_start_matches("```")
+                                            .trim_start_matches("bash")
+                                            .trim_start_matches("sh")
+                                            .trim_end_matches("```")
+                                            .trim()
+                                            .to_string();
+                                        let _ = sender.send(Ok(cmd));
+                                    }
+                                    Err(e) => {
+                                        let _ = sender.send(Err(e.to_string()));
+                                    }
+                                }
+                            } else {
+                                let _ = sender.send(Err("No AI provider".to_string()));
+                            }
+                        });
                     });
+
+                    // Poll for AI response
+                    gtk4::glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                        match receiver.try_recv() {
+                            Ok(Ok(cmd)) => {
+                                spinner.set_spinning(false);
+                                spinner.set_visible(false);
+
+                                // Execute the AI-generated command
+                                execute_command(&cmd, &user_text_for_log, &tabs, &safe_mode,
+                                    &safe_mode_preview, &nl_input, &nl_status);
+
+                                gtk4::glib::ControlFlow::Break
+                            }
+                            Ok(Err(error)) => {
+                                spinner.set_spinning(false);
+                                spinner.set_visible(false);
+                                nl_status.set_text(&format!("AI error: {}", error));
+                                nl_status.set_visible(true);
+                                gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(3), {
+                                    let status = nl_status.clone();
+                                    move || status.set_visible(false)
+                                });
+                                gtk4::glib::ControlFlow::Break
+                            }
+                            Err(crossbeam_channel::TryRecvError::Empty) => {
+                                gtk4::glib::ControlFlow::Continue
+                            }
+                            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                                spinner.set_spinning(false);
+                                spinner.set_visible(false);
+                                nl_status.set_text("AI request failed");
+                                nl_status.set_visible(true);
+                                gtk4::glib::ControlFlow::Break
+                            }
+                        }
+                    });
+                } else {
+                    nl_status_ref.set_text("AI not initialized");
+                    nl_status_ref.set_visible(true);
+                    nl_spinner_ref.set_spinning(false);
+                    nl_spinner_ref.set_visible(false);
                 }
             }
-            // Hide spinner if it was showing
-            nl_spinner_ref.set_spinning(false);
-            nl_spinner_ref.set_visible(false);
         });
 
         // Create AI panel with slide-out revealer
@@ -484,6 +605,47 @@ impl MainWindow {
 
     pub fn widget(&self) -> &ApplicationWindow {
         &self.window
+    }
+}
+
+/// Execute a command with safe mode checking
+fn execute_command(
+    cmd: &str,
+    user_text: &str,
+    tabs: &Rc<TerminalTabs>,
+    safe_mode: &Rc<RefCell<SafeMode>>,
+    safe_mode_preview: &Rc<crate::widgets::safe_mode_preview::SafeModePreviewWidget>,
+    nl_input: &Rc<NaturalLanguageInput>,
+    nl_status: &Label,
+) {
+    // Check if safe mode is enabled
+    let analyzer = safe_mode.borrow();
+    if analyzer.enabled {
+        // Get current working directory from terminal (or use home)
+        let cwd = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()));
+        let preview = analyzer.analyze(cmd, &cwd);
+
+        // Show preview for risky commands
+        if preview.risk != corgiterm_core::RiskLevel::Safe {
+            drop(analyzer); // Drop borrow before showing preview
+            safe_mode_preview.show_preview(&preview);
+            nl_input.clear();
+            return;
+        }
+    }
+    drop(analyzer);
+
+    // Safe command - execute directly
+    if tabs.send_command_to_current(cmd) {
+        tracing::info!("Executed NL command: {} -> {}", user_text, cmd);
+        nl_input.clear();
+    } else {
+        nl_status.set_text("No terminal tab selected");
+        nl_status.set_visible(true);
+        gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), {
+            let status = nl_status.clone();
+            move || status.set_visible(false)
+        });
     }
 }
 

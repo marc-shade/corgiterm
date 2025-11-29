@@ -91,7 +91,40 @@ fn init_ai() {
     if let Some(cm) = config_manager() {
         let config = cm.read().config();
 
-        // Add Claude provider if API key is configured
+        // First, try CLI-based providers (OAuth, no API key needed)
+
+        // Add Claude CLI provider if the `claude` command is available
+        let claude_cli = corgiterm_ai::providers::ClaudeCliProvider::new(
+            Some(config.ai.claude.model.clone()),
+        );
+        // Check synchronously if CLI is available (quick check)
+        if std::process::Command::new("which")
+            .arg("claude")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            ai_manager.add_provider(Box::new(claude_cli));
+            tracing::info!("Claude CLI provider initialized (OAuth)");
+        }
+
+        // Add Gemini CLI provider if available
+        let gemini_cli = corgiterm_ai::providers::GeminiCliProvider::new(
+            Some(config.ai.gemini.model.clone()),
+        );
+        if std::process::Command::new("which")
+            .arg("gemini")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            ai_manager.add_provider(Box::new(gemini_cli));
+            tracing::info!("Gemini CLI provider initialized (OAuth)");
+        }
+
+        // Fall back to API key providers
+
+        // Add Claude API provider if API key is configured
         if let Some(ref api_key) = config.ai.claude.api_key {
             if !api_key.is_empty() {
                 let provider = corgiterm_ai::providers::ClaudeProvider::new(
@@ -99,7 +132,7 @@ fn init_ai() {
                     Some(config.ai.claude.model.clone()),
                 );
                 ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Claude AI provider initialized");
+                tracing::info!("Claude API provider initialized");
             }
         }
 
@@ -111,7 +144,19 @@ fn init_ai() {
                     Some(config.ai.openai.model.clone()),
                 );
                 ai_manager.add_provider(Box::new(provider));
-                tracing::info!("OpenAI provider initialized");
+                tracing::info!("OpenAI API provider initialized");
+            }
+        }
+
+        // Add Gemini API provider if API key is configured
+        if let Some(ref api_key) = config.ai.gemini.api_key {
+            if !api_key.is_empty() {
+                let provider = corgiterm_ai::providers::GeminiProvider::new(
+                    api_key.clone(),
+                    Some(config.ai.gemini.model.clone()),
+                );
+                ai_manager.add_provider(Box::new(provider));
+                tracing::info!("Gemini API provider initialized");
             }
         }
 
