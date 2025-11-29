@@ -1,13 +1,14 @@
 //! Main application window
 
 use gtk4::prelude::*;
-use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, Orientation, Paned};
+use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, MenuButton, Orientation, Paned, PopoverMenu};
 use gtk4::gdk::ModifierType;
-use gtk4::gio;
+use gtk4::gio::{self, Menu, SimpleAction};
 use libadwaita::prelude::*;
 use libadwaita::{ApplicationWindow, HeaderBar, WindowTitle};
 use std::rc::Rc;
 
+use crate::dialogs;
 use crate::sidebar::Sidebar;
 use crate::tab_bar::TerminalTabs;
 
@@ -49,10 +50,40 @@ impl MainWindow {
         });
         header.pack_start(&new_tab_btn);
 
-        // Menu button
-        let menu_btn = Button::from_icon_name("open-menu-symbolic");
-        menu_btn.set_tooltip_text(Some("Menu"));
+        // Create menu model
+        let menu = Menu::new();
+        menu.append(Some("_Preferences"), Some("win.preferences"));
+        menu.append(Some("_Keyboard Shortcuts"), Some("win.shortcuts"));
+        menu.append(Some("_About CorgiTerm"), Some("win.about"));
+
+        // Menu button with popover
+        let menu_btn = MenuButton::builder()
+            .icon_name("open-menu-symbolic")
+            .tooltip_text("Menu")
+            .menu_model(&menu)
+            .build();
         header.pack_end(&menu_btn);
+
+        // Add window actions
+        let prefs_action = SimpleAction::new("preferences", None);
+        let win_for_prefs = window.clone();
+        prefs_action.connect_activate(move |_, _| {
+            dialogs::show_preferences(&win_for_prefs);
+        });
+        window.add_action(&prefs_action);
+
+        let about_action = SimpleAction::new("about", None);
+        let win_for_about = window.clone();
+        about_action.connect_activate(move |_, _| {
+            dialogs::show_about_dialog(&win_for_about);
+        });
+        window.add_action(&about_action);
+
+        let shortcuts_action = SimpleAction::new("shortcuts", None);
+        shortcuts_action.connect_activate(move |_, _| {
+            tracing::info!("Keyboard shortcuts dialog not yet implemented");
+        });
+        window.add_action(&shortcuts_action);
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);

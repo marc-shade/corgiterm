@@ -162,8 +162,8 @@ impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
             theme: "Corgi Dark".to_string(),
-            font_family: "JetBrains Mono".to_string(),
-            font_size: 13.0,
+            font_family: "Source Code Pro".to_string(),
+            font_size: 11.0,
             line_height: 1.2,
             ligatures: true,
             cursor_style: CursorStyle::Block,

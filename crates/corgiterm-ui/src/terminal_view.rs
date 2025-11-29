@@ -2,12 +2,52 @@
 
 use gtk4::prelude::*;
 use gtk4::glib;
-use gtk4::{Adjustment, Box, DrawingArea, EventControllerKey, EventControllerScroll, EventControllerScrollFlags, GestureClick, Orientation, Scrollbar};
+use gtk4::{Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion, EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label, Orientation, Revealer, RevealerTransitionType, Scrollbar};
 use std::cell::RefCell;
 use std::rc::Rc;
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 use corgiterm_core::{Pty, PtySize, Terminal, TerminalSize, terminal::Cell};
 use std::path::Path;
+
+/// URL regex pattern
+static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap()
+});
+
+/// Detected URL with position info
+#[derive(Debug, Clone)]
+struct DetectedUrl {
+    url: String,
+    row: usize,
+    start_col: usize,
+    end_col: usize,
+}
+
+/// Search state
+#[derive(Debug, Clone, Default)]
+struct SearchState {
+    /// Is search active?
+    active: bool,
+    /// Search query
+    query: String,
+    /// Matching positions (row, start_col, end_col)
+    matches: Vec<(usize, usize, usize)>,
+    /// Current match index
+    current_match: usize,
+}
+
+/// Selection state for text selection
+#[derive(Debug, Clone, Copy, Default)]
+struct Selection {
+    /// Is selection active?
+    active: bool,
+    /// Start position (row, col)
+    start: (usize, usize),
+    /// End position (row, col)
+    end: (usize, usize),
+}
 
 /// ANSI colors (standard 16 + 256 extended)
 const COLORS: [(f64, f64, f64); 16] = [
@@ -44,6 +84,14 @@ pub struct TerminalView {
     scroll_offset: Rc<RefCell<usize>>,
     /// Scrollbar adjustment
     scrollbar_adj: Adjustment,
+    /// Text selection state
+    selection: Rc<RefCell<Selection>>,
+    /// Current hover position (row, col)
+    hover_pos: Rc<RefCell<Option<(usize, usize)>>>,
+    /// Detected URLs in current view
+    detected_urls: Rc<RefCell<Vec<DetectedUrl>>>,
+    /// Search state
+    search_state: Rc<RefCell<SearchState>>,
 }
 
 impl TerminalView {
@@ -90,11 +138,27 @@ impl TerminalView {
         // Scroll offset (0 = at bottom/current view)
         let scroll_offset = Rc::new(RefCell::new(0usize));
 
+        // Selection state
+        let selection = Rc::new(RefCell::new(Selection::default()));
+
+        // Hover position for URL highlighting
+        let hover_pos: Rc<RefCell<Option<(usize, usize)>>> = Rc::new(RefCell::new(None));
+
+        // Detected URLs cache
+        let detected_urls: Rc<RefCell<Vec<DetectedUrl>>> = Rc::new(RefCell::new(Vec::new()));
+
+        // Search state
+        let search_state: Rc<RefCell<SearchState>> = Rc::new(RefCell::new(SearchState::default()));
+
         // Set up drawing callback with Pango for text rendering
         let term_for_draw = terminal.clone();
         let cell_width_for_draw = cell_width.clone();
         let cell_height_for_draw = cell_height.clone();
         let scroll_offset_for_draw = scroll_offset.clone();
+        let selection_for_draw = selection.clone();
+        let hover_pos_for_draw = hover_pos.clone();
+        let detected_urls_for_draw = detected_urls.clone();
+        let search_state_for_draw = search_state.clone();
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
             let term = term_for_draw.borrow();
             let grid = term.grid();
@@ -105,8 +169,15 @@ impl TerminalView {
             // Get Pango context and create layout
             let pango_context = area.pango_context();
 
-            // Configure font
-            let font_desc = pango::FontDescription::from_string("JetBrains Mono 12");
+            // Configure font from config or use default
+            let (font_family, font_size) = if let Some(config_manager) = crate::app::config_manager() {
+                let config = config_manager.read().config();
+                (config.appearance.font_family.clone(), config.appearance.font_size)
+            } else {
+                ("Source Code Pro".to_string(), 11.0)
+            };
+            let font_string = format!("{} {}", font_family, font_size as u32);
+            let font_desc = pango::FontDescription::from_string(&font_string);
 
             // Get font metrics for cell sizing
             let metrics = pango_context.metrics(Some(&font_desc), None);
@@ -179,6 +250,32 @@ impl TerminalView {
             let max_offset = scrollback_len;
             let effective_offset = offset.min(max_offset);
 
+            // Detect URLs in visible grid content
+            let mut urls = Vec::new();
+            for (row_idx, row) in grid.iter().enumerate() {
+                // Build line text
+                let line_text: String = row.iter().map(|c| {
+                    if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
+                }).collect();
+
+                // Find URLs in this line
+                for mat in URL_REGEX.find_iter(&line_text) {
+                    urls.push(DetectedUrl {
+                        url: mat.as_str().to_string(),
+                        row: row_idx,
+                        start_col: mat.start(),
+                        end_col: mat.end() - 1,
+                    });
+                }
+            }
+            *detected_urls_for_draw.borrow_mut() = urls.clone();
+
+            // Get current hover position
+            let hover = *hover_pos_for_draw.borrow();
+
+            // Get search state
+            let search = search_state_for_draw.borrow();
+
             for screen_row in 0..visible_rows {
                 // Calculate which line to show
                 // If offset=0, show grid[screen_row]
@@ -216,9 +313,70 @@ impl TerminalView {
                         "grid" => &grid[idx],
                         _ => continue,
                     };
+
+                    // Get actual row index for selection checking
+                    let actual_row = if source == "grid" { idx } else { screen_row };
+                    let sel = selection_for_draw.borrow();
+
                     for (col_idx, cell) in row.iter().enumerate() {
                         let x = padding + (col_idx as f64 * cell_w);
+
+                        // Check if this cell is selected (only for grid content)
+                        if source == "grid" && is_cell_selected(actual_row, col_idx, &sel) {
+                            // Draw selection highlight background
+                            cr.set_source_rgba(0.467, 0.573, 0.702, 0.5); // Blue with transparency
+                            cr.rectangle(x, y, cell_w, cell_h);
+                            cr.fill().ok();
+                        }
+
+                        // Check if this cell is part of a search match
+                        if source == "grid" && search.active {
+                            for (match_idx, (match_row, match_start, match_end)) in search.matches.iter().enumerate() {
+                                if actual_row == *match_row && col_idx >= *match_start && col_idx < *match_end {
+                                    // Different color for current match vs other matches
+                                    if match_idx == search.current_match {
+                                        // Current match: bright orange/yellow
+                                        cr.set_source_rgba(0.949, 0.792, 0.478, 0.7);
+                                    } else {
+                                        // Other matches: dimmer yellow
+                                        cr.set_source_rgba(0.898, 0.659, 0.294, 0.4);
+                                    }
+                                    cr.rectangle(x, y, cell_w, cell_h);
+                                    cr.fill().ok();
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Check if this cell is part of a URL that's being hovered
+                        let is_url_hovered = if source == "grid" {
+                            if let Some((hover_row, hover_col)) = hover {
+                                urls.iter().any(|url| {
+                                    url.row == actual_row &&
+                                    col_idx >= url.start_col &&
+                                    col_idx <= url.end_col &&
+                                    hover_row == url.row &&
+                                    hover_col >= url.start_col &&
+                                    hover_col <= url.end_col
+                                })
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
                         draw_cell(cr, &layout, cell, x, y);
+
+                        // Draw underline for hovered URLs
+                        if is_url_hovered {
+                            cr.set_source_rgba(0.467, 0.573, 0.702, 0.9); // Blue for links
+                            let underline_y = y + cell_h - 2.0;
+                            cr.move_to(x, underline_y);
+                            cr.line_to(x + cell_w, underline_y);
+                            cr.set_line_width(1.0);
+                            cr.stroke().ok();
+                        }
                     }
                 }
             }
@@ -359,6 +517,50 @@ impl TerminalView {
                 return glib::Propagation::Stop;
             }
 
+            // Check for zoom shortcuts (Ctrl+Plus/Minus/0)
+            if ctrl && !shift {
+                // Ctrl+Plus or Ctrl+= (zoom in)
+                if matches!(key, Key::plus | Key::equal | Key::KP_Add) {
+                    if let Some(config_manager) = crate::app::config_manager() {
+                        let current_size = config_manager.read().config().appearance.font_size;
+                        let new_size = (current_size + 1.0).min(24.0);
+                        config_manager.read().update(|config| {
+                            config.appearance.font_size = new_size;
+                        });
+                        let _ = config_manager.read().save();
+                        drawing_area_for_clipboard.queue_draw();
+                        tracing::info!("Zoom in: font size {}", new_size);
+                    }
+                    return glib::Propagation::Stop;
+                }
+                // Ctrl+Minus (zoom out)
+                if matches!(key, Key::minus | Key::KP_Subtract) {
+                    if let Some(config_manager) = crate::app::config_manager() {
+                        let current_size = config_manager.read().config().appearance.font_size;
+                        let new_size = (current_size - 1.0).max(8.0);
+                        config_manager.read().update(|config| {
+                            config.appearance.font_size = new_size;
+                        });
+                        let _ = config_manager.read().save();
+                        drawing_area_for_clipboard.queue_draw();
+                        tracing::info!("Zoom out: font size {}", new_size);
+                    }
+                    return glib::Propagation::Stop;
+                }
+                // Ctrl+0 (reset zoom)
+                if matches!(key, Key::_0 | Key::KP_0) {
+                    if let Some(config_manager) = crate::app::config_manager() {
+                        config_manager.read().update(|config| {
+                            config.appearance.font_size = 11.0; // Default size
+                        });
+                        let _ = config_manager.read().save();
+                        drawing_area_for_clipboard.queue_draw();
+                        tracing::info!("Zoom reset: font size 11");
+                    }
+                    return glib::Propagation::Stop;
+                }
+            }
+
             if let Some(ref pty) = *pty_for_input.borrow() {
                 // Convert GDK key to bytes
                 let bytes = key_to_bytes(key, modifier);
@@ -370,11 +572,80 @@ impl TerminalView {
         });
         drawing_area.add_controller(key_controller);
 
-        // Add click handler to grab focus when clicked
+        // Add motion controller for URL hover tracking
+        let motion_controller = EventControllerMotion::new();
+        let hover_pos_for_motion = hover_pos.clone();
+        let cell_width_for_motion = cell_width.clone();
+        let cell_height_for_motion = cell_height.clone();
+        let drawing_area_for_motion = drawing_area.clone();
+
+        motion_controller.connect_motion(move |_, x, y| {
+            let cell_w = *cell_width_for_motion.borrow();
+            let cell_h = *cell_height_for_motion.borrow();
+            let padding = 8.0;
+
+            let col = ((x - padding) / cell_w).max(0.0) as usize;
+            let row = ((y - padding) / cell_h).max(0.0) as usize;
+
+            let old_pos = *hover_pos_for_motion.borrow();
+            let new_pos = Some((row, col));
+
+            if old_pos != new_pos {
+                *hover_pos_for_motion.borrow_mut() = new_pos;
+                drawing_area_for_motion.queue_draw();
+            }
+        });
+
+        motion_controller.connect_leave(move |_| {
+            // hover_pos cleared on leave handled below
+        });
+
+        let hover_pos_for_leave = hover_pos.clone();
+        let drawing_area_for_leave = drawing_area.clone();
+        motion_controller.connect_leave(move |_| {
+            *hover_pos_for_leave.borrow_mut() = None;
+            drawing_area_for_leave.queue_draw();
+        });
+
+        drawing_area.add_controller(motion_controller);
+
+        // Add click handler to grab focus and handle URL clicks
         let click_gesture = GestureClick::new();
         let drawing_area_for_focus = drawing_area.clone();
-        click_gesture.connect_pressed(move |_, _n_press, _x, _y| {
+        let cell_width_for_click = cell_width.clone();
+        let cell_height_for_click = cell_height.clone();
+        let detected_urls_for_click = detected_urls.clone();
+
+        click_gesture.connect_pressed(move |gesture, _n_press, x, y| {
             drawing_area_for_focus.grab_focus();
+
+            // Check if Ctrl is held for URL clicking
+            if let Some(event) = gesture.current_event() {
+                let modifier = event.modifier_state();
+                if modifier.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
+                    let cell_w = *cell_width_for_click.borrow();
+                    let cell_h = *cell_height_for_click.borrow();
+                    let padding = 8.0;
+
+                    let col = ((x - padding) / cell_w).max(0.0) as usize;
+                    let row = ((y - padding) / cell_h).max(0.0) as usize;
+
+                    // Find URL at this position
+                    let urls = detected_urls_for_click.borrow();
+                    if let Some(url) = urls.iter().find(|u| {
+                        u.row == row && col >= u.start_col && col <= u.end_col
+                    }) {
+                        // Open URL in default browser using xdg-open
+                        tracing::info!("Opening URL: {}", url.url);
+                        let url_str = url.url.clone();
+                        std::thread::spawn(move || {
+                            let _ = std::process::Command::new("xdg-open")
+                                .arg(&url_str)
+                                .spawn();
+                        });
+                    }
+                }
+            }
         });
         drawing_area.add_controller(click_gesture);
 
@@ -450,6 +721,141 @@ impl TerminalView {
             drawing_area_for_adj.queue_draw();
         });
 
+        // Create search bar with Revealer
+        let search_bar = Box::new(Orientation::Horizontal, 8);
+        search_bar.set_margin_start(8);
+        search_bar.set_margin_end(8);
+        search_bar.set_margin_top(4);
+        search_bar.set_margin_bottom(4);
+        search_bar.add_css_class("search-bar");
+
+        let search_entry = Entry::new();
+        search_entry.set_placeholder_text(Some("Search..."));
+        search_entry.set_hexpand(true);
+        search_bar.append(&search_entry);
+
+        let match_count_label = Label::new(Some("0/0"));
+        match_count_label.add_css_class("dim-label");
+        search_bar.append(&match_count_label);
+
+        let search_revealer = Revealer::new();
+        search_revealer.set_transition_type(RevealerTransitionType::SlideDown);
+        search_revealer.set_transition_duration(150);
+        search_revealer.set_child(Some(&search_bar));
+        search_revealer.set_reveal_child(false);
+
+        container.append(&search_revealer);
+
+        // Connect search entry to perform search
+        let search_state_for_entry = search_state.clone();
+        let terminal_for_search = terminal.clone();
+        let drawing_area_for_search = drawing_area.clone();
+        let match_label_for_entry = match_count_label.clone();
+        search_entry.connect_changed(move |entry| {
+            let query = entry.text().to_string();
+            let mut state = search_state_for_entry.borrow_mut();
+            state.query = query.clone();
+            state.matches.clear();
+            state.current_match = 0;
+
+            if query.is_empty() {
+                state.active = false;
+                match_label_for_entry.set_text("0/0");
+            } else {
+                state.active = true;
+
+                // Search through terminal content
+                let term = terminal_for_search.borrow();
+                let grid = term.grid();
+
+                for (row_idx, row) in grid.iter().enumerate() {
+                    // Build line text
+                    let line_text: String = row.iter().map(|c| {
+                        if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
+                    }).collect();
+
+                    // Find all matches in this line (case-insensitive)
+                    let lower_line = line_text.to_lowercase();
+                    let lower_query = query.to_lowercase();
+                    let mut start = 0;
+                    while let Some(pos) = lower_line[start..].find(&lower_query) {
+                        let actual_pos = start + pos;
+                        state.matches.push((row_idx, actual_pos, actual_pos + query.len()));
+                        start = actual_pos + 1;
+                    }
+                }
+
+                // Update label
+                if state.matches.is_empty() {
+                    match_label_for_entry.set_text("0/0");
+                } else {
+                    match_label_for_entry.set_text(&format!("1/{}", state.matches.len()));
+                }
+            }
+
+            drawing_area_for_search.queue_draw();
+        });
+
+        // Handle Enter to go to next match, Shift+Enter for previous
+        let search_state_for_nav = search_state.clone();
+        let drawing_area_for_nav = drawing_area.clone();
+        let match_label_for_nav = match_count_label.clone();
+        search_entry.connect_activate(move |_| {
+            let mut state = search_state_for_nav.borrow_mut();
+            if !state.matches.is_empty() {
+                state.current_match = (state.current_match + 1) % state.matches.len();
+                match_label_for_nav.set_text(&format!("{}/{}", state.current_match + 1, state.matches.len()));
+            }
+            drop(state);
+            drawing_area_for_nav.queue_draw();
+        });
+
+        // Handle Escape to close search bar
+        let search_revealer_for_escape = search_revealer.clone();
+        let search_state_for_escape = search_state.clone();
+        let drawing_area_for_escape = drawing_area.clone();
+        let search_key_controller = EventControllerKey::new();
+        search_key_controller.connect_key_pressed(move |_, key, _, _| {
+            use gtk4::gdk::Key;
+            if matches!(key, Key::Escape) {
+                search_revealer_for_escape.set_reveal_child(false);
+                let mut state = search_state_for_escape.borrow_mut();
+                state.active = false;
+                state.matches.clear();
+                drop(state);
+                drawing_area_for_escape.queue_draw();
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        search_entry.add_controller(search_key_controller);
+
+        // Wrap revealer in Rc for access from key handler
+        let search_revealer_rc = Rc::new(search_revealer.clone());
+        let search_entry_rc = Rc::new(search_entry.clone());
+
+        // Add Ctrl+Shift+F handler to container
+        let search_key_controller2 = EventControllerKey::new();
+        let search_revealer_for_toggle = search_revealer_rc.clone();
+        let search_entry_for_focus = search_entry_rc.clone();
+        search_key_controller2.connect_key_pressed(move |_, key, _, modifier| {
+            use gtk4::gdk::{Key, ModifierType};
+
+            let ctrl = modifier.contains(ModifierType::CONTROL_MASK);
+            let shift = modifier.contains(ModifierType::SHIFT_MASK);
+
+            if ctrl && shift && matches!(key, Key::F | Key::f) {
+                let is_revealed = search_revealer_for_toggle.reveals_child();
+                search_revealer_for_toggle.set_reveal_child(!is_revealed);
+                if !is_revealed {
+                    search_entry_for_focus.grab_focus();
+                }
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        container.add_controller(search_key_controller2);
+
         // Create horizontal box: drawing area + scrollbar
         let content_box = Box::new(Orientation::Horizontal, 0);
         content_box.set_vexpand(true);
@@ -462,6 +868,96 @@ impl TerminalView {
         // Focus the drawing area
         drawing_area.grab_focus();
 
+        // Add gesture drag for text selection
+        let drag_gesture = GestureDrag::new();
+        drag_gesture.set_button(1); // Left mouse button
+
+        let selection_for_drag_start = selection.clone();
+        let cell_width_for_drag = cell_width.clone();
+        let cell_height_for_drag = cell_height.clone();
+        let drawing_area_for_drag = drawing_area.clone();
+
+        drag_gesture.connect_drag_begin(move |_, start_x, start_y| {
+            let cell_w = *cell_width_for_drag.borrow();
+            let cell_h = *cell_height_for_drag.borrow();
+            let padding = 8.0;
+
+            // Convert pixel coords to cell coords
+            let col = ((start_x - padding) / cell_w).max(0.0) as usize;
+            let row = ((start_y - padding) / cell_h).max(0.0) as usize;
+
+            let mut sel = selection_for_drag_start.borrow_mut();
+            sel.active = true;
+            sel.start = (row, col);
+            sel.end = (row, col);
+
+            drawing_area_for_drag.queue_draw();
+        });
+
+        let selection_for_drag_update = selection.clone();
+        let cell_width_for_update = cell_width.clone();
+        let cell_height_for_update = cell_height.clone();
+        let drawing_area_for_update = drawing_area.clone();
+
+        drag_gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
+            if let Some((start_x, start_y)) = gesture.start_point() {
+                let cell_w = *cell_width_for_update.borrow();
+                let cell_h = *cell_height_for_update.borrow();
+                let padding = 8.0;
+
+                let end_x = start_x + offset_x;
+                let end_y = start_y + offset_y;
+
+                let col = ((end_x - padding) / cell_w).max(0.0) as usize;
+                let row = ((end_y - padding) / cell_h).max(0.0) as usize;
+
+                let mut sel = selection_for_drag_update.borrow_mut();
+                sel.end = (row, col);
+
+                drawing_area_for_update.queue_draw();
+            }
+        });
+
+        let selection_for_drag_end = selection.clone();
+        let terminal_for_copy_sel = terminal.clone();
+        let drawing_area_for_end = drawing_area.clone();
+
+        drag_gesture.connect_drag_end(move |_, _, _| {
+            let sel = selection_for_drag_end.borrow();
+
+            // Copy selected text to clipboard if selection is valid
+            if sel.active && sel.start != sel.end {
+                let term = terminal_for_copy_sel.borrow();
+                let grid = term.grid();
+
+                let (start_row, start_col, end_row, end_col) = normalize_selection(
+                    sel.start.0, sel.start.1, sel.end.0, sel.end.1
+                );
+
+                let mut text = String::new();
+                for row in start_row..=end_row {
+                    if row >= grid.len() { break; }
+
+                    let col_start = if row == start_row { start_col } else { 0 };
+                    let col_end = if row == end_row { end_col + 1 } else { grid[row].len() };
+
+                    for col in col_start..col_end.min(grid[row].len()) {
+                        text.push_str(&grid[row][col].content);
+                    }
+
+                    if row < end_row {
+                        text.push('\n');
+                    }
+                }
+
+                // Set clipboard
+                let clipboard = drawing_area_for_end.clipboard();
+                clipboard.set_text(text.trim_end());
+            }
+        });
+
+        drawing_area.add_controller(drag_gesture);
+
         Self {
             container,
             drawing_area,
@@ -471,6 +967,10 @@ impl TerminalView {
             cell_height,
             scroll_offset,
             scrollbar_adj,
+            selection,
+            hover_pos,
+            detected_urls,
+            search_state,
         }
     }
 
@@ -487,6 +987,44 @@ impl TerminalView {
 impl Default for TerminalView {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Normalize selection to ensure start is before end
+fn normalize_selection(start_row: usize, start_col: usize, end_row: usize, end_col: usize) -> (usize, usize, usize, usize) {
+    if start_row < end_row || (start_row == end_row && start_col <= end_col) {
+        (start_row, start_col, end_row, end_col)
+    } else {
+        (end_row, end_col, start_row, start_col)
+    }
+}
+
+/// Check if a cell is within the selection
+fn is_cell_selected(row: usize, col: usize, sel: &Selection) -> bool {
+    if !sel.active {
+        return false;
+    }
+
+    let (start_row, start_col, end_row, end_col) = normalize_selection(
+        sel.start.0, sel.start.1, sel.end.0, sel.end.1
+    );
+
+    if row < start_row || row > end_row {
+        return false;
+    }
+
+    if row == start_row && row == end_row {
+        // Single line selection
+        col >= start_col && col <= end_col
+    } else if row == start_row {
+        // First line of multi-line selection
+        col >= start_col
+    } else if row == end_row {
+        // Last line of multi-line selection
+        col <= end_col
+    } else {
+        // Middle lines are fully selected
+        true
     }
 }
 

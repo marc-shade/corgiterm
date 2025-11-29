@@ -4,8 +4,19 @@ use gtk4::prelude::*;
 use gtk4::gdk::Display;
 use gtk4::{Application, CssProvider};
 use libadwaita::prelude::*;
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 use crate::window::MainWindow;
+use crate::dialogs;
+
+/// Global config manager
+static CONFIG_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::ConfigManager>>> = std::sync::OnceLock::new();
+
+/// Get the global config manager
+pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
+    CONFIG_MANAGER.get().cloned()
+}
 
 /// Load custom CSS styles
 fn load_css() {
@@ -26,8 +37,26 @@ fn load_css() {
     }
 }
 
+/// Initialize the global config
+fn init_config() {
+    match corgiterm_config::ConfigManager::new() {
+        Ok(config_manager) => {
+            let config_arc = Arc::new(RwLock::new(config_manager));
+            let _ = CONFIG_MANAGER.set(config_arc.clone());
+            dialogs::init_config(config_arc);
+            tracing::info!("Configuration loaded");
+        }
+        Err(e) => {
+            tracing::error!("Failed to load config: {}", e);
+        }
+    }
+}
+
 /// Build the main UI
 pub fn build_ui(app: &Application) {
+    // Initialize config first
+    init_config();
+
     // Load custom CSS
     load_css();
 

@@ -3,6 +3,22 @@
 use gtk4::prelude::*;
 use gtk4::Window;
 use libadwaita::prelude::*;
+use corgiterm_config::ConfigManager;
+use std::sync::Arc;
+use parking_lot::RwLock;
+
+/// Global config manager (initialized by app)
+static CONFIG: std::sync::OnceLock<Arc<RwLock<ConfigManager>>> = std::sync::OnceLock::new();
+
+/// Initialize the global config manager
+pub fn init_config(config: Arc<RwLock<ConfigManager>>) {
+    let _ = CONFIG.set(config);
+}
+
+/// Get the global config manager
+pub fn get_config() -> Option<Arc<RwLock<ConfigManager>>> {
+    CONFIG.get().cloned()
+}
 
 /// Show the about dialog
 pub fn show_about_dialog(parent: &impl IsA<Window>) {
@@ -81,6 +97,70 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     theme_group.add(&theme_row);
 
     appearance_page.add(&theme_group);
+
+    // Font settings group
+    let font_group = libadwaita::PreferencesGroup::builder()
+        .title("Font")
+        .description("Configure terminal font appearance")
+        .build();
+
+    // Get current config values
+    let (current_font, current_size) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (config.appearance.font_family.clone(), config.appearance.font_size)
+    } else {
+        ("Source Code Pro".to_string(), 11.0)
+    };
+
+    // Font family dropdown
+    let font_row = libadwaita::ComboRow::builder()
+        .title("Font Family")
+        .subtitle("Monospace font for terminal text")
+        .build();
+    let fonts = ["Source Code Pro", "DejaVu Sans Mono", "Liberation Mono", "Adwaita Mono", "Monospace"];
+    font_row.set_model(Some(&gtk4::StringList::new(&fonts)));
+    // Set current font
+    if let Some(pos) = fonts.iter().position(|&f| f == current_font) {
+        font_row.set_selected(pos as u32);
+    }
+    font_group.add(&font_row);
+
+    // Connect font change
+    font_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if selected < fonts.len() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.appearance.font_family = fonts[selected].to_string();
+                });
+                let _ = config_manager.read().save();
+                tracing::info!("Font changed to: {}", fonts[selected]);
+            }
+        }
+    });
+
+    // Font size spin row
+    let size_adj = gtk4::Adjustment::new(current_size as f64, 8.0, 24.0, 1.0, 2.0, 0.0);
+    let size_row = libadwaita::SpinRow::builder()
+        .title("Font Size")
+        .subtitle("Size in points")
+        .adjustment(&size_adj)
+        .build();
+    font_group.add(&size_row);
+
+    // Connect size change
+    size_row.connect_changed(move |row| {
+        let size = row.value() as f32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.font_size = size;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Font size changed to: {}", size);
+        }
+    });
+
+    appearance_page.add(&font_group);
     window.add(&appearance_page);
 
     // Terminal page

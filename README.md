@@ -77,14 +77,20 @@ corgiterm -e "npm run dev"
 |--------|----------|
 | New Tab | `Ctrl+T` |
 | Close Tab | `Ctrl+W` |
-| New Project | `Ctrl+Shift+N` |
-| Quick Switch | `Ctrl+K` |
-| Search History | `Ctrl+Shift+F` |
-| Toggle AI Panel | `Ctrl+Shift+A` |
-| Toggle Safe Mode | `Ctrl+Shift+S` |
-| Settings | `Ctrl+,` |
-| Split Horizontal | `Ctrl+D` |
-| Split Vertical | `Ctrl+Shift+D` |
+| Copy | `Ctrl+Shift+C` |
+| Paste | `Ctrl+Shift+V` |
+| Zoom In | `Ctrl++` or `Ctrl+=` |
+| Zoom Out | `Ctrl+-` |
+| Reset Zoom | `Ctrl+0` |
+| Search in Terminal | `Ctrl+Shift+F` |
+| Next Match | `Enter` (in search) |
+| Previous Match | `Shift+Enter` (in search) |
+| Close Search | `Escape` |
+| Switch to Tab 1-9 | `Ctrl+1` to `Ctrl+9` |
+| Next Tab | `Ctrl+Tab` |
+| Previous Tab | `Ctrl+Shift+Tab` |
+| Open File | `Ctrl+Shift+O` |
+| Quit | `Ctrl+Q` |
 
 ## Configuration
 
@@ -97,8 +103,8 @@ restore_sessions = true
 
 [appearance]
 theme = "Corgi Dark"
-font_family = "JetBrains Mono"
-font_size = 13.0
+font_family = "Source Code Pro"
+font_size = 11.0
 opacity = 1.0
 
 [ai]
