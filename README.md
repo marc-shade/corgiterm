@@ -1,11 +1,5 @@
 # CorgiTerm 🐕
 
-```
-   ∩＿∩
-  (・ω・)  The friendliest terminal ever.
-  /　 つ   AI-powered, accessible, beautiful.
-```
-
 **CorgiTerm** is a next-generation, AI-powered terminal emulator that makes the command line accessible to everyone - from nervous beginners to power users who demand maximum control.
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
@@ -181,16 +175,6 @@ cargo test --workspace
 
 # Format code
 cargo fmt --all
-```
-
-## Mascot
-
-Meet **Pixel**, our NES-style tri-color Corgi mascot! 🐕
-
-```
-   ∩＿∩
-  (・ω・)  "Woof! Let me help you with that command!"
-  /　 つ
 ```
 
 ## Privacy Promise
