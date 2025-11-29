@@ -1,0 +1,60 @@
+# Flatpak manifest for CorgiTerm
+# Build: flatpak-builder --user --install --force-clean build-dir dev.corgiterm.CorgiTerm.yml
+# Run: flatpak run dev.corgiterm.CorgiTerm
+
+app-id: dev.corgiterm.CorgiTerm
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: corgiterm
+
+finish-args:
+  # X11 + Wayland
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU acceleration
+  - --device=dri
+  # Host filesystem access (for terminal file operations)
+  - --filesystem=host
+  # Home directory access
+  - --filesystem=home
+  # D-Bus access for notifications and settings
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gtk.vfs.*
+  # Network access for AI providers
+  - --share=network
+  # IPC for X11 shared memory
+  - --share=ipc
+  # Sound for notifications
+  - --socket=pulseaudio
+  # SSH agent socket
+  - --socket=ssh-auth
+  # Access to host /tmp (for pty)
+  - --filesystem=/tmp
+  # PTY access
+  - --device=all
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+    CARGO_HOME: /run/build/corgiterm/cargo
+    RUST_BACKTRACE: "1"
+
+modules:
+  - name: corgiterm
+    buildsystem: simple
+    build-commands:
+      - cargo build --release
+      - install -Dm755 target/release/corgiterm -t /app/bin/
+      - install -Dm644 assets/dev.corgiterm.CorgiTerm.desktop -t /app/share/applications/
+      - install -Dm644 assets/dev.corgiterm.CorgiTerm.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 assets/icons/hicolor/scalable/apps/dev.corgiterm.CorgiTerm.svg -t /app/share/icons/hicolor/scalable/apps/
+      - install -Dm644 assets/icons/hicolor/symbolic/apps/dev.corgiterm.CorgiTerm-symbolic.svg -t /app/share/icons/hicolor/symbolic/apps/
+    sources:
+      - type: git
+        url: https://github.com/marc-shade/corgiterm.git
+        branch: main

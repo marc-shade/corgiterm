@@ -74,9 +74,26 @@ cargo build --release
 ./target/release/corgiterm
 ```
 
-### Flatpak (Coming Soon)
+### Flatpak (Build from Source)
+
 ```bash
-flatpak install dev.corgiterm.CorgiTerm
+# Install flatpak-builder if needed
+sudo dnf install flatpak-builder  # Fedora
+# sudo apt install flatpak-builder  # Ubuntu/Debian
+
+# Install required runtimes
+flatpak install flathub org.gnome.Sdk//47 org.gnome.Platform//47
+flatpak install flathub org.freedesktop.Sdk.Extension.rust-stable//24.08
+
+# Clone and build
+git clone https://github.com/marc-shade/corgiterm
+cd corgiterm
+
+# Build and install
+./scripts/build-flatpak.sh --install
+
+# Run
+flatpak run dev.corgiterm.CorgiTerm
 ```
 
 ## Quick Start
@@ -198,10 +215,8 @@ cargo fmt --all
 
 Features planned for future releases:
 
-- [ ] **Flatpak Package** - Easy installation on any Linux distro
 - [ ] **Inline Images** - Display images directly in terminal output (Sixel/Kitty protocol)
 - [ ] **macOS/Windows Support** - Cross-platform builds
-- [ ] **Broadcast Mode** - Type in multiple terminals simultaneously
 
 ## Privacy Promise
 
