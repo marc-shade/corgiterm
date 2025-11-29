@@ -86,97 +86,127 @@ fn init_sessions() {
 /// Initialize AI providers from config
 fn init_ai() {
     let mut ai_manager = corgiterm_ai::AiManager::new();
+    let mut first_provider: Option<String> = None;
 
     // Get AI config
     if let Some(cm) = config_manager() {
         let config = cm.read().config();
 
-        // First, try CLI-based providers (OAuth, no API key needed)
+        // Priority 1: CLI-based providers (OAuth, no API key needed)
 
-        // Add Claude CLI provider if the `claude` command is available
-        let claude_cli = corgiterm_ai::providers::ClaudeCliProvider::new(
-            Some(config.ai.claude.model.clone()),
-        );
-        // Check synchronously if CLI is available (quick check)
+        // Claude CLI (claude command)
         if std::process::Command::new("which")
             .arg("claude")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            ai_manager.add_provider(Box::new(claude_cli));
-            tracing::info!("Claude CLI provider initialized (OAuth)");
+            let provider = corgiterm_ai::providers::ClaudeCliProvider::new(
+                Some(config.ai.claude.model.clone()),
+            );
+            if first_provider.is_none() { first_provider = Some("claude-cli".to_string()); }
+            ai_manager.add_provider(Box::new(provider));
+            tracing::info!("Claude CLI provider available");
         }
 
-        // Add Gemini CLI provider if available
-        let gemini_cli = corgiterm_ai::providers::GeminiCliProvider::new(
-            Some(config.ai.gemini.model.clone()),
-        );
+        // Gemini CLI (gemini command)
         if std::process::Command::new("which")
             .arg("gemini")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            ai_manager.add_provider(Box::new(gemini_cli));
-            tracing::info!("Gemini CLI provider initialized (OAuth)");
+            let provider = corgiterm_ai::providers::GeminiCliProvider::new(
+                Some(config.ai.gemini.model.clone()),
+            );
+            if first_provider.is_none() { first_provider = Some("gemini-cli".to_string()); }
+            ai_manager.add_provider(Box::new(provider));
+            tracing::info!("Gemini CLI provider available");
         }
 
-        // Fall back to API key providers
+        // Priority 2: Local Ollama (check if reachable)
+        if config.ai.local.enabled && !config.ai.local.endpoint.is_empty() {
+            // Quick connectivity check (non-blocking timeout)
+            let endpoint = config.ai.local.endpoint.clone();
+            let ollama_available = std::process::Command::new("curl")
+                .args(["-s", "-m", "1", &format!("{}/api/tags", endpoint)])
+                .output()
+                .map(|o| o.status.success() && !o.stdout.is_empty())
+                .unwrap_or(false);
 
-        // Add Claude API provider if API key is configured
+            if ollama_available {
+                let provider = corgiterm_ai::providers::OllamaProvider::new(
+                    endpoint,
+                    config.ai.local.model.clone(),
+                );
+                if first_provider.is_none() { first_provider = Some("ollama".to_string()); }
+                ai_manager.add_provider(Box::new(provider));
+                tracing::info!("Ollama provider available at {}", config.ai.local.endpoint);
+            } else {
+                tracing::debug!("Ollama not reachable at {}", config.ai.local.endpoint);
+            }
+        }
+
+        // Priority 3: API key providers
         if let Some(ref api_key) = config.ai.claude.api_key {
             if !api_key.is_empty() {
                 let provider = corgiterm_ai::providers::ClaudeProvider::new(
                     api_key.clone(),
                     Some(config.ai.claude.model.clone()),
                 );
+                if first_provider.is_none() { first_provider = Some("claude".to_string()); }
                 ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Claude API provider initialized");
+                tracing::info!("Claude API provider configured");
             }
         }
 
-        // Add OpenAI provider if API key is configured
         if let Some(ref api_key) = config.ai.openai.api_key {
             if !api_key.is_empty() {
                 let provider = corgiterm_ai::providers::OpenAiProvider::new(
                     api_key.clone(),
                     Some(config.ai.openai.model.clone()),
                 );
+                if first_provider.is_none() { first_provider = Some("openai".to_string()); }
                 ai_manager.add_provider(Box::new(provider));
-                tracing::info!("OpenAI API provider initialized");
+                tracing::info!("OpenAI API provider configured");
             }
         }
 
-        // Add Gemini API provider if API key is configured
         if let Some(ref api_key) = config.ai.gemini.api_key {
             if !api_key.is_empty() {
                 let provider = corgiterm_ai::providers::GeminiProvider::new(
                     api_key.clone(),
                     Some(config.ai.gemini.model.clone()),
                 );
+                if first_provider.is_none() { first_provider = Some("gemini".to_string()); }
                 ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Gemini API provider initialized");
+                tracing::info!("Gemini API provider configured");
             }
         }
 
-        // Add Ollama (local) provider if enabled
-        if config.ai.local.enabled && !config.ai.local.endpoint.is_empty() {
-            let provider = corgiterm_ai::providers::OllamaProvider::new(
-                config.ai.local.endpoint.clone(),
-                config.ai.local.model.clone(),
-            );
-            ai_manager.add_provider(Box::new(provider));
-            tracing::info!("Ollama local provider initialized");
-        }
+        // Set default provider (auto = first available)
+        let default = if config.ai.default_provider == "auto" {
+            first_provider.clone().unwrap_or_default()
+        } else {
+            config.ai.default_provider.clone()
+        };
 
-        // Set default provider
-        let _ = ai_manager.set_default(&config.ai.default_provider);
+        if !default.is_empty() {
+            if ai_manager.set_default(&default) {
+                tracing::info!("Default AI provider: {}", default);
+            }
+        }
     }
 
+    let provider_count = ai_manager.list_providers().len();
     let ai_arc = Arc::new(RwLock::new(ai_manager));
     let _ = AI_MANAGER.set(ai_arc);
-    tracing::info!("AI manager initialized");
+
+    if provider_count > 0 {
+        tracing::info!("AI manager initialized with {} provider(s)", provider_count);
+    } else {
+        tracing::warn!("No AI providers available - install claude CLI, ollama, or add API keys");
+    }
 }
 
 /// Initialize the plugin system

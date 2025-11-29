@@ -20,11 +20,14 @@
 - **Modern UI** - Clean, beautiful interface inspired by the best productivity apps
 - **Project Organization** - Group terminals by project, just like your IDE
 
-### 🤖 AI-Powered
-- **Claude, OpenAI, Gemini, Local LLMs** - Choose your AI provider
-- **Command Translation** - Natural language → shell commands
-- **Smart Explanations** - Understand what commands do before running them
-- **MCP Protocol** - Native support for AI agent tools
+### 🤖 AI-Powered (Inspired by Warp, Cursor, Copilot, and Cline)
+- **Multiple Providers** - Claude CLI, Gemini CLI, Ollama (local/remote), or API keys
+- **Three AI Modes** in a slide-out panel:
+  - **Chat Mode** - Conversational AI assistant for questions and help
+  - **Explain Mode** - Paste commands or errors to understand them
+  - **Command Mode** - Natural language → shell commands (Warp-style # prefix)
+- **Auto-Detection** - Automatically finds and uses available AI providers
+- **Zero Config** - Works out of the box with Claude CLI or local Ollama
 
 ### ⚡ For Power Users
 - **GPU Rendering** - Silky smooth 144fps performance
@@ -87,10 +90,10 @@ corgiterm -e "npm run dev"
 |--------|----------|
 | New Tab | `Ctrl+T` |
 | Close Tab | `Ctrl+W` |
+| Toggle AI Panel | `Ctrl+Shift+A` |
 | Quick Switcher | `Ctrl+K` |
 | Copy | `Ctrl+Shift+C` |
 | Paste | `Ctrl+Shift+V` |
-| Select All | `Ctrl+Shift+A` |
 | Zoom In | `Ctrl++` or `Ctrl+=` |
 | Zoom Out | `Ctrl+-` |
 | Reset Zoom | `Ctrl+0` |
@@ -122,8 +125,12 @@ opacity = 1.0
 
 [ai]
 enabled = true
-default_provider = "claude"
-natural_language = true
+default_provider = "auto"  # Auto-detect best available provider
+
+[ai.local]
+enabled = true
+endpoint = "http://localhost:11434"  # Ollama server
+model = "codellama"
 
 [safe_mode]
 enabled = false

@@ -369,7 +369,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            default_provider: "claude".to_string(),
+            default_provider: "auto".to_string(),  // Auto-detect best available provider
             claude: ClaudeConfig::default(),
             openai: OpenAiConfig::default(),
             gemini: GeminiConfig::default(),
@@ -441,9 +441,9 @@ pub struct LocalLlmConfig {
 impl Default for LocalLlmConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
-            endpoint: "http://localhost:11434".to_string(),
-            model: "codellama".to_string(),
+            enabled: true,  // Enable by default - auto-detects if Ollama is running
+            endpoint: "http://localhost:11434".to_string(),  // Standard Ollama port
+            model: "codellama".to_string(),  // Common model for command generation
         }
     }
 }

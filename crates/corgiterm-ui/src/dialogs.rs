@@ -127,9 +127,9 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
 
     general_page.add(&startup_group);
 
-    // Updates & Privacy group
+    // Updates and Privacy group
     let updates_group = libadwaita::PreferencesGroup::builder()
-        .title("Updates & Privacy")
+        .title("Updates and Privacy")
         .build();
 
     let updates_row = libadwaita::SwitchRow::builder()

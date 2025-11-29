@@ -5,7 +5,7 @@
 //! opens a terminal in that directory.
 
 use gtk4::prelude::*;
-use gtk4::{Button, FileDialog, Label, ListBox, Orientation, ScrolledWindow, Separator};
+use gtk4::{Button, FileDialog, Label, ListBox, Orientation, ScrolledWindow};
 use gtk4::gio;
 use libadwaita::prelude::*;
 use std::cell::RefCell;
@@ -16,7 +16,6 @@ use crate::app::session_manager;
 
 /// Callback when a project folder is clicked - receives full path
 pub type ProjectCallback = Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str, &str)>>>>; // (name, path)
-pub type AiActionCallback = Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>;
 
 /// Project sidebar widget
 pub struct Sidebar {
@@ -25,7 +24,6 @@ pub struct Sidebar {
     /// Stored project paths (name -> full path) - synced with SessionManager
     projects: Rc<RefCell<Vec<(String, PathBuf)>>>,
     on_project_click: ProjectCallback,
-    on_ai_action: AiActionCallback,
 }
 
 impl Sidebar {
@@ -36,7 +34,6 @@ impl Sidebar {
 
         // Callbacks
         let on_project_click: ProjectCallback = Rc::new(RefCell::new(None));
-        let on_ai_action: AiActionCallback = Rc::new(RefCell::new(None));
         let projects: Rc<RefCell<Vec<(String, PathBuf)>>> = Rc::new(RefCell::new(Vec::new()));
 
         // Header with "Add Project" button
@@ -73,7 +70,6 @@ impl Sidebar {
             project_list: project_list.clone(),
             projects: projects.clone(),
             on_project_click: on_project_click.clone(),
-            on_ai_action: on_ai_action.clone(),
         };
 
         // Load projects from SessionManager (persisted)
@@ -165,53 +161,7 @@ impl Sidebar {
             }
         });
 
-        // Separator
-        container.append(&Separator::new(Orientation::Horizontal));
-
-        // AI section
-        let ai_header = Label::new(Some("AI Assistant"));
-        ai_header.add_css_class("heading");
-        ai_header.set_xalign(0.0);
-        ai_header.set_margin_start(12);
-        ai_header.set_margin_top(8);
-        ai_header.set_margin_bottom(8);
-        container.append(&ai_header);
-
-        // AI quick actions
-        let ai_list = ListBox::new();
-        ai_list.add_css_class("navigation-sidebar");
-
-        let chat_row = libadwaita::ActionRow::builder()
-            .title("Chat")
-            .subtitle("Ask anything")
-            .activatable(true)
-            .build();
-        chat_row.add_prefix(&Label::new(Some("💬")));
-        ai_list.append(&chat_row);
-
-        let cmd_row = libadwaita::ActionRow::builder()
-            .title("Command")
-            .subtitle("Describe what to do")
-            .activatable(true)
-            .build();
-        cmd_row.add_prefix(&Label::new(Some("⚡")));
-        ai_list.append(&cmd_row);
-
-        // Connect AI action clicks
-        let on_ai_for_list = on_ai_action.clone();
-        ai_list.connect_row_activated(move |_, row| {
-            if let Some(ref callback) = *on_ai_for_list.borrow() {
-                let index = row.index();
-                let action = match index {
-                    0 => "chat",
-                    1 => "command",
-                    _ => "unknown",
-                };
-                callback(action);
-            }
-        });
-
-        container.append(&ai_list);
+        // AI Assistant section removed - use right panel AI toggle instead
 
         sidebar
     }
@@ -256,14 +206,6 @@ impl Sidebar {
         F: Fn(&str, &str) + 'static,
     {
         *self.on_project_click.borrow_mut() = Some(std::boxed::Box::new(callback));
-    }
-
-    /// Set callback for AI actions
-    pub fn set_on_ai_action<F>(&self, callback: F)
-    where
-        F: Fn(&str) + 'static,
-    {
-        *self.on_ai_action.borrow_mut() = Some(std::boxed::Box::new(callback));
     }
 }
 

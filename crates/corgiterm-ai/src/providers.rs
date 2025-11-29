@@ -615,29 +615,64 @@ impl AiProvider for ClaudeCliProvider {
     async fn complete(&self, messages: &[Message]) -> Result<AiResponse> {
         let start = Instant::now();
 
-        // Build prompt from messages
-        let prompt = messages
+        // Extract system and user messages
+        let system_prompt = messages
             .iter()
-            .map(|m| match m.role {
-                Role::System => format!("System: {}\n", m.content),
-                Role::User => format!("{}\n", m.content),
-                Role::Assistant => format!("Assistant: {}\n", m.content),
-            })
-            .collect::<String>();
+            .find(|m| m.role == Role::System)
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+
+        let user_prompt = messages
+            .iter()
+            .filter(|m| m.role == Role::User)
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         // Execute claude CLI
+        // Usage: claude [options] [prompt]
+        // -p/--print for non-interactive output
+        let mut args = vec!["--print".to_string()];
+        if !self.model.is_empty() {
+            args.push("--model".to_string());
+            args.push(self.model.clone());
+        }
+        if !system_prompt.is_empty() {
+            args.push("--system-prompt".to_string());
+            args.push(system_prompt);
+        }
+        args.push(user_prompt);
+
         let output = tokio::process::Command::new("claude")
-            .args(["--model", &self.model, "-p", &prompt])
+            .args(&args)
             .output()
             .await
             .map_err(|e| AiError::ApiError(format!("Failed to run claude CLI: {}", e)))?;
 
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AiError::ApiError(format!("claude CLI error: {}", stderr)));
+            // Check both stderr and stdout for error messages (Claude CLI writes some errors to stdout)
+            let error_msg = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("Exit code: {:?}", output.status.code())
+            };
+            return Err(AiError::ApiError(format!("claude CLI: {}", error_msg)));
         }
 
-        let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Also check if stdout looks like an error message (e.g., "Credit balance is too low")
+        let content = if stdout.to_lowercase().contains("error")
+            || stdout.to_lowercase().contains("credit balance")
+            || stdout.to_lowercase().contains("rate limit")
+            || stdout.to_lowercase().contains("unauthorized") {
+            return Err(AiError::ApiError(format!("claude CLI: {}", stdout)));
+        } else {
+            stdout
+        };
 
         Ok(AiResponse {
             content,
@@ -704,19 +739,29 @@ impl AiProvider for GeminiCliProvider {
             })
             .collect::<String>();
 
-        // Execute gemini CLI (try common CLI names)
+        // Execute gemini CLI (uses positional args, -p is deprecated)
         let output = tokio::process::Command::new("gemini")
-            .args(["--model", &self.model, "-p", &prompt])
+            .args(["--model", &self.model, "--output-format", "text", &prompt])
             .output()
             .await
             .map_err(|e| AiError::ApiError(format!("Failed to run gemini CLI: {}", e)))?;
 
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AiError::ApiError(format!("gemini CLI error: {}", stderr)));
+            // Check both stderr and stdout for error messages
+            let error_msg = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("Exit code: {:?}", output.status.code())
+            };
+            return Err(AiError::ApiError(format!("gemini CLI: {}", error_msg)));
         }
 
-        let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let content = stdout;
 
         Ok(AiResponse {
             content,

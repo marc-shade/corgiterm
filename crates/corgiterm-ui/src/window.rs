@@ -146,11 +146,11 @@ impl MainWindow {
         let safe_mode = Rc::new(RefCell::new(SafeMode::new()));
         safe_mode.borrow_mut().set_enabled(true); // Enable by default for safety
 
-        // Terminal area with NL input at bottom
+        // Terminal area (NL input removed - using AI panel on the right instead)
         let terminal_area = Box::new(Orientation::Vertical, 0);
         terminal_area.append(tabs.tab_view_widget());
-        terminal_area.append(safe_mode_preview.widget()); // Safe mode preview between terminal and input
-        terminal_area.append(&nl_container);
+        terminal_area.append(safe_mode_preview.widget()); // Safe mode preview at bottom
+        // nl_container removed - AI interaction now handled by AI panel
         tabs.tab_view_widget().set_vexpand(true);
 
         // Wire safe mode execute callback
@@ -372,6 +372,8 @@ impl MainWindow {
         ai_revealer.set_reveal_child(false);
         ai_revealer.set_child(Some(ai_panel.borrow().widget()));
         ai_panel.borrow().widget().set_width_request(350);
+        // Don't let the revealer take space when collapsed
+        ai_revealer.set_hexpand(false);
 
         // Connect AI toggle button
         let revealer_for_toggle = ai_revealer.clone();
@@ -382,6 +384,7 @@ impl MainWindow {
 
         // Horizontal box for content + AI panel
         let content_box = Box::new(Orientation::Horizontal, 0);
+        content_paned.set_hexpand(true); // Main content expands to fill available space
         content_box.append(&content_paned);
         content_box.append(&ai_revealer);
         content_box.set_vexpand(true);
@@ -396,21 +399,6 @@ impl MainWindow {
             // Open terminal in the selected folder
             tabs_for_session.add_terminal_tab(name, Some(path));
             tracing::info!("Opened terminal in: {}", path);
-        });
-
-        // Connect sidebar AI actions
-        let tabs_for_ai = tabs.clone();
-        sidebar.set_on_ai_action(move |action| {
-            match action {
-                "chat" => {
-                    tabs_for_ai.add_document_tab("AI Chat", None);
-                    tracing::info!("Opening AI chat");
-                }
-                "command" => {
-                    tracing::info!("Opening AI command mode");
-                }
-                _ => {}
-            }
         });
 
         // Set up keyboard shortcuts
