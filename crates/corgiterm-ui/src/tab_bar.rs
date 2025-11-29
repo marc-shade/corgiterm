@@ -6,12 +6,12 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::terminal_view::TerminalView;
 use crate::document_view::DocumentView;
+use crate::split_pane::{SplitPane, SplitDirection};
 
 /// Type of tab content
 pub enum TabContent {
-    Terminal(TerminalView),
+    Terminal(SplitPane),
     Document(DocumentView),
 }
 
@@ -19,8 +19,39 @@ impl TabContent {
     /// Get the widget for this tab content
     pub fn widget(&self) -> gtk4::Widget {
         match self {
-            TabContent::Terminal(tv) => tv.widget().clone().upcast(),
+            TabContent::Terminal(sp) => sp.widget().clone().upcast(),
             TabContent::Document(dv) => dv.widget().clone().upcast(),
+        }
+    }
+
+    /// Get as split pane if this is a terminal tab
+    pub fn as_split_pane(&self) -> Option<&SplitPane> {
+        match self {
+            TabContent::Terminal(sp) => Some(sp),
+            _ => None,
+        }
+    }
+
+    /// Send command to terminal if this is a terminal tab
+    pub fn send_command(&self, command: &str) -> bool {
+        if let TabContent::Terminal(sp) = self {
+            sp.send_command(command)
+        } else {
+            false
+        }
+    }
+
+    /// Split the current pane horizontally
+    pub fn split_horizontal(&self) {
+        if let TabContent::Terminal(sp) = self {
+            sp.split(SplitDirection::Horizontal);
+        }
+    }
+
+    /// Split the current pane vertically
+    pub fn split_vertical(&self) {
+        if let TabContent::Terminal(sp) = self {
+            sp.split(SplitDirection::Vertical);
         }
     }
 }
@@ -64,22 +95,15 @@ impl TerminalTabs {
 
     /// Add a new terminal tab
     pub fn add_terminal_tab(&self, title: &str, working_dir: Option<&str>) -> TabPage {
-        let terminal = if let Some(dir) = working_dir {
-            TerminalView::with_working_dir(Some(std::path::Path::new(dir)))
+        let split_pane = if let Some(dir) = working_dir {
+            SplitPane::with_working_dir(Some(std::path::Path::new(dir)))
         } else {
-            TerminalView::new()
+            SplitPane::new()
         };
-        let widget = terminal.widget().clone();
+        let widget = split_pane.widget().clone();
 
-        // Get event receiver for title/bell updates
-        let event_rx = terminal.event_receiver();
-
-        // Clone bell flash references for the event handler
-        let bell_flash_ref = terminal.bell_flash_ref();
-        let drawing_area_ref = terminal.drawing_area_ref();
-
-        // Store content
-        self.contents.borrow_mut().push(TabContent::Terminal(terminal));
+        // Store content (SplitPane wraps TerminalView internally)
+        self.contents.borrow_mut().push(TabContent::Terminal(split_pane));
 
         // Add to tab view
         let page = self.tab_view.append(&widget);
@@ -88,69 +112,6 @@ impl TerminalTabs {
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
-
-        // Set up event listener for title changes and bells
-        let page_for_events = page.clone();
-        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            use corgiterm_core::terminal::TerminalEvent;
-
-            while let Ok(event) = event_rx.try_recv() {
-                match event {
-                    TerminalEvent::TitleChanged(new_title) => {
-                        // Update tab title with the terminal's title (e.g., current directory)
-                        if !new_title.is_empty() {
-                            // Truncate long titles for tab display
-                            let display_title = if new_title.len() > 30 {
-                                format!("...{}", &new_title[new_title.len()-27..])
-                            } else {
-                                new_title
-                            };
-                            page_for_events.set_title(&display_title);
-                        }
-                    }
-                    TerminalEvent::Bell => {
-                        // Get bell style from config
-                        let bell_style = crate::app::config_manager()
-                            .map(|cm| cm.read().config().terminal.bell_style)
-                            .unwrap_or(corgiterm_config::BellStyle::Visual);
-
-                        match bell_style {
-                            corgiterm_config::BellStyle::None => {
-                                // Do nothing
-                            }
-                            corgiterm_config::BellStyle::Visual | corgiterm_config::BellStyle::Both => {
-                                // Visual bell: flash the terminal
-                                *bell_flash_ref.borrow_mut() = true;
-                                drawing_area_ref.queue_draw();
-
-                                let bell_flash_reset = bell_flash_ref.clone();
-                                let drawing_area_reset = drawing_area_ref.clone();
-                                gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
-                                    *bell_flash_reset.borrow_mut() = false;
-                                    drawing_area_reset.queue_draw();
-                                });
-                            }
-                            corgiterm_config::BellStyle::Audible => {
-                                // Just play sound (no visual)
-                            }
-                        }
-
-                        // Also flash tab indicator for all non-None styles
-                        if bell_style != corgiterm_config::BellStyle::None {
-                            page_for_events.set_needs_attention(true);
-                            let page_for_bell = page_for_events.clone();
-                            gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
-                                page_for_bell.set_needs_attention(false);
-                            });
-                        }
-
-                        tracing::debug!("Bell from terminal (style: {:?})", bell_style);
-                    }
-                    _ => {}
-                }
-            }
-            gtk4::glib::ControlFlow::Continue
-        });
 
         page
     }
@@ -265,6 +226,72 @@ impl TerminalTabs {
 
         let page = self.tab_view.nth_page(index as i32);
         self.tab_view.set_selected_page(&page);
+    }
+
+    /// Send a command to the currently selected terminal tab
+    /// Returns true if command was sent, false if not a terminal tab
+    pub fn send_command_to_current(&self, command: &str) -> bool {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                return content.send_command(command);
+            }
+        }
+        false
+    }
+
+    /// Get a reference to the contents for direct access
+    pub fn contents(&self) -> &Rc<RefCell<Vec<TabContent>>> {
+        &self.contents
+    }
+
+    /// Access current split pane for direct operations
+    pub fn with_current_split_pane<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&SplitPane) -> R,
+    {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                if let Some(sp) = content.as_split_pane() {
+                    return Some(f(sp));
+                }
+            }
+        }
+        None
+    }
+
+    /// Split the current pane horizontally
+    pub fn split_current_horizontal(&self) {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                content.split_horizontal();
+            }
+        }
+    }
+
+    /// Split the current pane vertically
+    pub fn split_current_vertical(&self) {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                content.split_vertical();
+            }
+        }
+    }
+
+    /// Get visible lines from current terminal (for thumbnails)
+    pub fn get_current_visible_lines(&self, max_lines: usize) -> Vec<String> {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                if let Some(sp) = content.as_split_pane() {
+                    return sp.get_visible_lines(max_lines);
+                }
+            }
+        }
+        Vec::new()
     }
 }
 

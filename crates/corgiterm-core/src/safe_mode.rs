@@ -153,10 +153,14 @@ impl SafeMode {
             alternatives: Vec::new(),
         };
 
-        // Check for dangerous patterns
+        // Check for dangerous patterns (break on first match - patterns ordered by severity)
         for pattern in &self.dangerous_patterns {
             if pattern.pattern.is_match(command) {
-                preview.risk = pattern.risk;
+                // Only override if new risk is higher
+                if pattern.risk as u8 > preview.risk as u8 ||
+                   preview.risk == RiskLevel::Unknown {
+                    preview.risk = pattern.risk;
+                }
                 preview.explanation.push(pattern.explanation.to_string());
                 if let Some(undo) = pattern.undo_hint {
                     preview.undo_hint = Some(undo.to_string());
@@ -193,8 +197,8 @@ impl SafeMode {
             preview.network_access = true;
         }
 
-        // Generate alternatives for dangerous commands
-        if preview.risk == RiskLevel::Danger {
+        // Generate alternatives for risky commands (Danger or Caution)
+        if preview.risk == RiskLevel::Danger || preview.risk == RiskLevel::Caution {
             preview.alternatives = self.suggest_alternatives(command);
         }
 

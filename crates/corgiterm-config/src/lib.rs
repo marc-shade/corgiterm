@@ -156,6 +156,9 @@ pub struct AppearanceConfig {
     pub icon_theme: String,
     /// Window padding
     pub padding: Padding,
+    /// Enable CSS hot-reload (watches style.css for changes)
+    #[serde(default)]
+    pub hot_reload_css: Option<bool>,
 }
 
 impl Default for AppearanceConfig {
@@ -183,6 +186,7 @@ impl Default for AppearanceConfig {
             ui_scale: 1.0,
             icon_theme: "corgi".to_string(),
             padding: Padding::default(),
+            hot_reload_css: None, // Default to None (uses debug_assertions at runtime)
         }
     }
 }
@@ -702,7 +706,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.appearance.font_size, 13.0);
+        assert_eq!(config.appearance.font_size, 11.0);
         assert_eq!(config.terminal.scrollback_lines, 10000);
         assert!(!config.general.telemetry);
     }

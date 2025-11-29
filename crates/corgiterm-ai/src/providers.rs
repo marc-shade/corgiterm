@@ -2,6 +2,7 @@
 
 use crate::{AiError, AiProvider, AiResponse, Message, Result, Role, TokenUsage};
 use async_trait::async_trait;
+use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -29,6 +30,8 @@ struct ClaudeRequest {
     max_tokens: u32,
     messages: Vec<ClaudeMessage>,
     system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +55,23 @@ struct ClaudeContent {
 struct ClaudeUsage {
     input_tokens: u32,
     output_tokens: u32,
+}
+
+/// SSE streaming event for Claude
+#[derive(Deserialize)]
+struct ClaudeStreamEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    #[serde(default)]
+    delta: Option<ClaudeStreamDelta>,
+    #[serde(default)]
+    usage: Option<ClaudeUsage>,
+}
+
+#[derive(Deserialize, Default)]
+struct ClaudeStreamDelta {
+    #[serde(default)]
+    text: String,
 }
 
 #[async_trait]
@@ -91,6 +111,7 @@ impl AiProvider for ClaudeProvider {
             max_tokens: 4096,
             messages: claude_messages,
             system,
+            stream: None,
         };
 
         let response = self
@@ -133,11 +154,112 @@ impl AiProvider for ClaudeProvider {
     async fn complete_stream(
         &self,
         messages: &[Message],
-        _callback: Box<dyn Fn(&str) + Send>,
+        callback: Box<dyn Fn(String) + Send>,
     ) -> Result<AiResponse> {
-        // For now, fall back to non-streaming
-        // TODO: Implement proper SSE streaming
-        self.complete(messages).await
+        let start = Instant::now();
+
+        // Extract system message if present
+        let system = messages
+            .iter()
+            .find(|m| m.role == Role::System)
+            .map(|m| m.content.clone());
+
+        let claude_messages: Vec<ClaudeMessage> = messages
+            .iter()
+            .filter(|m| m.role != Role::System)
+            .map(|m| ClaudeMessage {
+                role: match m.role {
+                    Role::User => "user".to_string(),
+                    Role::Assistant => "assistant".to_string(),
+                    Role::System => unreachable!(),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+
+        let request = ClaudeRequest {
+            model: self.model.clone(),
+            max_tokens: 4096,
+            messages: claude_messages,
+            system,
+            stream: Some(true),
+        };
+
+        let response = self
+            .client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(AiError::ApiError(format!("{}: {}", status, text)));
+        }
+
+        let mut full_content = String::new();
+        let mut usage: Option<ClaudeUsage> = None;
+
+        // Process SSE stream
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| AiError::ApiError(format!("Stream error: {}", e)))?;
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+            // Process complete SSE events
+            while let Some(event_end) = buffer.find("\n\n") {
+                let event_data = buffer[..event_end].to_string();
+                buffer = buffer[event_end + 2..].to_string();
+
+                // Parse SSE event
+                for line in event_data.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" {
+                            continue;
+                        }
+                        if let Ok(event) = serde_json::from_str::<ClaudeStreamEvent>(data) {
+                            match event.event_type.as_str() {
+                                "content_block_delta" => {
+                                    if let Some(delta) = event.delta {
+                                        if !delta.text.is_empty() {
+                                            // Pass owned string to callback
+                                            callback(delta.text.clone());
+                                            full_content.push_str(&delta.text);
+                                        }
+                                    }
+                                }
+                                "message_delta" => {
+                                    if let Some(u) = event.usage {
+                                        usage = Some(u);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let final_content = full_content;
+
+        Ok(AiResponse {
+            content: final_content,
+            provider: "claude".to_string(),
+            model: self.model.clone(),
+            tokens_used: usage.map(|u| TokenUsage {
+                prompt: u.input_tokens,
+                completion: u.output_tokens,
+                total: u.input_tokens + u.output_tokens,
+            }),
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
     }
 }
 
@@ -163,6 +285,8 @@ struct OpenAiRequest {
     model: String,
     messages: Vec<OpenAiMessage>,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -187,6 +311,23 @@ struct OpenAiUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
     total_tokens: u32,
+}
+
+/// Streaming response chunk from OpenAI
+#[derive(Deserialize)]
+struct OpenAiStreamChunk {
+    choices: Vec<OpenAiStreamChoice>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiStreamChoice {
+    delta: OpenAiStreamDelta,
+}
+
+#[derive(Deserialize, Default)]
+struct OpenAiStreamDelta {
+    #[serde(default)]
+    content: Option<String>,
 }
 
 #[async_trait]
@@ -218,6 +359,7 @@ impl AiProvider for OpenAiProvider {
             model: self.model.clone(),
             messages: openai_messages,
             max_tokens: 4096,
+            stream: None,
         };
 
         let response = self
@@ -259,9 +401,88 @@ impl AiProvider for OpenAiProvider {
     async fn complete_stream(
         &self,
         messages: &[Message],
-        _callback: Box<dyn Fn(&str) + Send>,
+        callback: Box<dyn Fn(String) + Send>,
     ) -> Result<AiResponse> {
-        self.complete(messages).await
+        let start = Instant::now();
+
+        let openai_messages: Vec<OpenAiMessage> = messages
+            .iter()
+            .map(|m| OpenAiMessage {
+                role: match m.role {
+                    Role::System => "system".to_string(),
+                    Role::User => "user".to_string(),
+                    Role::Assistant => "assistant".to_string(),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+
+        let request = OpenAiRequest {
+            model: self.model.clone(),
+            messages: openai_messages,
+            max_tokens: 4096,
+            stream: Some(true),
+        };
+
+        let response = self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(AiError::ApiError(format!("{}: {}", status, text)));
+        }
+
+        let mut full_content = String::new();
+
+        // Process SSE stream
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| AiError::ApiError(format!("Stream error: {}", e)))?;
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+            // Process complete SSE events
+            while let Some(event_end) = buffer.find("\n\n") {
+                let event_data = buffer[..event_end].to_string();
+                buffer = buffer[event_end + 2..].to_string();
+
+                // Parse SSE event
+                for line in event_data.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" {
+                            continue;
+                        }
+                        if let Ok(parsed) = serde_json::from_str::<OpenAiStreamChunk>(data) {
+                            for choice in parsed.choices {
+                                if let Some(content) = choice.delta.content {
+                                    // Pass owned string to callback
+                                    callback(content.clone());
+                                    full_content.push_str(&content);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let final_content = full_content;
+
+        Ok(AiResponse {
+            content: final_content,
+            provider: "openai".to_string(),
+            model: self.model.clone(),
+            tokens_used: None, // Token usage not available in streaming mode
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
     }
 }
 
@@ -353,8 +574,9 @@ impl AiProvider for OllamaProvider {
     async fn complete_stream(
         &self,
         messages: &[Message],
-        _callback: Box<dyn Fn(&str) + Send>,
+        _callback: Box<dyn Fn(String) + Send>,
     ) -> Result<AiResponse> {
+        // Ollama doesn't support streaming in this implementation - fall back to complete
         self.complete(messages).await
     }
 }

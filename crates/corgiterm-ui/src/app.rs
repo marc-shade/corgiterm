@@ -1,7 +1,6 @@
 //! Main application setup
 
-use gtk4::gdk::Display;
-use gtk4::{Application, CssProvider};
+use gtk4::Application;
 use std::sync::Arc;
 use parking_lot::RwLock;
 
@@ -40,23 +39,17 @@ pub fn plugin_manager() -> Option<Arc<RwLock<corgiterm_plugins::PluginManager>>>
     PLUGIN_MANAGER.get().cloned()
 }
 
-/// Load custom CSS styles
+/// Load custom CSS styles with optional hot-reload
 fn load_css() {
-    let provider = CssProvider::new();
+    // Check config for hot-reload setting
+    let hot_reload = if let Some(cm) = config_manager() {
+        let config = cm.read().config();
+        config.appearance.hot_reload_css.unwrap_or(cfg!(debug_assertions))
+    } else {
+        cfg!(debug_assertions) // Default to hot-reload in debug builds
+    };
 
-    // Load CSS from embedded resource
-    let css_data = include_str!("style.css");
-    provider.load_from_string(css_data);
-
-    // Apply to default display
-    if let Some(display) = Display::default() {
-        gtk4::style_context_add_provider_for_display(
-            &display,
-            &provider,
-            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
-        tracing::info!("Loaded CorgiTerm CSS theme");
-    }
+    crate::theme::load_theme(hot_reload);
 }
 
 /// Initialize the global config

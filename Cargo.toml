@@ -77,7 +77,7 @@ wgpu = "23.0"
 glyphon = "0.7"
 
 # AI integration
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 futures = "0.3"
 async-channel = "2.3"
 

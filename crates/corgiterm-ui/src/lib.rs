@@ -33,6 +33,8 @@ pub mod tab_bar;
 pub mod ai_panel;
 pub mod dialogs;
 pub mod widgets;
+pub mod theme;
+pub mod split_pane;
 
 use gtk4::prelude::*;
 use gtk4::{Application, glib};

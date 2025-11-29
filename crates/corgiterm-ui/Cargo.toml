@@ -46,4 +46,7 @@ regex = "1.10"
 once_cell = "1.19"
 parking_lot = "0.12"
 
+# File watching for hot-reload
+notify.workspace = true
+
 [dev-dependencies]

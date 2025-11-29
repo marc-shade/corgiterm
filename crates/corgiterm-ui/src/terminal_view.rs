@@ -1322,6 +1322,65 @@ impl TerminalView {
     pub fn drawing_area_ref(&self) -> DrawingArea {
         self.drawing_area.clone()
     }
+
+    /// Send a command to the terminal (appends newline)
+    pub fn send_command(&self, command: &str) {
+        if let Some(ref pty) = *self.pty.borrow() {
+            // Send command with newline
+            let cmd_with_newline = format!("{}\n", command);
+            if let Err(e) = pty.write(cmd_with_newline.as_bytes()) {
+                tracing::error!("Failed to send command to PTY: {}", e);
+            } else {
+                tracing::debug!("Sent command: {}", command);
+            }
+        }
+    }
+
+    /// Send raw bytes to the terminal (no newline added)
+    pub fn send_bytes(&self, bytes: &[u8]) {
+        if let Some(ref pty) = *self.pty.borrow() {
+            if let Err(e) = pty.write(bytes) {
+                tracing::error!("Failed to send bytes to PTY: {}", e);
+            }
+        }
+    }
+
+    /// Get current working directory from terminal (if available)
+    pub fn working_directory(&self) -> Option<std::path::PathBuf> {
+        // TODO: Read /proc/<pid>/cwd for the shell process
+        // For now, return None
+        None
+    }
+
+    /// Get visible lines as strings for thumbnail rendering
+    /// Returns up to `max_lines` from the terminal grid
+    pub fn get_visible_lines(&self, max_lines: usize) -> Vec<String> {
+        let terminal = self.terminal.borrow();
+        let grid = terminal.grid();
+
+        let mut lines = Vec::new();
+        let start = if grid.len() > max_lines { grid.len() - max_lines } else { 0 };
+
+        for row in grid.iter().skip(start).take(max_lines) {
+            let mut line = String::new();
+            for cell in row.iter() {
+                if cell.content.is_empty() {
+                    line.push(' ');
+                } else {
+                    line.push_str(&cell.content);
+                }
+            }
+            lines.push(line.trim_end().to_string());
+        }
+        lines
+    }
+
+    /// Get terminal dimensions (columns, rows)
+    pub fn terminal_size(&self) -> (usize, usize) {
+        let terminal = self.terminal.borrow();
+        let size = terminal.size();
+        (size.cols, size.rows)
+    }
 }
 
 impl Default for TerminalView {

@@ -97,11 +97,12 @@ pub trait AiProvider: Send + Sync {
     /// Send a completion request
     async fn complete(&self, messages: &[Message]) -> Result<AiResponse>;
 
-    /// Stream a completion request
+    /// Stream a completion request with incremental callback
+    /// The callback receives each chunk as an owned String
     async fn complete_stream(
         &self,
         messages: &[Message],
-        callback: Box<dyn Fn(&str) + Send>,
+        callback: Box<dyn Fn(String) + Send>,
     ) -> Result<AiResponse>;
 }
 
