@@ -55,7 +55,10 @@
 
 ```bash
 # Install dependencies (Fedora)
-sudo dnf install gtk4-devel libadwaita-devel
+sudo dnf install gtk4-devel libadwaita-devel vte291-gtk4-devel
+
+# Install dependencies (Ubuntu/Debian)
+# sudo apt install libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev
 
 # Build
 git clone https://github.com/marc-shade/corgiterm
