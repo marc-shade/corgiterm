@@ -139,7 +139,7 @@ impl SafeMode {
     }
 
     /// Analyze a command and generate preview
-    pub fn analyze(&self, command: &str, cwd: &PathBuf) -> CommandPreview {
+    pub fn analyze(&self, command: &str, cwd: &std::path::Path) -> CommandPreview {
         let mut preview = CommandPreview {
             command: command.to_string(),
             risk: RiskLevel::Unknown,
@@ -174,7 +174,7 @@ impl SafeMode {
                 preview.explanation.clear();
                 preview
                     .explanation
-                    .push(format!("This is a safe, read-only command"));
+                    .push("This is a safe, read-only command".to_string());
                 break;
             }
         }
@@ -339,7 +339,11 @@ impl SafeMode {
         RiskLevel::Unknown
     }
 
-    fn estimate_affected_files(&self, command: &str, cwd: &PathBuf) -> Option<Vec<PathBuf>> {
+    fn estimate_affected_files(
+        &self,
+        command: &str,
+        cwd: &std::path::Path,
+    ) -> Option<Vec<PathBuf>> {
         // Simple parser for rm, mv, cp targets
         // In a real implementation, this would do proper shell expansion
         let parts: Vec<&str> = command.split_whitespace().collect();

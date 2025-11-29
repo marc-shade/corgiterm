@@ -38,7 +38,10 @@ impl BroadcastManager {
             // Clear targets when disabling
             self.broadcast_targets.clear();
         }
-        tracing::info!("Broadcast mode: {}", if self.enabled { "ON" } else { "OFF" });
+        tracing::info!(
+            "Broadcast mode: {}",
+            if self.enabled { "ON" } else { "OFF" }
+        );
         self.enabled
     }
 
@@ -118,7 +121,7 @@ impl Default for BroadcastManager {
     }
 }
 
-/// Thread-local broadcast manager for single-threaded GTK access
+// Thread-local broadcast manager for single-threaded GTK access
 thread_local! {
     static BROADCAST_MANAGER: RefCell<BroadcastManager> = RefCell::new(BroadcastManager::new());
 }

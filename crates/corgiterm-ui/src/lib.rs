@@ -1,3 +1,15 @@
+// Clippy allows for intentional patterns in GTK code
+#![allow(clippy::type_complexity)] // Complex callback types are common in GTK
+#![allow(clippy::collapsible_if)] // Sometimes nested ifs are clearer
+#![allow(clippy::single_match)] // Match is often clearer than if-let for enums
+#![allow(clippy::await_holding_lock)] // GTK sync primitives with async code
+#![allow(clippy::needless_range_loop)] // Sometimes index access is clearer
+#![allow(clippy::only_used_in_recursion)] // Common in tree/pane traversal methods
+#![allow(clippy::needless_borrow)] // Sometimes borrows are clearer
+#![allow(clippy::needless_borrows_for_generic_args)] // Sometimes borrows are clearer
+#![allow(clippy::map_clone)] // Minor optimization vs readability
+#![allow(clippy::ptr_arg)] // PathBuf vs Path in GTK callbacks
+
 //! # CorgiTerm UI
 //!
 //! GTK4/libadwaita user interface for CorgiTerm.

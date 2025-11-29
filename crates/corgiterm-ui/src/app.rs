@@ -349,10 +349,7 @@ fn register_icon_theme() {
     }
 
     // System paths
-    let system_paths = [
-        "/usr/share/icons/hicolor",
-        "/usr/local/share/icons/hicolor",
-    ];
+    let system_paths = ["/usr/share/icons/hicolor", "/usr/local/share/icons/hicolor"];
 
     for path in system_paths {
         let path_buf = std::path::PathBuf::from(path);

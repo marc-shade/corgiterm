@@ -35,6 +35,10 @@ pub use history::{CommandHistory, OutputHistory, SearchableHistory};
 pub use history_learning::{
     FrequentCommandData, HistoryLearningManager, LearningContextData, PatternData, PreferenceData,
 };
+pub use images::{
+    ImageFormat, ImageId, ImagePlacement, ImageStore, InlineImage, KittyCommand, KittyParser,
+    SixelImage, SixelParser,
+};
 pub use learning::{
     CommandLearning, CommandPattern, CommandStats, CommandSuggestion, SuggestionSource,
     UserPreference,
@@ -43,10 +47,6 @@ pub use pty::{Pty, PtySize};
 pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
 pub use session::{Session, SessionId, SessionManager};
 pub use terminal::{Terminal, TerminalEvent, TerminalSize};
-pub use images::{
-    ImageFormat, ImageId, ImagePlacement, ImageStore, InlineImage, KittyCommand, KittyParser,
-    SixelImage, SixelParser,
-};
 
 /// Core version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

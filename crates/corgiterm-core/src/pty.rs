@@ -131,12 +131,9 @@ mod unix {
                     }
 
                     // Set slave as stdin/stdout/stderr
-                    dup2(slave_fd, 0)
-                        .map_err(|e| CoreError::Pty(format!("dup2 stdin: {}", e)))?;
-                    dup2(slave_fd, 1)
-                        .map_err(|e| CoreError::Pty(format!("dup2 stdout: {}", e)))?;
-                    dup2(slave_fd, 2)
-                        .map_err(|e| CoreError::Pty(format!("dup2 stderr: {}", e)))?;
+                    dup2(slave_fd, 0).map_err(|e| CoreError::Pty(format!("dup2 stdin: {}", e)))?;
+                    dup2(slave_fd, 1).map_err(|e| CoreError::Pty(format!("dup2 stdout: {}", e)))?;
+                    dup2(slave_fd, 2).map_err(|e| CoreError::Pty(format!("dup2 stderr: {}", e)))?;
 
                     if slave_fd > 2 {
                         unsafe { libc::close(slave_fd) };
@@ -244,13 +241,10 @@ mod unix {
 
         /// Check if child process is still running
         pub fn is_alive(&self) -> bool {
-            match nix::sys::wait::waitpid(
-                self.child_pid,
-                Some(nix::sys::wait::WaitPidFlag::WNOHANG),
-            ) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) => true,
-                _ => false,
-            }
+            matches!(
+                nix::sys::wait::waitpid(self.child_pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG),),
+                Ok(nix::sys::wait::WaitStatus::StillAlive)
+            )
         }
 
         /// Get the foreground process group ID

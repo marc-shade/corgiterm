@@ -94,11 +94,14 @@ pub enum KittyAction {
 pub struct KittyParser {
     /// Current command parameters
     params: HashMap<char, String>,
-    /// Accumulated base64 data
+    /// Accumulated base64 data (for future use)
+    #[allow(dead_code)]
     data_buffer: Vec<u8>,
-    /// Is currently in data mode
+    /// Is currently in data mode (for future use)
+    #[allow(dead_code)]
     in_data_mode: bool,
-    /// Current payload chunk
+    /// Current payload chunk (for future use)
+    #[allow(dead_code)]
     payload: Vec<u8>,
 }
 
@@ -219,7 +222,8 @@ pub struct SixelParser {
     data: Vec<u8>,
     /// Color palette (index -> RGB)
     palette: HashMap<u8, (u8, u8, u8)>,
-    /// Current color index
+    /// Current color index (for future use)
+    #[allow(dead_code)]
     current_color: u8,
     /// Image width (derived from data)
     width: u32,
@@ -274,7 +278,6 @@ impl SixelParser {
     fn first_pass(&mut self, data: &[u8]) {
         let mut i = 0;
         let mut max_x = 0u32;
-        let mut max_y = 0u32;
         let mut x = 0u32;
         let mut y = 0u32;
 
@@ -307,7 +310,11 @@ impl SixelParser {
                                     // Convert to RGB
                                     let (r, g, b) = if coord_type == 2 {
                                         // RGB (0-100 scale)
-                                        ((p1 * 255 / 100) as u8, (p2 * 255 / 100) as u8, (p3 * 255 / 100) as u8)
+                                        (
+                                            (p1 * 255 / 100) as u8,
+                                            (p2 * 255 / 100) as u8,
+                                            (p3 * 255 / 100) as u8,
+                                        )
                                     } else {
                                         // HLS - convert to RGB
                                         hls_to_rgb(p1, p2, p3)
@@ -342,7 +349,7 @@ impl SixelParser {
                     }
                 }
                 // Sixel character (0x3F to 0x7E)
-                c if c >= 0x3F && c <= 0x7E => {
+                c if (0x3F..=0x7E).contains(&c) => {
                     x += 1;
                     i += 1;
                 }
@@ -353,7 +360,7 @@ impl SixelParser {
         }
 
         max_x = max_x.max(x);
-        max_y = y + 6;
+        let max_y = y + 6;
 
         self.width = max_x;
         self.height = max_y;
@@ -403,7 +410,7 @@ impl SixelParser {
                         i += 1;
                     }
                 }
-                c if c >= 0x3F && c <= 0x7E => {
+                c if (0x3F..=0x7E).contains(&c) => {
                     let sixel = c - 0x3F;
                     self.draw_sixel(&mut pixels, x, y, sixel, current_color);
                     x += 1;
@@ -518,10 +525,7 @@ impl ImageStore {
 
     /// Append partial data for multi-chunk transmission
     pub fn append_partial(&mut self, id: ImageId, data: Vec<u8>) {
-        self.partial_data
-            .entry(id)
-            .or_insert_with(Vec::new)
-            .extend(data);
+        self.partial_data.entry(id).or_default().extend(data);
     }
 
     /// Get and clear partial data
@@ -539,9 +543,8 @@ impl ImageStore {
     /// Clear images outside visible area (garbage collection)
     pub fn gc(&mut self, visible_rows: std::ops::Range<usize>) {
         // Remove placements outside visible area
-        self.placements.retain(|p| {
-            p.row + p.height_cells > visible_rows.start && p.row < visible_rows.end
-        });
+        self.placements
+            .retain(|p| p.row + p.height_cells > visible_rows.start && p.row < visible_rows.end);
 
         // Remove unreferenced images
         let referenced: std::collections::HashSet<ImageId> =
@@ -564,21 +567,21 @@ fn parse_number(data: &[u8]) -> (u32, usize) {
 
 fn default_vga_color(index: u8) -> (u8, u8, u8) {
     match index {
-        0 => (0, 0, 0),       // Black
-        1 => (128, 0, 0),     // Dark Red
-        2 => (0, 128, 0),     // Dark Green
-        3 => (128, 128, 0),   // Dark Yellow
-        4 => (0, 0, 128),     // Dark Blue
-        5 => (128, 0, 128),   // Dark Magenta
-        6 => (0, 128, 128),   // Dark Cyan
-        7 => (192, 192, 192), // Light Gray
-        8 => (128, 128, 128), // Dark Gray
-        9 => (255, 0, 0),     // Red
-        10 => (0, 255, 0),    // Green
-        11 => (255, 255, 0),  // Yellow
-        12 => (0, 0, 255),    // Blue
-        13 => (255, 0, 255),  // Magenta
-        14 => (0, 255, 255),  // Cyan
+        0 => (0, 0, 0),        // Black
+        1 => (128, 0, 0),      // Dark Red
+        2 => (0, 128, 0),      // Dark Green
+        3 => (128, 128, 0),    // Dark Yellow
+        4 => (0, 0, 128),      // Dark Blue
+        5 => (128, 0, 128),    // Dark Magenta
+        6 => (0, 128, 128),    // Dark Cyan
+        7 => (192, 192, 192),  // Light Gray
+        8 => (128, 128, 128),  // Dark Gray
+        9 => (255, 0, 0),      // Red
+        10 => (0, 255, 0),     // Green
+        11 => (255, 255, 0),   // Yellow
+        12 => (0, 0, 255),     // Blue
+        13 => (255, 0, 255),   // Magenta
+        14 => (0, 255, 255),   // Cyan
         15 => (255, 255, 255), // White
         _ => (0, 0, 0),
     }

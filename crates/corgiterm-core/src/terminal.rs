@@ -2,10 +2,7 @@
 //!
 //! Provides VT100/xterm compatible terminal emulation with modern features.
 
-use crate::images::{
-    ImageFormat, ImageId, ImagePlacement, ImageStore, InlineImage, KittyAction, KittyParser,
-    SixelParser,
-};
+use crate::images::{ImageId, ImagePlacement, ImageStore, InlineImage, KittyParser, SixelParser};
 use vte::{Params, Parser, Perform};
 
 /// Terminal dimensions
@@ -114,6 +111,7 @@ const ANSI_COLORS: [[u8; 4]; 16] = [
 enum DcsMode {
     None,
     Sixel,
+    #[allow(dead_code)]
     Kitty,
 }
 
@@ -147,7 +145,8 @@ struct TerminalState {
     dcs_buffer: Vec<u8>,
     /// Sixel parser
     sixel_parser: SixelParser,
-    /// Kitty graphics parser
+    /// Kitty graphics parser (for future use)
+    #[allow(dead_code)]
     kitty_parser: KittyParser,
 }
 
@@ -335,7 +334,7 @@ impl Perform for TerminalState {
                 let next_tab = (self.cursor.1 / 8 + 1) * 8;
                 self.cursor.1 = next_tab.min(self.size.cols - 1);
             }
-            0x0A | 0x0B | 0x0C => {
+            0x0A..=0x0C => {
                 self.newline();
             }
             0x0D => {
@@ -401,8 +400,8 @@ impl Perform for TerminalState {
                     };
 
                     // Calculate cell dimensions (assuming ~10x20 pixels per cell)
-                    let cell_width = ((sixel_image.width + 9) / 10) as usize;
-                    let cell_height = ((sixel_image.height + 19) / 20) as usize;
+                    let cell_width = sixel_image.width.div_ceil(10) as usize;
+                    let cell_height = sixel_image.height.div_ceil(20) as usize;
 
                     self.image_store.add_image(image);
                     self.image_store.add_placement(ImagePlacement {
@@ -415,8 +414,13 @@ impl Perform for TerminalState {
                     });
 
                     self.pending_events.push(TerminalEvent::ImageChanged { id });
-                    tracing::info!("Sixel image added: {}x{} pixels at ({}, {})",
-                        sixel_image.width, sixel_image.height, self.cursor.0, self.cursor.1);
+                    tracing::info!(
+                        "Sixel image added: {}x{} pixels at ({}, {})",
+                        sixel_image.width,
+                        sixel_image.height,
+                        self.cursor.0,
+                        self.cursor.1
+                    );
                 }
             }
             DcsMode::Kitty => {

@@ -644,9 +644,9 @@ impl SshManager {
                 }
                 "identityfile" => {
                     if let Some(ref mut host) = current_host {
-                        let expanded_path = if value.starts_with("~/") {
+                        let expanded_path = if let Some(stripped) = value.strip_prefix("~/") {
                             if let Some(home) = dirs::home_dir() {
-                                home.join(&value[2..])
+                                home.join(stripped)
                             } else {
                                 PathBuf::from(&value)
                             }

@@ -33,7 +33,7 @@ pub fn config_dir() -> PathBuf {
 }
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// General settings
@@ -58,24 +58,6 @@ pub struct Config {
     pub advanced: AdvancedConfig,
     /// SSH configuration
     pub ssh: SshConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            appearance: AppearanceConfig::default(),
-            terminal: TerminalConfig::default(),
-            keybindings: KeybindingsConfig::default(),
-            ai: AiConfig::default(),
-            safe_mode: SafeModeConfig::default(),
-            sessions: SessionsConfig::default(),
-            performance: PerformanceConfig::default(),
-            accessibility: AccessibilityConfig::default(),
-            advanced: AdvancedConfig::default(),
-            ssh: SshConfig::default(),
-        }
-    }
 }
 
 /// General application settings
@@ -331,22 +313,13 @@ pub enum CloseOnExit {
 }
 
 /// Keyboard shortcuts
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeybindingsConfig {
     /// Custom keybindings
     pub bindings: Vec<Keybinding>,
     /// Configurable shortcuts
     pub shortcuts: ShortcutsConfig,
-}
-
-impl Default for KeybindingsConfig {
-    fn default() -> Self {
-        Self {
-            bindings: Vec::new(),
-            shortcuts: ShortcutsConfig::default(),
-        }
-    }
 }
 
 /// A single keybinding

@@ -40,7 +40,7 @@ pub fn show_about_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .comments(
             "A next-generation, AI-powered terminal emulator that makes the \
             command line accessible to everyone.\n\n\
-            Built with Rust, GTK4, libadwaita, and AI pair programming. 🐕"
+            Built with Rust, GTK4, libadwaita, and AI pair programming. 🐕",
         )
         .build();
 
@@ -106,7 +106,7 @@ pub fn show_about_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
             <li>Plugin system (WASM and Lua)</li>\
             <li>Emoji picker and ASCII art generator</li>\
         </ul>\
-        <p>Woof! 🐕</p>"
+        <p>Woof! 🐕</p>",
     );
 
     dialog.present(Some(parent));
