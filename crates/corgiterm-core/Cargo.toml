@@ -20,10 +20,6 @@ chrono.workspace = true
 parking_lot.workspace = true
 crossbeam-channel.workspace = true
 
-# PTY handling
-nix = { version = "0.29", features = ["term", "process", "signal", "fs"] }
-libc = "0.2"
-
 # Unicode handling
 unicode-width = "0.2"
 unicode-segmentation = "1.12"
@@ -40,3 +36,12 @@ base64 = "0.22"
 [dev-dependencies]
 tokio-test = "0.4"
 pretty_assertions = "1.4"
+
+# PTY handling (Unix only - macOS and Linux)
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["term", "process", "signal", "fs"] }
+libc = "0.2"
+
+# Windows ConPTY support (future)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation"] }

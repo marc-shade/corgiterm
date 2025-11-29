@@ -1199,7 +1199,8 @@ impl TerminalView {
         glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
             if let Some(ref pty) = *pty_for_read.borrow() {
                 let mut buf = [0u8; 4096];
-                // Set non-blocking read
+                // Set non-blocking read (Unix only)
+                #[cfg(unix)]
                 unsafe {
                     let flags = libc::fcntl(pty.master_fd(), libc::F_GETFL);
                     libc::fcntl(pty.master_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK);

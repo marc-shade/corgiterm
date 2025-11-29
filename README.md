@@ -212,11 +212,19 @@ cargo test --workspace
 cargo fmt --all
 ```
 
+## Platform Support
+
+| Platform | Status |
+|----------|--------|
+| Linux | Fully supported |
+| macOS | Supported (via GTK4/Homebrew) |
+| Windows | Coming soon (ConPTY in progress) |
+
 ## Roadmap
 
 Features planned for future releases:
 
-- [ ] **macOS/Windows Support** - Cross-platform builds
+- [ ] **Windows ConPTY** - Full Windows terminal support
 
 ## Privacy Promise
 
