@@ -56,11 +56,17 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current startup settings from config
-    let (restore_sessions, show_welcome) = if let Some(config_manager) = get_config() {
+    let (restore_sessions, show_welcome, confirm_close, check_updates, telemetry) = if let Some(config_manager) = get_config() {
         let config = config_manager.read().config();
-        (config.general.restore_sessions, config.general.show_welcome)
+        (
+            config.general.restore_sessions,
+            config.general.show_welcome,
+            config.general.confirm_close,
+            config.general.check_updates,
+            config.general.telemetry,
+        )
     } else {
-        (true, true)
+        (true, true, true, true, false)
     };
 
     let restore_switch = libadwaita::SwitchRow::builder()
@@ -101,7 +107,66 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
+    // Confirm close
+    let confirm_row = libadwaita::SwitchRow::builder()
+        .title("Confirm Before Closing")
+        .subtitle("Ask before closing with active sessions")
+        .active(confirm_close)
+        .build();
+    startup_group.add(&confirm_row);
+
+    confirm_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.general.confirm_close = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
     general_page.add(&startup_group);
+
+    // Updates & Privacy group
+    let updates_group = libadwaita::PreferencesGroup::builder()
+        .title("Updates & Privacy")
+        .build();
+
+    let updates_row = libadwaita::SwitchRow::builder()
+        .title("Check for Updates")
+        .subtitle("Automatically check for new versions")
+        .active(check_updates)
+        .build();
+    updates_group.add(&updates_row);
+
+    updates_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.general.check_updates = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let telemetry_row = libadwaita::SwitchRow::builder()
+        .title("Send Anonymous Usage Data")
+        .subtitle("Help improve CorgiTerm with usage statistics")
+        .active(telemetry)
+        .build();
+    updates_group.add(&telemetry_row);
+
+    telemetry_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.general.telemetry = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    general_page.add(&updates_group);
     dialog.add(&general_page);
 
     // Appearance page
@@ -157,11 +222,16 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current config values
-    let (current_font, current_size) = if let Some(config_manager) = get_config() {
+    let (current_font, current_size, line_height, cursor_blink_rate) = if let Some(config_manager) = get_config() {
         let config = config_manager.read().config();
-        (config.appearance.font_family.clone(), config.appearance.font_size)
+        (
+            config.appearance.font_family.clone(),
+            config.appearance.font_size,
+            config.appearance.line_height,
+            config.appearance.cursor_blink_rate,
+        )
     } else {
-        ("Source Code Pro".to_string(), 11.0)
+        ("Source Code Pro".to_string(), 11.0, 1.2, 530)
     };
 
     // Font family dropdown
@@ -209,6 +279,26 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
             });
             let _ = config_manager.read().save();
             tracing::info!("Font size changed to: {}", size);
+        }
+    });
+
+    // Line height spin row
+    let line_adj = gtk4::Adjustment::new(line_height as f64, 1.0, 2.0, 0.1, 0.2, 0.0);
+    let line_row = libadwaita::SpinRow::builder()
+        .title("Line Height")
+        .subtitle("Spacing between lines (1.0 = tight, 2.0 = double)")
+        .adjustment(&line_adj)
+        .digits(1)
+        .build();
+    font_group.add(&line_row);
+
+    line_row.connect_changed(move |row| {
+        let height = row.value() as f32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.line_height = height;
+            });
+            let _ = config_manager.read().save();
         }
     });
 
@@ -348,16 +438,26 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current terminal settings
-    let (scrollback, copy_on_select, scroll_on_output, scroll_on_keystroke) = if let Some(config_manager) = get_config() {
+    let (scrollback, copy_on_select, scroll_on_output, scroll_on_keystroke, mouse_reporting,
+         paste_middle_click, hyperlinks, close_on_exit_idx) = if let Some(config_manager) = get_config() {
         let config = config_manager.read().config();
+        let close_idx = match config.terminal.close_on_exit {
+            corgiterm_config::CloseOnExit::Always => 0,
+            corgiterm_config::CloseOnExit::Never => 1,
+            corgiterm_config::CloseOnExit::IfClean => 2,
+        };
         (
             config.terminal.scrollback_lines,
             config.terminal.copy_on_select,
             config.terminal.scroll_on_output,
             config.terminal.scroll_on_keystroke,
+            config.terminal.mouse_reporting,
+            config.terminal.paste_on_middle_click,
+            config.terminal.hyperlinks,
+            close_idx,
         )
     } else {
-        (10000, false, false, true)
+        (10000, false, false, true, true, true, true, 2u32)
     };
 
     // Scrollback lines
@@ -429,6 +529,85 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         if let Some(config_manager) = get_config() {
             config_manager.read().update(|config| {
                 config.terminal.scroll_on_keystroke = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Mouse reporting
+    let mouse_row = libadwaita::SwitchRow::builder()
+        .title("Mouse Reporting")
+        .subtitle("Send mouse events to applications")
+        .active(mouse_reporting)
+        .build();
+    behavior_group.add(&mouse_row);
+
+    mouse_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.mouse_reporting = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Paste on middle click
+    let paste_row = libadwaita::SwitchRow::builder()
+        .title("Paste on Middle Click")
+        .subtitle("Paste clipboard on middle mouse button")
+        .active(paste_middle_click)
+        .build();
+    behavior_group.add(&paste_row);
+
+    paste_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.paste_on_middle_click = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Hyperlinks
+    let hyperlinks_row = libadwaita::SwitchRow::builder()
+        .title("Clickable Hyperlinks")
+        .subtitle("Detect and highlight URLs for clicking")
+        .active(hyperlinks)
+        .build();
+    behavior_group.add(&hyperlinks_row);
+
+    hyperlinks_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.hyperlinks = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Close on exit
+    let close_exit_row = libadwaita::ComboRow::builder()
+        .title("Close Tab on Exit")
+        .subtitle("When to close tab after shell exits")
+        .build();
+    let close_options = ["Always", "Never", "If Clean Exit (code 0)"];
+    close_exit_row.set_model(Some(&gtk4::StringList::new(&close_options)));
+    close_exit_row.set_selected(close_on_exit_idx);
+    behavior_group.add(&close_exit_row);
+
+    close_exit_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.close_on_exit = match selected {
+                    0 => corgiterm_config::CloseOnExit::Always,
+                    1 => corgiterm_config::CloseOnExit::Never,
+                    2 => corgiterm_config::CloseOnExit::IfClean,
+                    _ => corgiterm_config::CloseOnExit::IfClean,
+                };
             });
             let _ = config_manager.read().save();
         }
@@ -539,6 +718,25 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
+    // Cursor blink rate
+    let blink_rate_adj = gtk4::Adjustment::new(cursor_blink_rate as f64, 200.0, 1500.0, 50.0, 100.0, 0.0);
+    let blink_rate_row = libadwaita::SpinRow::builder()
+        .title("Blink Rate")
+        .subtitle("Milliseconds between blink cycles")
+        .adjustment(&blink_rate_adj)
+        .build();
+    cursor_group.add(&blink_rate_row);
+
+    blink_rate_row.connect_changed(move |row| {
+        let rate = row.value() as u32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.appearance.cursor_blink_rate = rate;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
     terminal_page.add(&cursor_group);
     dialog.add(&terminal_page);
 
@@ -608,19 +806,27 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current provider settings
-    let (default_provider, claude_key, openai_key, gemini_key, local_enabled, local_endpoint) =
+    let (default_provider, claude_key, claude_model, openai_key, openai_model,
+         gemini_key, gemini_model, local_enabled, local_endpoint, local_model, auto_suggest) =
         if let Some(config_manager) = get_config() {
             let config = config_manager.read().config();
             (
                 config.ai.default_provider.clone(),
                 config.ai.claude.api_key.clone().unwrap_or_default(),
+                config.ai.claude.model.clone(),
                 config.ai.openai.api_key.clone().unwrap_or_default(),
+                config.ai.openai.model.clone(),
                 config.ai.gemini.api_key.clone().unwrap_or_default(),
+                config.ai.gemini.model.clone(),
                 config.ai.local.enabled,
                 config.ai.local.endpoint.clone(),
+                config.ai.local.model.clone(),
+                config.ai.auto_suggest,
             )
         } else {
-            ("claude".to_string(), String::new(), String::new(), String::new(), false, "http://localhost:11434".to_string())
+            ("claude".to_string(), String::new(), "claude-sonnet-4-20250514".to_string(),
+             String::new(), "gpt-4o".to_string(), String::new(), "gemini-1.5-pro".to_string(),
+             false, "http://localhost:11434".to_string(), "llama3".to_string(), true)
         };
 
     // Provider selection
@@ -648,14 +854,38 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
-    // Claude API key
-    let claude_row = libadwaita::PasswordEntryRow::builder()
-        .title("Claude API Key")
+    // Auto-suggest toggle
+    let suggest_row = libadwaita::SwitchRow::builder()
+        .title("Auto-Suggest")
+        .subtitle("Show AI suggestions while typing")
+        .active(auto_suggest)
+        .build();
+    provider_group.add(&suggest_row);
+
+    suggest_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.auto_suggest = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    ai_page.add(&provider_group);
+
+    // Claude group
+    let claude_group = libadwaita::PreferencesGroup::builder()
+        .title("Claude (Anthropic)")
+        .build();
+
+    let claude_key_row = libadwaita::PasswordEntryRow::builder()
+        .title("API Key")
         .text(&claude_key)
         .build();
-    provider_group.add(&claude_row);
+    claude_group.add(&claude_key_row);
 
-    claude_row.connect_changed(move |row| {
+    claude_key_row.connect_changed(move |row| {
         let key = row.text().to_string();
         if let Some(config_manager) = get_config() {
             config_manager.read().update(|config| {
@@ -665,14 +895,38 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
-    // OpenAI API key
-    let openai_row = libadwaita::PasswordEntryRow::builder()
-        .title("OpenAI API Key")
+    let claude_model_row = libadwaita::EntryRow::builder()
+        .title("Model")
+        .text(&claude_model)
+        .build();
+    claude_group.add(&claude_model_row);
+
+    claude_model_row.connect_changed(move |row| {
+        let model = row.text().to_string();
+        if !model.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.claude.model = model;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    ai_page.add(&claude_group);
+
+    // OpenAI group
+    let openai_group = libadwaita::PreferencesGroup::builder()
+        .title("OpenAI")
+        .build();
+
+    let openai_key_row = libadwaita::PasswordEntryRow::builder()
+        .title("API Key")
         .text(&openai_key)
         .build();
-    provider_group.add(&openai_row);
+    openai_group.add(&openai_key_row);
 
-    openai_row.connect_changed(move |row| {
+    openai_key_row.connect_changed(move |row| {
         let key = row.text().to_string();
         if let Some(config_manager) = get_config() {
             config_manager.read().update(|config| {
@@ -682,14 +936,38 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
-    // Gemini API key
-    let gemini_row = libadwaita::PasswordEntryRow::builder()
-        .title("Gemini API Key")
+    let openai_model_row = libadwaita::EntryRow::builder()
+        .title("Model")
+        .text(&openai_model)
+        .build();
+    openai_group.add(&openai_model_row);
+
+    openai_model_row.connect_changed(move |row| {
+        let model = row.text().to_string();
+        if !model.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.openai.model = model;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    ai_page.add(&openai_group);
+
+    // Gemini group
+    let gemini_group = libadwaita::PreferencesGroup::builder()
+        .title("Google Gemini")
+        .build();
+
+    let gemini_key_row = libadwaita::PasswordEntryRow::builder()
+        .title("API Key")
         .text(&gemini_key)
         .build();
-    provider_group.add(&gemini_row);
+    gemini_group.add(&gemini_key_row);
 
-    gemini_row.connect_changed(move |row| {
+    gemini_key_row.connect_changed(move |row| {
         let key = row.text().to_string();
         if let Some(config_manager) = get_config() {
             config_manager.read().update(|config| {
@@ -699,7 +977,25 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
-    ai_page.add(&provider_group);
+    let gemini_model_row = libadwaita::EntryRow::builder()
+        .title("Model")
+        .text(&gemini_model)
+        .build();
+    gemini_group.add(&gemini_model_row);
+
+    gemini_model_row.connect_changed(move |row| {
+        let model = row.text().to_string();
+        if !model.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.gemini.model = model;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    ai_page.add(&gemini_group);
 
     // Local LLM group
     let local_group = libadwaita::PreferencesGroup::builder()
@@ -725,7 +1021,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     });
 
     let endpoint_row = libadwaita::EntryRow::builder()
-        .title("Ollama Endpoint")
+        .title("Endpoint URL")
         .text(&local_endpoint)
         .build();
     local_group.add(&endpoint_row);
@@ -736,6 +1032,24 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
             if let Some(config_manager) = get_config() {
                 config_manager.read().update(|config| {
                     config.ai.local.endpoint = endpoint;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    let local_model_row = libadwaita::EntryRow::builder()
+        .title("Model Name")
+        .text(&local_model)
+        .build();
+    local_group.add(&local_model_row);
+
+    local_model_row.connect_changed(move |row| {
+        let model = row.text().to_string();
+        if !model.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.local.model = model;
                 });
                 let _ = config_manager.read().save();
             }
@@ -757,20 +1071,25 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current safe mode settings
-    let safe_is_enabled = if let Some(config_manager) = get_config() {
-        config_manager.read().config().safe_mode.enabled
+    let (safe_is_enabled, preview_all, preview_dangerous, ai_explanations) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.safe_mode.enabled,
+            config.safe_mode.preview_all,
+            config.safe_mode.preview_dangerous_only,
+            config.safe_mode.ai_explanations,
+        )
     } else {
-        false
+        (false, false, true, true)
     };
 
     let safe_enabled = libadwaita::SwitchRow::builder()
         .title("Enable Safe Mode")
-        .subtitle("Show preview for dangerous commands")
+        .subtitle("Preview commands before execution")
         .active(safe_is_enabled)
         .build();
     safe_group.add(&safe_enabled);
 
-    // Connect safe mode toggle
     safe_enabled.connect_active_notify(move |row| {
         let active = row.is_active();
         if let Some(config_manager) = get_config() {
@@ -778,12 +1097,254 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
                 config.safe_mode.enabled = active;
             });
             let _ = config_manager.read().save();
-            tracing::info!("Safe mode {}", if active { "enabled" } else { "disabled" });
+        }
+    });
+
+    let preview_all_row = libadwaita::SwitchRow::builder()
+        .title("Preview All Commands")
+        .subtitle("Show preview for every command")
+        .active(preview_all)
+        .build();
+    safe_group.add(&preview_all_row);
+
+    preview_all_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.safe_mode.preview_all = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let preview_danger_row = libadwaita::SwitchRow::builder()
+        .title("Preview Dangerous Only")
+        .subtitle("Only preview potentially destructive commands")
+        .active(preview_dangerous)
+        .build();
+    safe_group.add(&preview_danger_row);
+
+    preview_danger_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.safe_mode.preview_dangerous_only = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let ai_explain_row = libadwaita::SwitchRow::builder()
+        .title("AI Explanations")
+        .subtitle("Show AI-generated command explanations")
+        .active(ai_explanations)
+        .build();
+    safe_group.add(&ai_explain_row);
+
+    ai_explain_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.safe_mode.ai_explanations = active;
+            });
+            let _ = config_manager.read().save();
         }
     });
 
     safe_page.add(&safe_group);
     dialog.add(&safe_page);
+
+    // Sessions page
+    let sessions_page = libadwaita::PreferencesPage::builder()
+        .title("Sessions")
+        .icon_name("tab-new-symbolic")
+        .build();
+
+    let sessions_group = libadwaita::PreferencesGroup::builder()
+        .title("Session Behavior")
+        .description("Configure tab and session settings")
+        .build();
+
+    // Get session settings
+    let (default_name, auto_rename, show_process, show_cwd, warn_close) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.sessions.default_name.clone(),
+            config.sessions.auto_rename,
+            config.sessions.show_process,
+            config.sessions.show_cwd,
+            config.sessions.warn_multiple_close,
+        )
+    } else {
+        ("Terminal".to_string(), true, true, true, true)
+    };
+
+    let name_row = libadwaita::EntryRow::builder()
+        .title("Default Tab Name")
+        .text(&default_name)
+        .build();
+    sessions_group.add(&name_row);
+
+    name_row.connect_changed(move |row| {
+        let name = row.text().to_string();
+        if !name.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.sessions.default_name = name;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    let auto_rename_row = libadwaita::SwitchRow::builder()
+        .title("Auto-Rename Tabs")
+        .subtitle("Update tab name based on running command")
+        .active(auto_rename)
+        .build();
+    sessions_group.add(&auto_rename_row);
+
+    auto_rename_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.sessions.auto_rename = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let show_process_row = libadwaita::SwitchRow::builder()
+        .title("Show Process in Title")
+        .subtitle("Display current process name")
+        .active(show_process)
+        .build();
+    sessions_group.add(&show_process_row);
+
+    show_process_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.sessions.show_process = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let show_cwd_row = libadwaita::SwitchRow::builder()
+        .title("Show Directory in Title")
+        .subtitle("Display current working directory")
+        .active(show_cwd)
+        .build();
+    sessions_group.add(&show_cwd_row);
+
+    show_cwd_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.sessions.show_cwd = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let warn_close_row = libadwaita::SwitchRow::builder()
+        .title("Warn Before Multiple Close")
+        .subtitle("Confirm when closing multiple tabs")
+        .active(warn_close)
+        .build();
+    sessions_group.add(&warn_close_row);
+
+    warn_close_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.sessions.warn_multiple_close = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    sessions_page.add(&sessions_group);
+    dialog.add(&sessions_page);
+
+    // Performance page
+    let perf_page = libadwaita::PreferencesPage::builder()
+        .title("Performance")
+        .icon_name("speedometer-symbolic")
+        .build();
+
+    let perf_group = libadwaita::PreferencesGroup::builder()
+        .title("Rendering")
+        .description("Graphics and performance settings")
+        .build();
+
+    // Get performance settings
+    let (gpu_rendering, vsync, target_fps) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.performance.gpu_rendering,
+            config.performance.vsync,
+            config.performance.target_fps,
+        )
+    } else {
+        (true, true, 60)
+    };
+
+    let gpu_row = libadwaita::SwitchRow::builder()
+        .title("GPU Rendering")
+        .subtitle("Use GPU acceleration for drawing")
+        .active(gpu_rendering)
+        .build();
+    perf_group.add(&gpu_row);
+
+    gpu_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.performance.gpu_rendering = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let vsync_row = libadwaita::SwitchRow::builder()
+        .title("VSync")
+        .subtitle("Synchronize with display refresh rate")
+        .active(vsync)
+        .build();
+    perf_group.add(&vsync_row);
+
+    vsync_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.performance.vsync = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let fps_adj = gtk4::Adjustment::new(target_fps as f64, 30.0, 240.0, 10.0, 30.0, 0.0);
+    let fps_row = libadwaita::SpinRow::builder()
+        .title("Target FPS")
+        .subtitle("Maximum frame rate")
+        .adjustment(&fps_adj)
+        .build();
+    perf_group.add(&fps_row);
+
+    fps_row.connect_changed(move |row| {
+        let fps = row.value() as u32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.performance.target_fps = fps;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    perf_page.add(&perf_group);
+    dialog.add(&perf_page);
 
     // Accessibility page
     let a11y_page = libadwaita::PreferencesPage::builder()
@@ -797,16 +1358,20 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Get current accessibility settings
-    let (reduce_motion, high_contrast, focus_indicators) = if let Some(config_manager) = get_config() {
-        let config = config_manager.read().config();
-        (
-            config.accessibility.reduce_motion,
-            config.accessibility.high_contrast,
-            config.accessibility.focus_indicators,
-        )
-    } else {
-        (false, false, true)
-    };
+    let (reduce_motion, high_contrast, focus_indicators, screen_reader, min_font_size, announce_notifications) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.accessibility.reduce_motion,
+                config.accessibility.high_contrast,
+                config.accessibility.focus_indicators,
+                config.accessibility.screen_reader,
+                config.accessibility.min_font_size,
+                config.accessibility.announce_notifications,
+            )
+        } else {
+            (false, false, true, false, 10.0, true)
+        };
 
     // Reduce motion
     let motion_row = libadwaita::SwitchRow::builder()
@@ -862,8 +1427,148 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
+    // Screen reader support
+    let screen_reader_row = libadwaita::SwitchRow::builder()
+        .title("Screen Reader Support")
+        .subtitle("Enhance compatibility with screen readers")
+        .active(screen_reader)
+        .build();
+    a11y_group.add(&screen_reader_row);
+
+    screen_reader_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.screen_reader = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Minimum font size
+    let min_font_adj = gtk4::Adjustment::new(min_font_size as f64, 8.0, 24.0, 1.0, 2.0, 0.0);
+    let min_font_row = libadwaita::SpinRow::builder()
+        .title("Minimum Font Size")
+        .subtitle("Smallest allowed font size")
+        .adjustment(&min_font_adj)
+        .build();
+    a11y_group.add(&min_font_row);
+
+    min_font_row.connect_changed(move |row| {
+        let size = row.value() as f32;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.min_font_size = size;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Announce notifications
+    let announce_row = libadwaita::SwitchRow::builder()
+        .title("Announce Notifications")
+        .subtitle("Speak notifications to screen reader")
+        .active(announce_notifications)
+        .build();
+    a11y_group.add(&announce_row);
+
+    announce_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.accessibility.announce_notifications = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
     a11y_page.add(&a11y_group);
     dialog.add(&a11y_page);
+
+    // Advanced page
+    let advanced_page = libadwaita::PreferencesPage::builder()
+        .title("Advanced")
+        .icon_name("applications-utilities-symbolic")
+        .build();
+
+    let advanced_group = libadwaita::PreferencesGroup::builder()
+        .title("Developer Options")
+        .description("Advanced settings for developers")
+        .build();
+
+    // Get advanced settings
+    let (debug_mode, log_level, experimental) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.advanced.debug,
+            config.advanced.log_level.clone(),
+            config.advanced.experimental,
+        )
+    } else {
+        (false, "info".to_string(), false)
+    };
+
+    let debug_row = libadwaita::SwitchRow::builder()
+        .title("Debug Mode")
+        .subtitle("Enable debug logging and features")
+        .active(debug_mode)
+        .build();
+    advanced_group.add(&debug_row);
+
+    debug_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.advanced.debug = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Log level
+    let log_row = libadwaita::ComboRow::builder()
+        .title("Log Level")
+        .subtitle("Verbosity of logging output")
+        .build();
+    let log_levels = ["error", "warn", "info", "debug", "trace"];
+    log_row.set_model(Some(&gtk4::StringList::new(&log_levels)));
+    if let Some(pos) = log_levels.iter().position(|&l| l == log_level) {
+        log_row.set_selected(pos as u32);
+    }
+    advanced_group.add(&log_row);
+
+    log_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if selected < log_levels.len() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.advanced.log_level = log_levels[selected].to_string();
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    // Experimental features
+    let experimental_row = libadwaita::SwitchRow::builder()
+        .title("Experimental Features")
+        .subtitle("Enable unstable features (may cause issues)")
+        .active(experimental)
+        .build();
+    advanced_group.add(&experimental_row);
+
+    experimental_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.advanced.experimental = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    advanced_page.add(&advanced_group);
+    dialog.add(&advanced_page);
 
     dialog.present(Some(parent));
 }
