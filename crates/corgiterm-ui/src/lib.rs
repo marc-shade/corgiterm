@@ -32,9 +32,14 @@ pub mod document_view;
 pub mod tab_bar;
 pub mod ai_panel;
 pub mod dialogs;
+pub mod ascii_art_dialog;
 pub mod widgets;
 pub mod theme;
+pub mod theme_creator;
 pub mod split_pane;
+pub mod snippets;
+pub mod ssh_manager;
+pub mod keyboard;
 
 use gtk4::prelude::*;
 use gtk4::{Application, glib};

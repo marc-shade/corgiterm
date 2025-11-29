@@ -2,7 +2,6 @@
 
 use gtk4::prelude::*;
 use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, Label, MenuButton, Orientation, Paned, Revealer, RevealerTransitionType, Spinner};
-use gtk4::gdk::ModifierType;
 use gtk4::gio::{self, Menu, SimpleAction};
 use libadwaita::prelude::*;
 use libadwaita::{ApplicationWindow, HeaderBar, WindowTitle};
@@ -15,6 +14,7 @@ use crate::tab_bar::TerminalTabs;
 use crate::ai_panel::AiPanel;
 use crate::widgets::natural_language_input::NaturalLanguageInput;
 use crate::widgets::safe_mode_preview::SafeModePreviewWidget;
+use crate::keyboard::{KeyboardShortcuts, ShortcutAction};
 use corgiterm_core::SafeMode;
 use std::path::PathBuf;
 
@@ -67,6 +67,13 @@ impl MainWindow {
 
         // Create menu model
         let menu = Menu::new();
+
+        // Tools submenu
+        let tools_menu = Menu::new();
+        tools_menu.append(Some("_SSH Manager"), Some("win.ssh_manager"));
+        tools_menu.append(Some("_ASCII Art Generator"), Some("win.ascii_art"));
+        menu.append_submenu(Some("_Tools"), &tools_menu);
+
         menu.append(Some("_Preferences"), Some("win.preferences"));
         menu.append(Some("_Keyboard Shortcuts"), Some("win.shortcuts"));
         menu.append(Some("_About CorgiTerm"), Some("win.about"));
@@ -105,6 +112,30 @@ impl MainWindow {
             dialogs::show_shortcuts_dialog(&win_for_shortcuts);
         });
         window.add_action(&shortcuts_action);
+
+        let ascii_art_action = SimpleAction::new("ascii_art", None);
+        let win_for_ascii = window.clone();
+        let tabs_for_ascii = tabs.clone();
+        ascii_art_action.connect_activate(move |_, _| {
+            let tabs = tabs_for_ascii.clone();
+            dialogs::show_ascii_art_dialog(&win_for_ascii, move |art| {
+                if tabs.send_command_to_current(art) {
+                    tracing::info!("Inserted ASCII art into terminal ({} bytes)", art.len());
+                } else {
+                    tracing::warn!("No active terminal for ASCII art insertion");
+                }
+            });
+        });
+        window.add_action(&ascii_art_action);
+
+        // SSH Manager action
+        let ssh_manager_action = SimpleAction::new("ssh_manager", None);
+        let win_for_ssh = window.clone();
+        ssh_manager_action.connect_activate(move |_, _| {
+            let ssh_manager = crate::ssh_manager::SshManager::new(&win_for_ssh);
+            ssh_manager.show(&win_for_ssh);
+        });
+        window.add_action(&ssh_manager_action);
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);
@@ -148,10 +179,12 @@ impl MainWindow {
 
         // Terminal area (NL input removed - using AI panel on the right instead)
         let terminal_area = Box::new(Orientation::Vertical, 0);
+        terminal_area.set_hexpand(true); // Expand horizontally to fill available space
         terminal_area.append(tabs.tab_view_widget());
         terminal_area.append(safe_mode_preview.widget()); // Safe mode preview at bottom
         // nl_container removed - AI interaction now handled by AI panel
         tabs.tab_view_widget().set_vexpand(true);
+        tabs.tab_view_widget().set_hexpand(true); // Ensure tabs expand horizontally
 
         // Wire safe mode execute callback
         let tabs_for_safe_exec = tabs.clone();
@@ -366,14 +399,25 @@ impl MainWindow {
 
         // Create AI panel with slide-out revealer
         let ai_panel = Rc::new(RefCell::new(AiPanel::new()));
+
+        // Wire AI panel execute button to send commands to the active terminal
+        let tabs_for_ai = tabs.clone();
+        ai_panel.borrow().set_execute_callback(move |command| {
+            if tabs_for_ai.send_command_to_current(command) {
+                tracing::info!("AI panel executed command: {}", command);
+            } else {
+                tracing::warn!("AI panel: No active terminal to execute command: {}", command);
+            }
+        });
+
+        // Set up AI panel revealer - slides in from the right
+        // Terminal will resize when panel opens/closes (handled by debounced resize)
         let ai_revealer = Revealer::new();
         ai_revealer.set_transition_type(RevealerTransitionType::SlideLeft);
-        ai_revealer.set_transition_duration(200);
+        ai_revealer.set_transition_duration(150);
         ai_revealer.set_reveal_child(false);
         ai_revealer.set_child(Some(ai_panel.borrow().widget()));
         ai_panel.borrow().widget().set_width_request(350);
-        // Don't let the revealer take space when collapsed
-        ai_revealer.set_hexpand(false);
 
         // Connect AI toggle button
         let revealer_for_toggle = ai_revealer.clone();
@@ -382,14 +426,33 @@ impl MainWindow {
             revealer_for_toggle.set_reveal_child(!currently_revealed);
         });
 
-        // Horizontal box for content + AI panel
-        let content_box = Box::new(Orientation::Horizontal, 0);
-        content_paned.set_hexpand(true); // Main content expands to fill available space
-        content_box.append(&content_paned);
-        content_box.append(&ai_revealer);
-        content_box.set_vexpand(true);
+        // Connect to child-revealed to detect when animation completes
+        // This triggers a resize after the Revealer animation finishes
+        let tabs_for_reveal = tabs.clone();
+        ai_revealer.connect_notify_local(Some("child-revealed"), move |revealer, _| {
+            // Animation has completed when child-revealed matches reveals-child
+            let revealed = revealer.is_child_revealed();
+            let target = revealer.reveals_child();
+            if revealed == target {
+                // Animation complete - force full resize of terminal tabs
+                // queue_resize() forces GTK to recalculate all widget sizes
+                tabs_for_reveal.tab_view_widget().queue_resize();
+            }
+        });
 
-        main_box.append(&content_box);
+        // Use horizontal Box so terminal resizes when AI panel opens/closes
+        let content_with_ai = Box::new(Orientation::Horizontal, 0);
+        content_with_ai.set_hexpand(true);
+        content_with_ai.set_vexpand(true);
+        content_paned.set_hexpand(true);
+        content_paned.set_vexpand(true);
+        content_with_ai.append(&content_paned); // Main content (sidebar + terminal)
+        content_with_ai.append(&ai_revealer);   // AI panel on the right
+
+        // Revealer should NOT expand - let the paned take all available space
+        ai_revealer.set_hexpand(false);
+
+        main_box.append(&content_with_ai);
 
         window.set_content(Some(&main_box));
 
@@ -401,12 +464,22 @@ impl MainWindow {
             tracing::info!("Opened terminal in: {}", path);
         });
 
+        // Load keyboard shortcuts from configuration
+        let shortcuts = if let Some(cm) = crate::app::config_manager() {
+            let config = cm.read().config();
+            KeyboardShortcuts::from_config(&config.keybindings.shortcuts)
+        } else {
+            KeyboardShortcuts::default()
+        };
+        let shortcuts = Rc::new(shortcuts);
+
         // Set up keyboard shortcuts
         let key_controller = EventControllerKey::new();
         let tabs_for_keys = tabs.clone();
         let window_for_keys = window.clone();
         let ai_revealer_for_keys = ai_revealer.clone();
         let safe_mode_preview_for_keys = safe_mode_preview.clone();
+        let shortcuts_for_keys = shortcuts.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::Key;
 
@@ -418,163 +491,164 @@ impl MainWindow {
                 }
             }
 
-            let ctrl = modifier.contains(ModifierType::CONTROL_MASK);
-            let shift = modifier.contains(ModifierType::SHIFT_MASK);
+            // Check configured shortcuts
 
-            if ctrl && !shift {
-                match key {
-                    Key::t | Key::T => {
-                        // Ctrl+T: New tab
-                        tabs_for_keys.add_terminal_tab("Terminal", None);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::w | Key::W => {
-                        // Ctrl+W: Close tab
-                        tabs_for_keys.close_current_tab();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::q | Key::Q => {
-                        // Ctrl+Q: Quit
-                        window_for_keys.close();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_1 => {
-                        // Ctrl+1: Switch to tab 1
-                        tabs_for_keys.select_tab_by_index(0);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_2 => {
-                        // Ctrl+2: Switch to tab 2
-                        tabs_for_keys.select_tab_by_index(1);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_3 => {
-                        // Ctrl+3: Switch to tab 3
-                        tabs_for_keys.select_tab_by_index(2);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_4 => {
-                        // Ctrl+4: Switch to tab 4
-                        tabs_for_keys.select_tab_by_index(3);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_5 => {
-                        // Ctrl+5: Switch to tab 5
-                        tabs_for_keys.select_tab_by_index(4);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_6 => {
-                        // Ctrl+6: Switch to tab 6
-                        tabs_for_keys.select_tab_by_index(5);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_7 => {
-                        // Ctrl+7: Switch to tab 7
-                        tabs_for_keys.select_tab_by_index(6);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_8 => {
-                        // Ctrl+8: Switch to tab 8
-                        tabs_for_keys.select_tab_by_index(7);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_9 => {
-                        // Ctrl+9: Switch to tab 9
-                        tabs_for_keys.select_tab_by_index(8);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::o | Key::O => {
-                        // Ctrl+O: New document tab
-                        tabs_for_keys.add_document_tab("Document", None);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::Tab => {
-                        // Ctrl+Tab: Next tab
-                        tabs_for_keys.select_next_tab();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::k | Key::K => {
-                        // Ctrl+K: Quick switcher
-                        dialogs::show_quick_switcher(&window_for_keys, tabs_for_keys.tab_view_widget());
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    _ => {}
-                }
+            // Tab management
+            if shortcuts_for_keys.matches(ShortcutAction::NewTab, key, modifier) {
+                tabs_for_keys.add_terminal_tab("Terminal", None);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::CloseTab, key, modifier) {
+                tabs_for_keys.close_current_tab();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::NextTab, key, modifier) {
+                tabs_for_keys.select_next_tab();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::PrevTab, key, modifier) {
+                tabs_for_keys.select_previous_tab();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::NewDocumentTab, key, modifier) {
+                tabs_for_keys.add_document_tab("Document", None);
+                return gtk4::glib::Propagation::Stop;
             }
 
-            if ctrl && shift {
-                match key {
-                    Key::Tab | Key::ISO_Left_Tab => {
-                        // Ctrl+Shift+Tab: Previous tab
-                        tabs_for_keys.select_previous_tab();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::h | Key::H => {
-                        // Ctrl+Shift+H: Split pane horizontally (side by side)
-                        tabs_for_keys.split_current_horizontal();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::d | Key::D => {
-                        // Ctrl+Shift+D: Split pane vertically (top/bottom)
-                        tabs_for_keys.split_current_vertical();
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::a | Key::A => {
-                        // Ctrl+Shift+A: Toggle AI panel
-                        let currently_revealed = ai_revealer_for_keys.reveals_child();
-                        ai_revealer_for_keys.set_reveal_child(!currently_revealed);
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::o | Key::O => {
-                        // Ctrl+Shift+O: Open file dialog
-                        let tabs = tabs_for_keys.clone();
-                        let win = window_for_keys.clone();
+            // Tab switching
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab1, key, modifier) {
+                tabs_for_keys.select_tab_by_index(0);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab2, key, modifier) {
+                tabs_for_keys.select_tab_by_index(1);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab3, key, modifier) {
+                tabs_for_keys.select_tab_by_index(2);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab4, key, modifier) {
+                tabs_for_keys.select_tab_by_index(3);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab5, key, modifier) {
+                tabs_for_keys.select_tab_by_index(4);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab6, key, modifier) {
+                tabs_for_keys.select_tab_by_index(5);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab7, key, modifier) {
+                tabs_for_keys.select_tab_by_index(6);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab8, key, modifier) {
+                tabs_for_keys.select_tab_by_index(7);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab9, key, modifier) {
+                tabs_for_keys.select_tab_by_index(8);
+                return gtk4::glib::Propagation::Stop;
+            }
 
-                        // Create file filter for text files
-                        let filter = FileFilter::new();
-                        filter.set_name(Some("Text Files"));
-                        filter.add_mime_type("text/*");
-                        filter.add_suffix("txt");
-                        filter.add_suffix("md");
-                        filter.add_suffix("rs");
-                        filter.add_suffix("py");
-                        filter.add_suffix("js");
-                        filter.add_suffix("ts");
-                        filter.add_suffix("json");
-                        filter.add_suffix("toml");
-                        filter.add_suffix("yaml");
-                        filter.add_suffix("yml");
+            // Pane management
+            if shortcuts_for_keys.matches(ShortcutAction::SplitHorizontal, key, modifier) {
+                tabs_for_keys.split_current_horizontal();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SplitVertical, key, modifier) {
+                tabs_for_keys.split_current_vertical();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::ClosePane, key, modifier) {
+                tabs_for_keys.close_focused_pane();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::FocusNextPane, key, modifier) {
+                tabs_for_keys.focus_next_pane();
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::FocusPrevPane, key, modifier) {
+                tabs_for_keys.focus_prev_pane();
+                return gtk4::glib::Propagation::Stop;
+            }
 
-                        let filters = gio::ListStore::new::<FileFilter>();
-                        filters.append(&filter);
+            // UI features
+            if shortcuts_for_keys.matches(ShortcutAction::ToggleAi, key, modifier) {
+                let currently_revealed = ai_revealer_for_keys.reveals_child();
+                ai_revealer_for_keys.set_reveal_child(!currently_revealed);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::QuickSwitcher, key, modifier) {
+                dialogs::show_quick_switcher(&window_for_keys, tabs_for_keys.tab_view_widget());
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::SshManager, key, modifier) {
+                gtk4::prelude::ActionGroupExt::activate_action(&window_for_keys, "ssh_manager", None);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::OpenFile, key, modifier) {
+                let tabs = tabs_for_keys.clone();
+                let win = window_for_keys.clone();
 
-                        let dialog = FileDialog::builder()
-                            .title("Open File")
-                            .modal(true)
-                            .filters(&filters)
-                            .build();
+                // Create file filter for text files
+                let filter = FileFilter::new();
+                filter.set_name(Some("Text Files"));
+                filter.add_mime_type("text/*");
+                filter.add_suffix("txt");
+                filter.add_suffix("md");
+                filter.add_suffix("rs");
+                filter.add_suffix("py");
+                filter.add_suffix("js");
+                filter.add_suffix("ts");
+                filter.add_suffix("json");
+                filter.add_suffix("toml");
+                filter.add_suffix("yaml");
+                filter.add_suffix("yml");
 
-                        dialog.open(Some(&win), None::<&gio::Cancellable>, move |result| {
-                            if let Ok(file) = result {
-                                if let Some(path) = file.path() {
-                                    let filename = path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("Document");
-                                    let page = tabs.add_document_tab(filename, Some(&path));
-                                    tracing::info!("Opened file: {:?}", path);
-                                    let _ = page; // Use the page if needed
-                                }
-                            }
-                        });
-                        return gtk4::glib::Propagation::Stop;
+                let filters = gio::ListStore::new::<FileFilter>();
+                filters.append(&filter);
+
+                let dialog = FileDialog::builder()
+                    .title("Open File")
+                    .modal(true)
+                    .filters(&filters)
+                    .build();
+
+                dialog.open(Some(&win), None::<&gio::Cancellable>, move |result| {
+                    if let Ok(file) = result {
+                        if let Some(path) = file.path() {
+                            let filename = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Document");
+                            let page = tabs.add_document_tab(filename, Some(&path));
+                            tracing::info!("Opened file: {:?}", path);
+                            let _ = page; // Use the page if needed
+                        }
                     }
-                    _ => {}
-                }
+                });
+                return gtk4::glib::Propagation::Stop;
+            }
+
+            // Application
+            if shortcuts_for_keys.matches(ShortcutAction::Quit, key, modifier) {
+                window_for_keys.close();
+                return gtk4::glib::Propagation::Stop;
             }
 
             gtk4::glib::Propagation::Proceed
         });
         window.add_controller(key_controller);
+
+        // Set up periodic timer to update tab titles based on working directory
+        // Poll every 500ms to check if the current directory has changed
+        let tabs_for_title_update = tabs.clone();
+        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            tabs_for_title_update.update_tab_titles();
+            gtk4::glib::ControlFlow::Continue
+        });
 
         Self {
             window,

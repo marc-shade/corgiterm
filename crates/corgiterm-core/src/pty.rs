@@ -234,6 +234,17 @@ impl Pty {
             _ => false,
         }
     }
+
+    /// Get the foreground process group ID
+    /// This returns the PID of the process currently in control of the terminal
+    pub fn foreground_pid(&self) -> Option<Pid> {
+        let pgrp = unsafe { libc::tcgetpgrp(self.master_fd) };
+        if pgrp > 0 {
+            Some(Pid::from_raw(pgrp))
+        } else {
+            None
+        }
+    }
 }
 
 impl Drop for Pty {

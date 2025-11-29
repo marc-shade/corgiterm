@@ -1,0 +1,104 @@
+{
+  "snippets": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Git Status",
+      "command": "git status -sb",
+      "description": "Show git status in short format with branch info",
+      "tags": ["git", "status"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "name": "Find Large Files",
+      "command": "find . -type f -size +100M -exec ls -lh {} \\;",
+      "description": "Find files larger than 100MB in current directory",
+      "tags": ["find", "disk", "cleanup"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "name": "Docker Clean",
+      "command": "docker system prune -af --volumes",
+      "description": "Clean up all unused Docker resources including volumes",
+      "tags": ["docker", "cleanup"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "name": "npm Update All",
+      "command": "npm update && npm outdated",
+      "description": "Update all npm packages and show outdated ones",
+      "tags": ["npm", "update", "nodejs"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440004",
+      "name": "System Info",
+      "command": "uname -a && cat /etc/os-release",
+      "description": "Display system information and OS details",
+      "tags": ["system", "info"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440005",
+      "name": "Port Listener",
+      "command": "lsof -i :<PORT>",
+      "description": "Check which process is listening on a specific port",
+      "tags": ["network", "ports", "debug"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440006",
+      "name": "Cargo Watch Test",
+      "command": "cargo watch -x test",
+      "description": "Continuously run tests on file changes",
+      "tags": ["rust", "cargo", "testing"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440007",
+      "name": "SSH Tunnel",
+      "command": "ssh -L 8080:localhost:80 user@server",
+      "description": "Create SSH tunnel forwarding local port 8080 to remote port 80",
+      "tags": ["ssh", "tunnel", "network"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440008",
+      "name": "Memory Usage Top 10",
+      "command": "ps aux --sort=-%mem | head -n 11",
+      "description": "Show top 10 memory-consuming processes",
+      "tags": ["memory", "performance", "monitoring"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440009",
+      "name": "Git Log Pretty",
+      "command": "git log --oneline --graph --decorate --all",
+      "description": "Beautiful git log with graph and decorations",
+      "tags": ["git", "log", "visualization"],
+      "created_at": 1732895400,
+      "last_used": null,
+      "use_count": 0
+    }
+  ]
+}

@@ -281,6 +281,42 @@ impl TerminalTabs {
         }
     }
 
+    /// Close the currently focused pane
+    pub fn close_focused_pane(&self) {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                if let Some(sp) = content.as_split_pane() {
+                    sp.close_focused();
+                }
+            }
+        }
+    }
+
+    /// Focus the next pane in the current tab
+    pub fn focus_next_pane(&self) {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                if let Some(sp) = content.as_split_pane() {
+                    sp.focus_next();
+                }
+            }
+        }
+    }
+
+    /// Focus the previous pane in the current tab
+    pub fn focus_prev_pane(&self) {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                if let Some(sp) = content.as_split_pane() {
+                    sp.focus_prev();
+                }
+            }
+        }
+    }
+
     /// Get visible lines from current terminal (for thumbnails)
     pub fn get_current_visible_lines(&self, max_lines: usize) -> Vec<String> {
         if let Some(idx) = self.current_content() {
@@ -292,6 +328,24 @@ impl TerminalTabs {
             }
         }
         Vec::new()
+    }
+
+    /// Update tab titles based on current working directory
+    /// This should be called periodically to keep titles in sync
+    pub fn update_tab_titles(&self) {
+        let contents = self.contents.borrow();
+        for (idx, content) in contents.iter().enumerate() {
+            if let TabContent::Terminal(sp) = content {
+                let dir_name = sp.current_directory_name();
+                let page = self.tab_view.nth_page(idx as i32);
+
+                // Only update if the title has actually changed
+                let current_title = page.title();
+                if current_title.as_str() != dir_name {
+                    page.set_title(&dir_name);
+                }
+            }
+        }
     }
 }
 

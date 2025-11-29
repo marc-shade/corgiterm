@@ -84,6 +84,12 @@ pub struct AiPanel {
 
     // Shared state
     is_processing: Rc<RefCell<bool>>,
+
+    // Callback for executing commands (set by parent window)
+    execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>,
+
+    // Callback for switching modes (used to switch to Explain with command)
+    mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>>,
 }
 
 impl AiPanel {
@@ -94,6 +100,8 @@ impl AiPanel {
         let mode = Rc::new(RefCell::new(AiPanelMode::Chat));
         let is_processing = Rc::new(RefCell::new(false));
         let generated_command = Rc::new(RefCell::new(None));
+        let execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>> = Rc::new(RefCell::new(None));
+        let mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>> = Rc::new(RefCell::new(None));
 
         // Header
         let header = Box::new(Orientation::Horizontal, 8);
@@ -134,7 +142,7 @@ impl AiPanel {
 
         // === COMMAND MODE (like Warp's # trigger) ===
         let (command_page, command_input, command_result_box) =
-            Self::build_command_mode(is_processing.clone(), generated_command.clone());
+            Self::build_command_mode(is_processing.clone(), generated_command.clone(), execute_callback.clone(), mode_switch_callback.clone());
         stack.add_titled(&command_page, Some("command"), "Command");
 
         container.append(&stack);
@@ -156,7 +164,7 @@ impl AiPanel {
         // Default to Chat mode
         stack.set_visible_child_name("chat");
 
-        Self {
+        let panel = Self {
             container,
             mode,
             stack,
@@ -168,7 +176,14 @@ impl AiPanel {
             explain_input,
             explain_result,
             is_processing,
-        }
+            execute_callback,
+            mode_switch_callback,
+        };
+
+        // Wire up internal mode switching
+        panel.setup_mode_switching();
+
+        panel
     }
 
     fn update_provider_label(label: &Label) {
@@ -188,6 +203,8 @@ impl AiPanel {
     fn build_command_mode(
         is_processing: Rc<RefCell<bool>>,
         generated_command: Rc<RefCell<Option<GeneratedCommand>>>,
+        execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>,
+        mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>>,
     ) -> (Box, Entry, Box) {
         let page = Box::new(Orientation::Vertical, 0);
 
@@ -238,6 +255,7 @@ impl AiPanel {
         let result_box_for_input = result_box.clone();
         let processing = is_processing.clone();
         let gen_cmd = generated_command.clone();
+        let exec_cb_for_input = execute_callback.clone();
 
         input.connect_activate(move |entry| {
             let text = entry.text().to_string();
@@ -264,6 +282,8 @@ impl AiPanel {
                 result_box_for_input.clone(),
                 processing.clone(),
                 gen_cmd.clone(),
+                exec_cb_for_input.clone(),
+                mode_switch_callback.clone(),
             );
         });
 
@@ -275,6 +295,8 @@ impl AiPanel {
         result_box: Box,
         is_processing: Rc<RefCell<bool>>,
         generated_command: Rc<RefCell<Option<GeneratedCommand>>>,
+        execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>,
+        mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>>,
     ) {
         if let Some(am) = ai_manager() {
             let system = "You are a shell command expert. Convert the user's request into a single shell command. \
@@ -381,13 +403,36 @@ impl AiPanel {
                                 let exec_btn = Button::with_label("Execute");
                                 exec_btn.add_css_class("pill");
                                 exec_btn.add_css_class("suggested-action");
-                                // TODO: Wire to terminal execution
+
+                                // Wire execute button to callback
+                                let cmd_for_exec = cmd.clone();
+                                let exec_cb = execute_callback.clone();
+                                exec_btn.connect_clicked(move |_| {
+                                    let callback = exec_cb.borrow();
+                                    if let Some(ref cb) = *callback {
+                                        cb(&cmd_for_exec);
+                                        tracing::info!("Executed command from AI panel: {}", cmd_for_exec);
+                                    } else {
+                                        tracing::warn!("Execute button clicked but no callback set. Command: {}", cmd_for_exec);
+                                    }
+                                });
+
                                 actions.append(&exec_btn);
 
-                                // Explain button
+                                // Explain button - switches to explain mode with this command
                                 let explain_btn = Button::with_label("Explain");
                                 explain_btn.add_css_class("pill");
-                                // TODO: Switch to explain mode with this command
+                                let cmd_for_explain = cmd.clone();
+                                let mode_switch_cb = mode_switch_callback.clone();
+                                explain_btn.connect_clicked(move |_| {
+                                    let callback = mode_switch_cb.borrow();
+                                    if let Some(ref cb) = *callback {
+                                        cb(AiPanelMode::Explain, &cmd_for_explain);
+                                        tracing::info!("Switched to Explain mode with command: {}", cmd_for_explain);
+                                    } else {
+                                        tracing::warn!("Explain button clicked but no mode switch callback set");
+                                    }
+                                });
                                 actions.append(&explain_btn);
 
                                 result_box.append(&actions);
@@ -784,6 +829,43 @@ impl AiPanel {
     /// Get the last generated command (for execution)
     pub fn last_generated_command(&self) -> Option<String> {
         self.generated_command.borrow().as_ref().map(|c| c.command.clone())
+    }
+
+    /// Set the callback for executing commands
+    /// This should be called by the parent window to wire up command execution
+    pub fn set_execute_callback<F>(&self, callback: F)
+    where
+        F: Fn(&str) + 'static,
+    {
+        *self.execute_callback.borrow_mut() = Some(std::boxed::Box::new(callback));
+    }
+
+    /// Set the callback for mode switching
+    /// Used internally to wire up Explain button in Command mode
+    fn set_mode_switch_callback<F>(&self, callback: F)
+    where
+        F: Fn(AiPanelMode, &str) + 'static,
+    {
+        *self.mode_switch_callback.borrow_mut() = Some(std::boxed::Box::new(callback));
+    }
+
+    /// Wire up internal mode switching (called during construction)
+    fn setup_mode_switching(&self) {
+        let stack = self.stack.clone();
+        let explain_input = self.explain_input.clone();
+
+        self.set_mode_switch_callback(move |mode, text| {
+            // Switch to the requested mode
+            stack.set_visible_child_name(mode.as_str());
+
+            // If switching to Explain, populate the input
+            if mode == AiPanelMode::Explain {
+                explain_input.set_text(text);
+                explain_input.grab_focus();
+                // Trigger explanation automatically
+                explain_input.emit_activate();
+            }
+        });
     }
 }
 

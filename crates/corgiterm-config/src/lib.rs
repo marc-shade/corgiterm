@@ -12,6 +12,7 @@
 
 pub mod schema;
 pub mod themes;
+pub mod shortcuts;
 
 use directories::ProjectDirs;
 use figment::{Figment, providers::{Format, Toml, Env}};
@@ -52,6 +53,8 @@ pub struct Config {
     pub accessibility: AccessibilityConfig,
     /// Advanced settings
     pub advanced: AdvancedConfig,
+    /// SSH configuration
+    pub ssh: SshConfig,
 }
 
 impl Default for Config {
@@ -67,6 +70,7 @@ impl Default for Config {
             performance: PerformanceConfig::default(),
             accessibility: AccessibilityConfig::default(),
             advanced: AdvancedConfig::default(),
+            ssh: SshConfig::default(),
         }
     }
 }
@@ -324,11 +328,22 @@ pub enum CloseOnExit {
 }
 
 /// Keyboard shortcuts
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeybindingsConfig {
     /// Custom keybindings
     pub bindings: Vec<Keybinding>,
+    /// Configurable shortcuts
+    pub shortcuts: ShortcutsConfig,
+}
+
+impl Default for KeybindingsConfig {
+    fn default() -> Self {
+        Self {
+            bindings: Vec::new(),
+            shortcuts: ShortcutsConfig::default(),
+        }
+    }
 }
 
 /// A single keybinding
@@ -337,6 +352,85 @@ pub struct Keybinding {
     pub key: String,
     pub mods: Vec<String>,
     pub action: String,
+}
+
+/// Configurable keyboard shortcuts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ShortcutsConfig {
+    // Tab management
+    pub new_tab: Option<String>,
+    pub close_tab: Option<String>,
+    pub next_tab: Option<String>,
+    pub prev_tab: Option<String>,
+    pub new_document_tab: Option<String>,
+
+    // Tab switching (1-9)
+    pub switch_to_tab_1: Option<String>,
+    pub switch_to_tab_2: Option<String>,
+    pub switch_to_tab_3: Option<String>,
+    pub switch_to_tab_4: Option<String>,
+    pub switch_to_tab_5: Option<String>,
+    pub switch_to_tab_6: Option<String>,
+    pub switch_to_tab_7: Option<String>,
+    pub switch_to_tab_8: Option<String>,
+    pub switch_to_tab_9: Option<String>,
+
+    // Pane management
+    pub split_horizontal: Option<String>,
+    pub split_vertical: Option<String>,
+    pub close_pane: Option<String>,
+    pub focus_next_pane: Option<String>,
+    pub focus_prev_pane: Option<String>,
+
+    // UI features
+    pub toggle_ai: Option<String>,
+    pub quick_switcher: Option<String>,
+    pub ssh_manager: Option<String>,
+    pub open_file: Option<String>,
+
+    // Application
+    pub quit: Option<String>,
+}
+
+impl Default for ShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            // Tab management
+            new_tab: Some("Ctrl+T".to_string()),
+            close_tab: Some("Ctrl+W".to_string()),
+            next_tab: Some("Ctrl+Tab".to_string()),
+            prev_tab: Some("Ctrl+Shift+Tab".to_string()),
+            new_document_tab: Some("Ctrl+O".to_string()),
+
+            // Tab switching
+            switch_to_tab_1: Some("Ctrl+1".to_string()),
+            switch_to_tab_2: Some("Ctrl+2".to_string()),
+            switch_to_tab_3: Some("Ctrl+3".to_string()),
+            switch_to_tab_4: Some("Ctrl+4".to_string()),
+            switch_to_tab_5: Some("Ctrl+5".to_string()),
+            switch_to_tab_6: Some("Ctrl+6".to_string()),
+            switch_to_tab_7: Some("Ctrl+7".to_string()),
+            switch_to_tab_8: Some("Ctrl+8".to_string()),
+            switch_to_tab_9: Some("Ctrl+9".to_string()),
+
+            // Pane management
+            split_horizontal: Some("Ctrl+Shift+H".to_string()),
+            split_vertical: Some("Ctrl+Shift+D".to_string()),
+            close_pane: Some("Ctrl+Shift+W".to_string()),
+            focus_next_pane: Some("Ctrl+Shift+]".to_string()),
+            focus_prev_pane: Some("Ctrl+Shift+[".to_string()),
+
+            // UI features
+            toggle_ai: Some("Ctrl+Shift+A".to_string()),
+            quick_switcher: Some("Ctrl+K".to_string()),
+            ssh_manager: Some("Ctrl+S".to_string()),
+            open_file: Some("Ctrl+Shift+O".to_string()),
+
+            // Application
+            quit: Some("Ctrl+Q".to_string()),
+        }
+    }
 }
 
 /// AI integration settings
@@ -363,6 +457,8 @@ pub struct AiConfig {
     pub show_panel: bool,
     /// Panel position
     pub panel_position: AiPanelPosition,
+    /// Command learning settings
+    pub learning: LearningConfig,
 }
 
 impl Default for AiConfig {
@@ -378,6 +474,50 @@ impl Default for AiConfig {
             auto_suggest: true,
             show_panel: false,
             panel_position: AiPanelPosition::Right,
+            learning: LearningConfig::default(),
+        }
+    }
+}
+
+/// Command learning configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LearningConfig {
+    /// Enable command learning
+    pub enabled: bool,
+    /// Maximum history size for learning
+    pub max_history: usize,
+    /// Minimum pattern frequency for detection
+    pub min_pattern_frequency: usize,
+    /// Maximum pattern length
+    pub max_pattern_length: usize,
+    /// Learning window size (number of recent commands)
+    pub window_size: usize,
+    /// Auto-detect user preferences (e.g., exa vs ls)
+    pub detect_preferences: bool,
+    /// Suggest next command based on patterns
+    pub suggest_next: bool,
+    /// Show directory-specific suggestions
+    pub directory_suggestions: bool,
+    /// Privacy: opt-out of learning
+    pub opt_out: bool,
+    /// Path to learning data file
+    pub data_path: Option<PathBuf>,
+}
+
+impl Default for LearningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_history: 10000,
+            min_pattern_frequency: 3,
+            max_pattern_length: 5,
+            window_size: 100,
+            detect_preferences: true,
+            suggest_next: true,
+            directory_suggestions: true,
+            opt_out: false,
+            data_path: None, // Will default to config_dir/learning.json
         }
     }
 }
@@ -615,6 +755,144 @@ impl Default for AdvancedConfig {
     }
 }
 
+/// Snippet for commonly used commands
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Snippet {
+    /// Unique identifier
+    pub id: String,
+    /// Display name
+    pub name: String,
+    /// The command to execute
+    pub command: String,
+    /// Optional description
+    pub description: String,
+    /// Tags for organization and searching
+    pub tags: Vec<String>,
+    /// Creation timestamp
+    pub created_at: i64,
+    /// Last used timestamp
+    pub last_used: Option<i64>,
+    /// Usage count
+    pub use_count: u32,
+}
+
+impl Snippet {
+    /// Create a new snippet
+    pub fn new(name: String, command: String, description: String, tags: Vec<String>) -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            command,
+            description,
+            tags,
+            created_at: timestamp,
+            last_used: None,
+            use_count: 0,
+        }
+    }
+
+    /// Record usage of this snippet
+    pub fn record_use(&mut self) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        self.use_count += 1;
+        self.last_used = Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64
+        );
+    }
+}
+
+/// Snippets configuration and storage
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnippetsConfig {
+    /// Collection of snippets
+    pub snippets: Vec<Snippet>,
+}
+
+impl SnippetsConfig {
+    /// Add a new snippet
+    pub fn add(&mut self, snippet: Snippet) {
+        self.snippets.push(snippet);
+    }
+
+    /// Remove a snippet by ID
+    pub fn remove(&mut self, id: &str) -> bool {
+        if let Some(pos) = self.snippets.iter().position(|s| s.id == id) {
+            self.snippets.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update a snippet
+    pub fn update(&mut self, snippet: Snippet) -> bool {
+        if let Some(existing) = self.snippets.iter_mut().find(|s| s.id == snippet.id) {
+            *existing = snippet;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Find a snippet by ID
+    pub fn find(&self, id: &str) -> Option<&Snippet> {
+        self.snippets.iter().find(|s| s.id == id)
+    }
+
+    /// Find a snippet by ID (mutable)
+    pub fn find_mut(&mut self, id: &str) -> Option<&mut Snippet> {
+        self.snippets.iter_mut().find(|s| s.id == id)
+    }
+
+    /// Search snippets by name or tags (fuzzy)
+    pub fn search(&self, query: &str) -> Vec<&Snippet> {
+        let query_lower = query.to_lowercase();
+
+        self.snippets
+            .iter()
+            .filter(|s| {
+                s.name.to_lowercase().contains(&query_lower)
+                    || s.description.to_lowercase().contains(&query_lower)
+                    || s.command.to_lowercase().contains(&query_lower)
+                    || s.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+            })
+            .collect()
+    }
+
+    /// Get snippets sorted by usage (most used first)
+    pub fn by_usage(&self) -> Vec<&Snippet> {
+        let mut sorted: Vec<&Snippet> = self.snippets.iter().collect();
+        sorted.sort_by(|a, b| b.use_count.cmp(&a.use_count));
+        sorted
+    }
+
+    /// Get snippets sorted by recency (most recently used first)
+    pub fn by_recency(&self) -> Vec<&Snippet> {
+        let mut sorted: Vec<&Snippet> = self.snippets.iter().collect();
+        sorted.sort_by(|a, b| {
+            match (b.last_used, a.last_used) {
+                (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => b.created_at.cmp(&a.created_at),
+            }
+        });
+        sorted
+    }
+}
+
 /// Configuration manager with hot-reloading
 pub struct ConfigManager {
     config: Arc<RwLock<Config>>,
@@ -699,6 +977,209 @@ impl ConfigManager {
     }
 }
 
+/// Snippets manager with file storage
+pub struct SnippetsManager {
+    snippets: Arc<RwLock<SnippetsConfig>>,
+    snippets_path: PathBuf,
+}
+
+impl SnippetsManager {
+    /// Create a new snippets manager
+    pub fn new() -> anyhow::Result<Self> {
+        let snippets_path = config_dir().join("snippets.json");
+
+        let snippets = if snippets_path.exists() {
+            Self::load_from_file(&snippets_path)?
+        } else {
+            SnippetsConfig::default()
+        };
+
+        Ok(Self {
+            snippets: Arc::new(RwLock::new(snippets)),
+            snippets_path,
+        })
+    }
+
+    /// Load snippets from file
+    fn load_from_file(path: &PathBuf) -> anyhow::Result<SnippetsConfig> {
+        let content = std::fs::read_to_string(path)?;
+        let snippets: SnippetsConfig = serde_json::from_str(&content)?;
+        Ok(snippets)
+    }
+
+    /// Get all snippets
+    pub fn snippets(&self) -> SnippetsConfig {
+        self.snippets.read().clone()
+    }
+
+    /// Add a new snippet
+    pub fn add(&self, snippet: Snippet) -> anyhow::Result<()> {
+        self.snippets.write().add(snippet);
+        self.save()
+    }
+
+    /// Remove a snippet by ID
+    pub fn remove(&self, id: &str) -> anyhow::Result<bool> {
+        let removed = self.snippets.write().remove(id);
+        if removed {
+            self.save()?;
+        }
+        Ok(removed)
+    }
+
+    /// Update a snippet
+    pub fn update(&self, snippet: Snippet) -> anyhow::Result<bool> {
+        let updated = self.snippets.write().update(snippet);
+        if updated {
+            self.save()?;
+        }
+        Ok(updated)
+    }
+
+    /// Record usage of a snippet
+    pub fn record_use(&self, id: &str) -> anyhow::Result<()> {
+        if let Some(snippet) = self.snippets.write().find_mut(id) {
+            snippet.record_use();
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Search snippets
+    pub fn search(&self, query: &str) -> Vec<Snippet> {
+        self.snippets
+            .read()
+            .search(query)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get snippets by usage
+    pub fn by_usage(&self) -> Vec<Snippet> {
+        self.snippets
+            .read()
+            .by_usage()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get snippets by recency
+    pub fn by_recency(&self) -> Vec<Snippet> {
+        self.snippets
+            .read()
+            .by_recency()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Save snippets to file
+    pub fn save(&self) -> anyhow::Result<()> {
+        let snippets = self.snippets.read();
+        let content = serde_json::to_string_pretty(&*snippets)?;
+
+        if let Some(parent) = self.snippets_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&self.snippets_path, content)?;
+        Ok(())
+    }
+}
+
+/// SSH configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshConfig {
+    /// Saved SSH hosts
+    pub hosts: Vec<SshHost>,
+    /// Auto-import from ~/.ssh/config
+    pub auto_import: bool,
+    /// Default port
+    pub default_port: u16,
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        Self {
+            hosts: Vec::new(),
+            auto_import: true,
+            default_port: 22,
+        }
+    }
+}
+
+/// A saved SSH host
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SshHost {
+    /// Display name for this connection
+    pub name: String,
+    /// Hostname or IP address
+    pub hostname: String,
+    /// SSH port (default: 22)
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    /// Username for login
+    pub username: Option<String>,
+    /// Path to identity file (private key)
+    pub identity_file: Option<PathBuf>,
+    /// Additional SSH options
+    #[serde(default)]
+    pub options: Vec<String>,
+    /// Tags for organization
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+fn default_ssh_port() -> u16 {
+    22
+}
+
+impl SshHost {
+    /// Build SSH command from this host configuration
+    pub fn build_command(&self) -> Vec<String> {
+        let mut cmd = vec!["ssh".to_string()];
+
+        // Add port if not default
+        if self.port != 22 {
+            cmd.push("-p".to_string());
+            cmd.push(self.port.to_string());
+        }
+
+        // Add identity file if specified
+        if let Some(ref identity) = self.identity_file {
+            cmd.push("-i".to_string());
+            cmd.push(identity.display().to_string());
+        }
+
+        // Add custom options
+        for opt in &self.options {
+            cmd.push(opt.clone());
+        }
+
+        // Build user@host string
+        let target = if let Some(ref user) = self.username {
+            format!("{}@{}", user, self.hostname)
+        } else {
+            self.hostname.clone()
+        };
+        cmd.push(target);
+
+        cmd
+    }
+
+    /// Get display string for this host
+    pub fn display_string(&self) -> String {
+        if let Some(ref user) = self.username {
+            format!("{}@{}:{}", user, self.hostname, self.port)
+        } else {
+            format!("{}:{}", self.hostname, self.port)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,5 +1198,40 @@ mod tests {
         let toml = toml::to_string(&config).unwrap();
         assert!(toml.contains("[general]"));
         assert!(toml.contains("[appearance]"));
+    }
+
+    #[test]
+    fn test_ssh_host_command() {
+        let host = SshHost {
+            name: "Test Server".to_string(),
+            hostname: "example.com".to_string(),
+            port: 2222,
+            username: Some("user".to_string()),
+            identity_file: Some(PathBuf::from("/home/user/.ssh/id_rsa")),
+            options: vec!["-o".to_string(), "StrictHostKeyChecking=no".to_string()],
+            tags: vec!["production".to_string()],
+        };
+
+        let cmd = host.build_command();
+        assert_eq!(cmd[0], "ssh");
+        assert!(cmd.contains(&"-p".to_string()));
+        assert!(cmd.contains(&"2222".to_string()));
+        assert!(cmd.contains(&"-i".to_string()));
+        assert_eq!(*cmd.last().unwrap(), "user@example.com");
+    }
+
+    #[test]
+    fn test_ssh_host_display() {
+        let host = SshHost {
+            name: "Test".to_string(),
+            hostname: "example.com".to_string(),
+            port: 22,
+            username: Some("user".to_string()),
+            identity_file: None,
+            options: Vec::new(),
+            tags: Vec::new(),
+        };
+
+        assert_eq!(host.display_string(), "user@example.com:22");
     }
 }

@@ -19,6 +19,9 @@ static AI_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::AiManager>>> = s
 /// Global plugin manager
 static PLUGIN_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_plugins::PluginManager>>> = std::sync::OnceLock::new();
 
+/// Global snippets manager
+static SNIPPETS_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::SnippetsManager>>> = std::sync::OnceLock::new();
+
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
     CONFIG_MANAGER.get().cloned()
@@ -37,6 +40,11 @@ pub fn ai_manager() -> Option<Arc<RwLock<corgiterm_ai::AiManager>>> {
 /// Get the global plugin manager
 pub fn plugin_manager() -> Option<Arc<RwLock<corgiterm_plugins::PluginManager>>> {
     PLUGIN_MANAGER.get().cloned()
+}
+
+/// Get the global snippets manager
+pub fn snippets_manager() -> Option<Arc<RwLock<corgiterm_config::SnippetsManager>>> {
+    SNIPPETS_MANAGER.get().cloned()
 }
 
 /// Load custom CSS styles with optional hot-reload
@@ -244,6 +252,21 @@ fn init_plugins() {
     tracing::info!("Plugin manager initialized");
 }
 
+/// Initialize snippets library
+fn init_snippets() {
+    match corgiterm_config::SnippetsManager::new() {
+        Ok(snippets_manager) => {
+            let snippets_arc = Arc::new(RwLock::new(snippets_manager));
+            let _ = SNIPPETS_MANAGER.set(snippets_arc.clone());
+            crate::snippets::init_snippets(snippets_arc);
+            tracing::info!("Snippets library initialized");
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize snippets: {}", e);
+        }
+    }
+}
+
 /// Build the main UI
 pub fn build_ui(app: &Application) {
     // Initialize config first
@@ -257,6 +280,9 @@ pub fn build_ui(app: &Application) {
 
     // Initialize plugin system
     init_plugins();
+
+    // Initialize snippets library
+    init_snippets();
 
     // Load custom CSS
     load_css();

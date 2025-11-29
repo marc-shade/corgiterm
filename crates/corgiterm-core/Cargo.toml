@@ -31,6 +31,9 @@ unicode-segmentation = "1.12"
 # Pattern matching
 regex.workspace = true
 
+# Image processing for ASCII art
+image = "0.25"
+
 [dev-dependencies]
 tokio-test = "0.4"
 pretty_assertions = "1.4"

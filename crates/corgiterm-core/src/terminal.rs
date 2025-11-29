@@ -476,25 +476,45 @@ impl Terminal {
     }
 
     /// Resize terminal
+    ///
+    /// Simple resize that adjusts grid size without manipulating scrollback.
+    /// The shell handles content reflow via SIGWINCH when PTY is resized.
     pub fn resize(&mut self, size: TerminalSize) {
-        let mut new_grid = vec![vec![Cell::default(); size.cols]; size.rows];
+        let old_rows = self.state.size.rows;
+        let new_rows = size.rows;
+        let new_cols = size.cols;
 
-        for (row_idx, row) in self.state.grid.iter().enumerate() {
-            if row_idx >= size.rows {
-                break;
-            }
-            for (col_idx, cell) in row.iter().enumerate() {
-                if col_idx >= size.cols {
-                    break;
-                }
-                new_grid[row_idx][col_idx] = cell.clone();
+        // Adjust row count - just add/remove at bottom
+        if new_rows < old_rows {
+            // Shrinking: truncate from bottom (cursor stays in place)
+            self.state.grid.truncate(new_rows);
+        } else if new_rows > old_rows {
+            // Growing: add blank rows at bottom
+            for _ in old_rows..new_rows {
+                self.state.grid.push(vec![Cell::default(); new_cols]);
             }
         }
 
-        self.state.grid = new_grid;
+        // Adjust column count for all rows
+        for row in &mut self.state.grid {
+            row.resize(new_cols, Cell::default());
+        }
+
         self.state.size = size;
+        // Clamp cursor to valid range
         self.state.cursor.0 = self.state.cursor.0.min(size.rows.saturating_sub(1));
         self.state.cursor.1 = self.state.cursor.1.min(size.cols.saturating_sub(1));
+    }
+
+    /// Clear all content in the visible grid (not scrollback).
+    /// Useful before resize to remove stale content that would cause ghost lines.
+    pub fn clear_screen(&mut self) {
+        let cols = self.state.size.cols;
+        for row in &mut self.state.grid {
+            *row = vec![Cell::default(); cols];
+        }
+        // Reset cursor to top-left
+        self.state.cursor = (0, 0);
     }
 
     /// Get cell at position

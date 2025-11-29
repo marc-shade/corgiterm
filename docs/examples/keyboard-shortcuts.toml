@@ -1,0 +1,102 @@
+# Example Keyboard Shortcuts Configuration for CorgiTerm
+# Place this in ~/.config/corgiterm/config.toml
+
+[keybindings.shortcuts]
+
+# ============================================================================
+# Tab Management
+# ============================================================================
+
+# Create a new terminal tab
+new_tab = "Ctrl+T"
+
+# Close the current tab
+close_tab = "Ctrl+W"
+
+# Switch to the next tab
+next_tab = "Ctrl+Tab"
+
+# Switch to the previous tab
+prev_tab = "Ctrl+Shift+Tab"
+
+# Create a new document/editor tab
+new_document_tab = "Ctrl+O"
+
+# ============================================================================
+# Tab Switching (Direct Access)
+# ============================================================================
+
+# Switch to specific tabs by number (1-9)
+switch_to_tab_1 = "Ctrl+1"
+switch_to_tab_2 = "Ctrl+2"
+switch_to_tab_3 = "Ctrl+3"
+switch_to_tab_4 = "Ctrl+4"
+switch_to_tab_5 = "Ctrl+5"
+switch_to_tab_6 = "Ctrl+6"
+switch_to_tab_7 = "Ctrl+7"
+switch_to_tab_8 = "Ctrl+8"
+switch_to_tab_9 = "Ctrl+9"
+
+# ============================================================================
+# Pane/Split Management
+# ============================================================================
+
+# Split current pane horizontally (side by side)
+split_horizontal = "Ctrl+Shift+H"
+
+# Split current pane vertically (top and bottom)
+split_vertical = "Ctrl+Shift+D"
+
+# Close the currently focused pane
+close_pane = "Ctrl+Shift+W"
+
+# Move focus to the next pane
+focus_next_pane = "Ctrl+Shift+]"
+
+# Move focus to the previous pane
+focus_prev_pane = "Ctrl+Shift+["
+
+# ============================================================================
+# UI Features
+# ============================================================================
+
+# Toggle the AI assistance panel
+toggle_ai = "Ctrl+Shift+A"
+
+# Open the quick tab switcher dialog
+quick_switcher = "Ctrl+K"
+
+# Open the SSH connection manager
+ssh_manager = "Ctrl+S"
+
+# Open file in document tab
+open_file = "Ctrl+Shift+O"
+
+# ============================================================================
+# Application
+# ============================================================================
+
+# Quit the application
+quit = "Ctrl+Q"
+
+# ============================================================================
+# Custom Examples (Uncomment to use)
+# ============================================================================
+
+# Emacs-style bindings example:
+# new_tab = "Ctrl+X+T"
+# close_tab = "Ctrl+X+K"
+# split_horizontal = "Ctrl+X+3"
+# split_vertical = "Ctrl+X+2"
+
+# macOS-style bindings (using Super/Cmd key):
+# new_tab = "Super+T"
+# close_tab = "Super+W"
+# quit = "Super+Q"
+
+# Vim-style navigation:
+# focus_next_pane = "Ctrl+W+L"
+# focus_prev_pane = "Ctrl+W+H"
+
+# To disable a shortcut, set it to an empty string:
+# quick_switcher = ""

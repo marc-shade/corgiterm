@@ -1,0 +1,116 @@
+--- a/crates/corgiterm-ui/src/terminal_view.rs
++++ b/crates/corgiterm-ui/src/terminal_view.rs
+@@ -575,92 +575,80 @@
+         // Set up resize handling with debouncing to prevent shell prompt spam
+         let term_for_resize = terminal.clone();
+         let pty_for_resize = pty.clone();
+         let cell_width_for_resize = cell_width.clone();
+         let cell_height_for_resize = cell_height.clone();
+         let drawing_area_for_resize = drawing_area.clone();
+
+-        // Track pending resize to debounce rapid resize events
++        // Track pending resize dimensions (rows, cols, px_width, px_height)
+         let pending_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> = Rc::new(RefCell::new(None));
+         let resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+
+         drawing_area.connect_resize(move |_area, width, height| {
+             let cell_w = *cell_width_for_resize.borrow();
+             let cell_h = *cell_height_for_resize.borrow();
+
+             // Skip if cell dimensions haven't been calculated yet
+             if cell_w <= 0.0 || cell_h <= 0.0 {
+                 return;
+             }
+
+             // Calculate new terminal dimensions
+             let padding = 8.0;
+             let available_width = (width as f64 - 2.0 * padding).max(0.0);
+             let available_height = (height as f64 - 2.0 * padding).max(0.0);
+
+             let new_cols = (available_width / cell_w).floor() as usize;
+             let new_rows = (available_height / cell_h).floor() as usize;
+
+             // Ensure minimum size
+             let new_cols = new_cols.max(2);
+             let new_rows = new_rows.max(2);
+
+             // Check if size actually changed
+             let current_size = term_for_resize.borrow().size();
+             if current_size.rows == new_rows && current_size.cols == new_cols {
+                 return;
+             }
+
+-            // Store the pending resize dimensions for PTY
++            tracing::debug!("Resize event: {}x{} px → {}x{} cells", width, height, new_rows, new_cols);
++
++            // Store pending resize dimensions
+             *pending_resize.borrow_mut() = Some((new_rows, new_cols, width, height));
+
+-            // Cancel any existing PTY timeout
++            // Cancel any existing timeout
+             if let Some(source_id) = resize_timeout_id.borrow_mut().take() {
+                 source_id.remove();
+             }
+
+-            // Resize terminal grid immediately for visual feedback
+-            // This ensures no blank space when panels open/close
+-            let new_terminal_size = TerminalSize {
+-                rows: new_rows,
+-                cols: new_cols,
+-            };
+-            tracing::info!("Resize: {}x{} -> {}x{}", current_size.rows, current_size.cols, new_rows, new_cols);
+-            term_for_resize.borrow_mut().resize(new_terminal_size);
+-
+-            // Queue redraw immediately
+-            drawing_area_for_resize.queue_draw();
+-
+-            // Debounce only the PTY resize to prevent shell prompt spam
+-            // The terminal grid is already at the correct size for rendering
++            // Debounce: Resize both grid and PTY together after 100ms
++            // This prevents shell prompt spam AND eliminates grid-PTY desync
++            let term_for_timeout = term_for_resize.clone();
+             let pty_for_timeout = pty_for_resize.clone();
+             let pending_for_timeout = pending_resize.clone();
++            let drawing_area_for_timeout = drawing_area_for_resize.clone();
+             let timeout_id_ref = resize_timeout_id.clone();
+
+             let source_id = glib::timeout_add_local_once(
+                 std::time::Duration::from_millis(100),
+                 move || {
+                     // Clear the timeout ID
+                     *timeout_id_ref.borrow_mut() = None;
+
+-                    // Get the final pending dimensions and resize PTY
++                    // Get the final pending dimensions
+                     if let Some((rows, cols, px_width, px_height)) = pending_for_timeout.borrow_mut().take() {
+-                        tracing::debug!("Resizing PTY to {}x{} (debounced)", rows, cols);
++                        tracing::info!("Applying resize to {}x{} (debounced)", rows, cols);
++
++                        // Resize terminal grid
++                        let new_terminal_size = TerminalSize {
++                            rows,
++                            cols,
++                        };
++                        term_for_timeout.borrow_mut().resize(new_terminal_size);
+
++                        // Resize PTY
+                         if let Some(ref mut pty) = *pty_for_timeout.borrow_mut() {
+                             let new_pty_size = PtySize {
+                                 rows: rows as u16,
+                                 cols: cols as u16,
+                                 pixel_width: px_width as u16,
+                                 pixel_height: px_height as u16,
+                             };
+                             if let Err(e) = pty.resize(new_pty_size) {
+                                 tracing::error!("Failed to resize PTY: {}", e);
+                             }
+                         }
++
++                        // Queue redraw after both resizes complete
++                        drawing_area_for_timeout.queue_draw();
+                     }
+                 },
+             );
+
+             *resize_timeout_id.borrow_mut() = Some(source_id);
+         });

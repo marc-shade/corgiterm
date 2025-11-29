@@ -215,6 +215,34 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
 
     appearance_page.add(&theme_group);
 
+    // Theme Creator button
+    let creator_group = libadwaita::PreferencesGroup::builder()
+        .title("Custom Themes")
+        .build();
+
+    let creator_row = libadwaita::ActionRow::builder()
+        .title("Theme Creator")
+        .subtitle("Create and customize your own color themes")
+        .activatable(true)
+        .build();
+
+    // Add icon
+    let creator_icon = gtk4::Image::from_icon_name("applications-graphics-symbolic");
+    creator_row.add_prefix(&creator_icon);
+
+    // Add arrow
+    let arrow = gtk4::Image::from_icon_name("go-next-symbolic");
+    creator_row.add_suffix(&arrow);
+
+    // Connect to theme creator
+    let parent_ref = parent.clone();
+    creator_row.connect_activated(move |_| {
+        crate::theme_creator::show_theme_creator(&parent_ref);
+    });
+
+    creator_group.add(&creator_row);
+    appearance_page.add(&creator_group);
+
     // Font settings group
     let font_group = libadwaita::PreferencesGroup::builder()
         .title("Font")
@@ -2047,6 +2075,17 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     // Focus search entry
     search_entry.grab_focus();
+}
+
+/// Show ASCII Art Generator dialog with callback for inserting art into terminal
+pub fn show_ascii_art_dialog<W, F>(parent: &W, on_insert: F)
+where
+    W: IsA<Window> + IsA<gtk4::Widget>,
+    F: Fn(&str) + 'static,
+{
+    let dialog = crate::ascii_art_dialog::AsciiArtDialog::new(parent);
+    dialog.set_insert_callback(on_insert);
+    dialog.show();
 }
 
 /// Show Safe Mode preview dialog for a command

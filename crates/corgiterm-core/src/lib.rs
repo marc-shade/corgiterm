@@ -22,6 +22,9 @@ pub mod terminal;
 pub mod session;
 pub mod history;
 pub mod safe_mode;
+pub mod ascii_art;
+pub mod learning;
+pub mod history_learning;
 
 pub use error::{CoreError, Result};
 pub use pty::{Pty, PtySize};
@@ -29,6 +32,18 @@ pub use terminal::{Terminal, TerminalEvent, TerminalSize};
 pub use session::{Session, SessionId, SessionManager};
 pub use history::{CommandHistory, OutputHistory, SearchableHistory};
 pub use safe_mode::{SafeMode, CommandPreview, RiskLevel};
+pub use ascii_art::{
+    AsciiArtGenerator, AsciiArtConfig, CharacterSet, AsciiFont,
+    FONT_STANDARD, FONT_SMALL, CorgiArt,
+};
+pub use learning::{
+    CommandLearning, CommandPattern, CommandStats, UserPreference,
+    CommandSuggestion, SuggestionSource,
+};
+pub use history_learning::{
+    HistoryLearningManager, LearningContextData,
+    FrequentCommandData, PatternData, PreferenceData,
+};
 
 /// Core version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

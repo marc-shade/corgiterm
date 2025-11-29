@@ -1,0 +1,151 @@
+# Custom Keyboard Shortcuts Example
+# This example shows alternative bindings for different workflows
+# Copy relevant sections to ~/.config/corgiterm/config.toml
+
+# ============================================================================
+# Example 1: Vim-style Navigation
+# ============================================================================
+[keybindings.shortcuts]
+# Use Vim-like keys for pane navigation
+focus_next_pane = "Ctrl+W+L"      # Like Vim's window right
+focus_prev_pane = "Ctrl+W+H"      # Like Vim's window left
+split_horizontal = "Ctrl+W+V"      # Vertical split (Vim convention)
+split_vertical = "Ctrl+W+S"        # Horizontal split (Vim convention)
+close_pane = "Ctrl+W+Q"            # Quit window
+
+# ============================================================================
+# Example 2: Emacs-style Bindings
+# ============================================================================
+# [keybindings.shortcuts]
+# new_tab = "Ctrl+X+T"
+# close_tab = "Ctrl+X+K"
+# next_tab = "Ctrl+X+Right"
+# prev_tab = "Ctrl+X+Left"
+# split_horizontal = "Ctrl+X+3"
+# split_vertical = "Ctrl+X+2"
+# close_pane = "Ctrl+X+0"
+# focus_next_pane = "Ctrl+X+O"
+# quit = "Ctrl+X+Ctrl+C"
+
+# ============================================================================
+# Example 3: macOS-style (Cmd key instead of Ctrl)
+# ============================================================================
+# Note: Use "Super" for the Windows/Command key
+# [keybindings.shortcuts]
+# new_tab = "Super+T"
+# close_tab = "Super+W"
+# next_tab = "Super+Shift+]"
+# prev_tab = "Super+Shift+["
+# new_document_tab = "Super+N"
+# open_file = "Super+O"
+# quick_switcher = "Super+K"
+# toggle_ai = "Super+Shift+A"
+# ssh_manager = "Super+Shift+S"
+# quit = "Super+Q"
+
+# ============================================================================
+# Example 4: Tmux-style Bindings
+# ============================================================================
+# [keybindings.shortcuts]
+# # Use Ctrl+B as prefix (simulate with single combos)
+# split_horizontal = "Ctrl+B+%"      # Would need sequence support
+# split_vertical = "Ctrl+B+\""       # Would need sequence support
+# close_pane = "Ctrl+B+X"            # Would need sequence support
+# new_tab = "Ctrl+B+C"               # Would need sequence support
+# next_tab = "Ctrl+B+N"              # Would need sequence support
+# prev_tab = "Ctrl+B+P"              # Would need sequence support
+# Note: Multi-key sequences not yet supported, these won't work as-is
+
+# ============================================================================
+# Example 5: Windows/Linux Desktop Standard
+# ============================================================================
+# [keybindings.shortcuts]
+# new_tab = "Ctrl+T"
+# close_tab = "Ctrl+W"
+# new_document_tab = "Ctrl+N"
+# open_file = "Ctrl+O"
+# quit = "Alt+F4"
+# next_tab = "Ctrl+PageDown"
+# prev_tab = "Ctrl+PageUp"
+# switch_to_tab_1 = "Alt+1"
+# switch_to_tab_2 = "Alt+2"
+# switch_to_tab_3 = "Alt+3"
+# switch_to_tab_4 = "Alt+4"
+# switch_to_tab_5 = "Alt+5"
+# switch_to_tab_6 = "Alt+6"
+# switch_to_tab_7 = "Alt+7"
+# switch_to_tab_8 = "Alt+8"
+# switch_to_tab_9 = "Alt+9"
+
+# ============================================================================
+# Example 6: Minimal Shortcuts (disable what you don't use)
+# ============================================================================
+# [keybindings.shortcuts]
+# # Keep only essential shortcuts
+# new_tab = "Ctrl+T"
+# close_tab = "Ctrl+W"
+# quit = "Ctrl+Q"
+#
+# # Disable everything else
+# quick_switcher = ""
+# ssh_manager = ""
+# toggle_ai = ""
+# split_horizontal = ""
+# split_vertical = ""
+# close_pane = ""
+# new_document_tab = ""
+# open_file = ""
+
+# ============================================================================
+# Example 7: Function Key Workflow
+# ============================================================================
+# [keybindings.shortcuts]
+# new_tab = "F1"
+# close_tab = "F2"
+# next_tab = "F3"
+# prev_tab = "F4"
+# split_horizontal = "F5"
+# split_vertical = "F6"
+# toggle_ai = "F9"
+# quick_switcher = "F10"
+# ssh_manager = "F11"
+# quit = "F12"
+
+# ============================================================================
+# Example 8: Left-hand Only (for mouse users)
+# ============================================================================
+# [keybindings.shortcuts]
+# # All shortcuts accessible with left hand only
+# new_tab = "Ctrl+T"
+# close_tab = "Ctrl+W"
+# next_tab = "Ctrl+E"               # E for "next"
+# prev_tab = "Ctrl+Q"               # Q for "previous"
+# split_horizontal = "Ctrl+R"       # R for "split right"
+# split_vertical = "Ctrl+D"         # D for "split down"
+# close_pane = "Ctrl+X"             # X for "close"
+# quick_switcher = "Ctrl+Space"
+# toggle_ai = "Ctrl+A"
+
+# ============================================================================
+# Tips for Creating Custom Shortcuts
+# ============================================================================
+#
+# 1. Avoid conflicts with terminal programs:
+#    - Don't use Ctrl+C, Ctrl+Z, Ctrl+D (shell controls)
+#    - Be careful with Ctrl+A, Ctrl+E (readline/emacs bindings)
+#
+# 2. Consider muscle memory:
+#    - If you use other terminals, match their shortcuts
+#    - Keep frequently used actions on easy-to-reach keys
+#
+# 3. Use logical groupings:
+#    - Group related actions (all tab actions together)
+#    - Use similar modifiers for similar types of actions
+#
+# 4. Test before committing:
+#    - Try shortcuts in practice before finalizing
+#    - Make sure they don't conflict with apps you use
+#
+# 5. Document your custom setup:
+#    - Add comments explaining your choices
+#    - Keep a backup of your config

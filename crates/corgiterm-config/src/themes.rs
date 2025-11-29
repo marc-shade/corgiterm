@@ -365,6 +365,26 @@ impl ThemeManager {
             themes.insert(theme.name.clone(), theme);
         }
 
+        // Load custom themes from user directory
+        let custom_themes_dir = crate::config_dir().join("themes");
+        if custom_themes_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&custom_themes_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            if let Ok(theme) = toml::from_str::<Theme>(&content) {
+                                tracing::info!("Loaded custom theme: {}", theme.name);
+                                themes.insert(theme.name.clone(), theme);
+                            } else {
+                                tracing::warn!("Failed to parse theme file: {:?}", path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             themes,
             current: "Corgi Dark".to_string(),
@@ -404,6 +424,30 @@ impl ThemeManager {
     /// Get theme by name
     pub fn get(&self, name: &str) -> Option<&Theme> {
         self.themes.get(name)
+    }
+
+    /// Add a theme to the manager
+    pub fn add_theme(&mut self, theme: Theme) {
+        self.themes.insert(theme.name.clone(), theme);
+    }
+
+    /// Remove a theme by name
+    pub fn remove_theme(&mut self, name: &str) -> bool {
+        self.themes.remove(name).is_some()
+    }
+
+    /// Save a theme to the themes directory
+    pub fn save_theme(&self, theme: &Theme) -> anyhow::Result<()> {
+        let themes_dir = crate::config_dir().join("themes");
+        std::fs::create_dir_all(&themes_dir)?;
+
+        let filename = format!("{}.toml", theme.name.to_lowercase().replace(' ', "-"));
+        let path = themes_dir.join(filename);
+
+        let content = toml::to_string_pretty(theme)?;
+        std::fs::write(&path, content)?;
+
+        Ok(())
     }
 }
 

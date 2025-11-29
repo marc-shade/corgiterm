@@ -71,6 +71,8 @@ pub struct SplitPane {
     focused_pane: Rc<RefCell<Option<Rc<RefCell<PaneNode>>>>>,
     /// Working directory for new panes
     working_dir: Rc<RefCell<Option<std::path::PathBuf>>>,
+    /// Cached list of all terminal panes (for focus cycling)
+    all_panes: Rc<RefCell<Vec<Rc<RefCell<PaneNode>>>>>,
 }
 
 impl SplitPane {
@@ -93,11 +95,14 @@ impl SplitPane {
 
         let working_dir = Rc::new(RefCell::new(working_dir.map(|p| p.to_path_buf())));
 
+        let all_panes = Rc::new(RefCell::new(vec![root.clone()]));
+
         Self {
             container,
             root,
             focused_pane,
             working_dir,
+            all_panes,
         }
     }
 
@@ -181,6 +186,9 @@ impl SplitPane {
         // Focus the new pane
         *self.focused_pane.borrow_mut() = Some(child2);
 
+        // Update all_panes cache
+        self.refresh_pane_list();
+
         tracing::info!("Split pane {:?}", direction);
     }
 
@@ -191,10 +199,138 @@ impl SplitPane {
             return false;
         }
 
-        // TODO: Implement proper pane closing with tree restructuring
-        // For now, this is a placeholder
-        tracing::debug!("Close pane not fully implemented yet");
+        let focused = self.focused_pane.borrow().clone();
+        if let Some(focused_node) = focused {
+            // If focused is root, we can't close it
+            if Rc::ptr_eq(&focused_node, &self.root) {
+                return false;
+            }
+
+            // Find parent and sibling
+            if let Some((parent, sibling, is_start_child)) = self.find_parent_and_sibling(&focused_node) {
+                self.close_pane_with_parent(parent, sibling, is_start_child);
+
+                // Update all_panes cache
+                self.refresh_pane_list();
+
+                tracing::info!("Closed pane, restructured tree");
+                return true;
+            }
+        }
+
         false
+    }
+
+    /// Find parent of a node and its sibling
+    fn find_parent_and_sibling(
+        &self,
+        target: &Rc<RefCell<PaneNode>>,
+    ) -> Option<(Rc<RefCell<PaneNode>>, Rc<RefCell<PaneNode>>, bool)> {
+        self.find_parent_recursive(&self.root, target)
+    }
+
+    fn find_parent_recursive(
+        &self,
+        current: &Rc<RefCell<PaneNode>>,
+        target: &Rc<RefCell<PaneNode>>,
+    ) -> Option<(Rc<RefCell<PaneNode>>, Rc<RefCell<PaneNode>>, bool)> {
+        match &current.borrow().content {
+            PaneContent::Terminal(_) => None,
+            PaneContent::Split { child1, child2, .. } => {
+                // Check if target is one of our children
+                if Rc::ptr_eq(child1, target) {
+                    return Some((current.clone(), child2.clone(), true));
+                }
+                if Rc::ptr_eq(child2, target) {
+                    return Some((current.clone(), child1.clone(), false));
+                }
+
+                // Recursively search children
+                if let Some(result) = self.find_parent_recursive(child1, target) {
+                    return Some(result);
+                }
+                self.find_parent_recursive(child2, target)
+            }
+        }
+    }
+
+    /// Close a pane by promoting its sibling to replace the parent
+    fn close_pane_with_parent(
+        &self,
+        parent: Rc<RefCell<PaneNode>>,
+        sibling: Rc<RefCell<PaneNode>>,
+        _is_start_child: bool,
+    ) {
+        let parent_widget = parent.borrow().widget();
+
+        // Take the sibling's content and put it in the parent
+        let sibling_content = {
+            let mut sibling_mut = sibling.borrow_mut();
+            std::mem::replace(&mut sibling_mut.content, PaneContent::Terminal(TerminalView::new()))
+        };
+
+        // Replace parent's content with sibling's content
+        {
+            let mut parent_mut = parent.borrow_mut();
+            parent_mut.content = sibling_content;
+        }
+
+        // Update the widget tree
+        if Rc::ptr_eq(&parent, &self.root) {
+            // Parent is root - update container
+            self.container.remove(&parent_widget);
+            self.container.append(&parent.borrow().widget());
+        } else {
+            // Parent is a child of another split - update the grandparent
+            if let Some(grandparent) = parent_widget.parent() {
+                if let Some(grandparent_paned) = grandparent.downcast_ref::<Paned>() {
+                    let new_widget = parent.borrow().widget();
+                    if grandparent_paned.start_child().as_ref() == Some(&parent_widget) {
+                        grandparent_paned.set_start_child(Some(&new_widget));
+                    } else {
+                        grandparent_paned.set_end_child(Some(&new_widget));
+                    }
+                }
+            }
+        }
+
+        // Update focus to a valid terminal
+        self.update_focus_after_close();
+    }
+
+    /// Update focus to a valid terminal after closing a pane
+    fn update_focus_after_close(&self) {
+        // Find the first terminal in the tree
+        let first_terminal = self.find_first_terminal(&self.root);
+        *self.focused_pane.borrow_mut() = first_terminal;
+    }
+
+    /// Find the first terminal node in the tree
+    fn find_first_terminal(&self, node: &Rc<RefCell<PaneNode>>) -> Option<Rc<RefCell<PaneNode>>> {
+        match &node.borrow().content {
+            PaneContent::Terminal(_) => Some(node.clone()),
+            PaneContent::Split { child1, .. } => self.find_first_terminal(child1),
+        }
+    }
+
+    /// Refresh the cached list of all terminal panes
+    fn refresh_pane_list(&self) {
+        let mut panes = Vec::new();
+        self.collect_terminals(&self.root, &mut panes);
+        *self.all_panes.borrow_mut() = panes;
+    }
+
+    /// Recursively collect all terminal nodes
+    fn collect_terminals(&self, node: &Rc<RefCell<PaneNode>>, panes: &mut Vec<Rc<RefCell<PaneNode>>>) {
+        match &node.borrow().content {
+            PaneContent::Terminal(_) => {
+                panes.push(node.clone());
+            }
+            PaneContent::Split { child1, child2, .. } => {
+                self.collect_terminals(child1, panes);
+                self.collect_terminals(child2, panes);
+            }
+        }
     }
 
     /// Get the focused terminal view
@@ -248,16 +384,73 @@ impl SplitPane {
         Vec::new()
     }
 
+    /// Get current directory name from focused terminal for tab title
+    pub fn current_directory_name(&self) -> String {
+        // Try focused first
+        if let Some(node) = self.focused_pane.borrow().as_ref() {
+            if let Some(tv) = node.borrow().as_terminal() {
+                return tv.current_directory_name();
+            }
+        }
+
+        // Fallback to root
+        if let Some(tv) = self.root.borrow().as_terminal() {
+            return tv.current_directory_name();
+        }
+
+        "Terminal".to_string()
+    }
+
     /// Move focus between panes
     pub fn focus_next(&self) {
-        // TODO: Implement focus cycling between panes
-        tracing::debug!("Focus next pane");
+        let panes = self.all_panes.borrow();
+        if panes.len() <= 1 {
+            return;
+        }
+
+        let focused = self.focused_pane.borrow().clone();
+        if let Some(current) = focused {
+            // Find current index
+            if let Some(current_idx) = panes.iter().position(|p| Rc::ptr_eq(p, &current)) {
+                // Move to next, wrapping around
+                let next_idx = (current_idx + 1) % panes.len();
+                *self.focused_pane.borrow_mut() = Some(panes[next_idx].clone());
+                tracing::debug!("Focus moved to pane {}/{}", next_idx + 1, panes.len());
+
+                // Request focus on the terminal widget
+                if let Some(tv) = panes[next_idx].borrow().as_terminal() {
+                    tv.widget().grab_focus();
+                }
+            }
+        }
     }
 
     /// Move focus to previous pane
     pub fn focus_prev(&self) {
-        // TODO: Implement focus cycling between panes
-        tracing::debug!("Focus previous pane");
+        let panes = self.all_panes.borrow();
+        if panes.len() <= 1 {
+            return;
+        }
+
+        let focused = self.focused_pane.borrow().clone();
+        if let Some(current) = focused {
+            // Find current index
+            if let Some(current_idx) = panes.iter().position(|p| Rc::ptr_eq(p, &current)) {
+                // Move to previous, wrapping around
+                let prev_idx = if current_idx == 0 {
+                    panes.len() - 1
+                } else {
+                    current_idx - 1
+                };
+                *self.focused_pane.borrow_mut() = Some(panes[prev_idx].clone());
+                tracing::debug!("Focus moved to pane {}/{}", prev_idx + 1, panes.len());
+
+                // Request focus on the terminal widget
+                if let Some(tv) = panes[prev_idx].borrow().as_terminal() {
+                    tv.widget().grab_focus();
+                }
+            }
+        }
     }
 
     /// Check if this pane is split

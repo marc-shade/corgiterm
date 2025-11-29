@@ -19,6 +19,7 @@ anyhow.workspace = true
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 
 # GTK4 ecosystem
 gtk4.workspace = true
@@ -48,5 +49,8 @@ parking_lot = "0.12"
 
 # File watching for hot-reload
 notify.workspace = true
+
+# Image processing for ASCII art
+image = "0.25"
 
 [dev-dependencies]

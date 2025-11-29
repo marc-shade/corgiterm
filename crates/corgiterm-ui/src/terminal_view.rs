@@ -11,6 +11,8 @@ use regex::Regex;
 
 use corgiterm_core::{Pty, PtySize, Terminal, TerminalSize, terminal::Cell};
 use std::path::Path;
+use crate::app::config_manager;
+use corgiterm_config::themes::ThemeManager;
 
 /// URL regex pattern
 static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -50,8 +52,8 @@ struct Selection {
     end: (usize, usize),
 }
 
-/// ANSI colors (standard 16 + 256 extended)
-const COLORS: [(f64, f64, f64); 16] = [
+/// Default ANSI colors (fallback if theme not loaded)
+const DEFAULT_COLORS: [(f64, f64, f64); 16] = [
     // Standard colors 0-7
     (0.118, 0.106, 0.086),  // 0: Black (background)
     (0.800, 0.341, 0.322),  // 1: Red
@@ -71,6 +73,52 @@ const COLORS: [(f64, f64, f64); 16] = [
     (0.671, 0.808, 0.816),  // 14: Bright Cyan
     (0.969, 0.945, 0.910),  // 15: Bright White
 ];
+
+/// Convert hex color string to RGB tuple
+fn hex_to_rgb(hex: &str) -> (f64, f64, f64) {
+    let hex = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&hex.get(0..2).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let g = u8::from_str_radix(&hex.get(2..4).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let b = u8::from_str_radix(&hex.get(4..6).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    (r, g, b)
+}
+
+/// Load colors from the current theme
+fn load_theme_colors() -> [(f64, f64, f64); 16] {
+    // Try to load from config's theme
+    if let Some(config_manager) = config_manager() {
+        let config = config_manager.read();
+        let theme_name = &config.config().appearance.theme;
+
+        let theme_manager = ThemeManager::new();
+        if let Some(theme) = theme_manager.get(theme_name) {
+            let colors = &theme.colors;
+            // Index 0 = background, Index 7 = foreground (used for default colors)
+            // Other indices = ANSI colors
+            return [
+                hex_to_rgb(&colors.background),    // 0: Background
+                hex_to_rgb(&colors.red),           // 1: Red
+                hex_to_rgb(&colors.green),         // 2: Green
+                hex_to_rgb(&colors.yellow),        // 3: Yellow
+                hex_to_rgb(&colors.blue),          // 4: Blue
+                hex_to_rgb(&colors.magenta),       // 5: Magenta
+                hex_to_rgb(&colors.cyan),          // 6: Cyan
+                hex_to_rgb(&colors.foreground),    // 7: Foreground
+                hex_to_rgb(&colors.bright_black),  // 8: Bright Black
+                hex_to_rgb(&colors.bright_red),    // 9: Bright Red
+                hex_to_rgb(&colors.bright_green),  // 10: Bright Green
+                hex_to_rgb(&colors.bright_yellow), // 11: Bright Yellow
+                hex_to_rgb(&colors.bright_blue),   // 12: Bright Blue
+                hex_to_rgb(&colors.bright_magenta),// 13: Bright Magenta
+                hex_to_rgb(&colors.bright_cyan),   // 14: Bright Cyan
+                hex_to_rgb(&colors.bright_white),  // 15: Bright White
+            ];
+        }
+    }
+
+    // Fallback to default colors
+    DEFAULT_COLORS
+}
 
 /// Terminal view widget with PTY
 #[allow(dead_code)]
@@ -100,6 +148,11 @@ pub struct TerminalView {
     cursor_visible: Rc<RefCell<bool>>,
     /// Visual bell flash state
     bell_flash: Rc<RefCell<bool>>,
+    /// Theme colors (loaded from config)
+    colors: Rc<RefCell<[(f64, f64, f64); 16]>>,
+    /// PTY size - used to clip rendering during resize to prevent ghost lines
+    /// When grid size != PTY size, we're in a resize transition
+    pty_cols: Rc<RefCell<usize>>,
 }
 
 impl TerminalView {
@@ -178,6 +231,13 @@ impl TerminalView {
         // Visual bell flash state
         let bell_flash: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
 
+        // Load initial colors from theme
+        let colors: Rc<RefCell<[(f64, f64, f64); 16]>> = Rc::new(RefCell::new(load_theme_colors()));
+
+        // PTY column count - used to clip rendering during resize transitions
+        // Initialize to default PTY size (80 columns)
+        let pty_cols: Rc<RefCell<usize>> = Rc::new(RefCell::new(80));
+
         // Set up drawing callback with Pango for text rendering
         let term_for_draw = terminal.clone();
         let cell_width_for_draw = cell_width.clone();
@@ -189,7 +249,11 @@ impl TerminalView {
         let search_state_for_draw = search_state.clone();
         let cursor_visible_for_draw = cursor_visible.clone();
         let bell_flash_for_draw = bell_flash.clone();
+        let pty_cols_for_draw = pty_cols.clone();
+        let _colors_for_draw = colors.clone(); // Kept for future per-terminal color customization
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
+            // Reload theme colors on each draw (allows live theme switching)
+            let current_colors = load_theme_colors();
             let term = term_for_draw.borrow();
             let grid = term.grid();
             let scrollback = term.scrollback();
@@ -223,7 +287,7 @@ impl TerminalView {
             let padding = 8.0;
 
             // Background
-            let (bg_r, bg_g, bg_b) = COLORS[0];
+            let (bg_r, bg_g, bg_b) = current_colors[0];
             cr.set_source_rgb(bg_r, bg_g, bg_b);
             cr.paint().ok();
 
@@ -232,7 +296,7 @@ impl TerminalView {
             layout.set_font_description(Some(&font_desc));
 
             // Default foreground
-            let (fg_r, fg_g, fg_b) = COLORS[7];
+            let (fg_r, fg_g, fg_b) = current_colors[7];
             cr.set_source_rgb(fg_r, fg_g, fg_b);
 
             // Helper to draw a cell
@@ -391,7 +455,15 @@ impl TerminalView {
                     let actual_row = if source == "grid" { idx } else { screen_row };
                     let sel = selection_for_draw.borrow();
 
+                    // Clip columns to PTY size to prevent ghost lines during resize
+                    // When grid is larger than PTY, don't draw the extra columns
+                    let max_cols = *pty_cols_for_draw.borrow();
+
                     for (col_idx, cell) in row.iter().enumerate() {
+                        // Skip columns beyond PTY size to prevent stale content display
+                        if col_idx >= max_cols {
+                            break;
+                        }
                         let x = padding + (col_idx as f64 * cell_w);
 
                         // Check if this cell is selected (only for grid content)
@@ -473,7 +545,7 @@ impl TerminalView {
                     .map(|cm| cm.read().config().appearance.cursor_style)
                     .unwrap_or(corgiterm_config::CursorStyle::Block);
 
-                let (accent_r, accent_g, accent_b) = COLORS[3];
+                let (accent_r, accent_g, accent_b) = current_colors[3];
                 cr.set_source_rgba(accent_r, accent_g, accent_b, 0.8);
 
                 match cursor_style {
@@ -516,12 +588,20 @@ impl TerminalView {
             }
         });
 
-        // Set up resize handling
+        // Set up resize handling with debounced PTY resize to prevent ghost lines
+        // Strategy: Resize grid IMMEDIATELY (no dead space) but debounce PTY resize
+        // Ghost lines happen when multiple SIGWINCH signals cause shell to redraw repeatedly
+        // Solution: Only send ONE SIGWINCH after resize events stabilize
         let term_for_resize = terminal.clone();
         let pty_for_resize = pty.clone();
         let cell_width_for_resize = cell_width.clone();
         let cell_height_for_resize = cell_height.clone();
         let drawing_area_for_resize = drawing_area.clone();
+        let pty_cols_for_resize = pty_cols.clone();
+
+        // Track pending PTY resize (grid resizes immediately, PTY is debounced)
+        let pending_pty_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> = Rc::new(RefCell::new(None));
+        let pty_resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
 
         drawing_area.connect_resize(move |_area, width, height| {
             let cell_w = *cell_width_for_resize.borrow();
@@ -550,30 +630,86 @@ impl TerminalView {
                 return;
             }
 
-            tracing::debug!("Resizing terminal to {}x{}", new_rows, new_cols);
+            // Get current PTY cols to determine if we're shrinking or expanding
+            let current_pty_cols = *pty_cols_for_resize.borrow();
+            let is_expanding = new_cols > current_pty_cols;
 
-            // Resize terminal emulator
-            let new_terminal_size = TerminalSize {
-                rows: new_rows,
-                cols: new_cols,
-            };
-            term_for_resize.borrow_mut().resize(new_terminal_size);
-
-            // Resize PTY
-            if let Some(ref mut pty) = *pty_for_resize.borrow_mut() {
-                let new_pty_size = PtySize {
-                    rows: new_rows as u16,
-                    cols: new_cols as u16,
-                    pixel_width: width as u16,
-                    pixel_height: height as u16,
+            // EXPANDING: Resize grid immediately to fill space, debounce PTY
+            // SHRINKING: Debounce BOTH to prevent text wrapping issues
+            if is_expanding {
+                // Resize grid immediately - fills the drawing area (no dead space)
+                let new_terminal_size = TerminalSize {
+                    rows: new_rows,
+                    cols: new_cols,
                 };
-                if let Err(e) = pty.resize(new_pty_size) {
-                    tracing::error!("Failed to resize PTY: {}", e);
-                }
+                term_for_resize.borrow_mut().resize(new_terminal_size);
             }
 
-            // Queue redraw
-            drawing_area_for_resize.queue_draw();
+            // Store pending resize dimensions (for both grid and PTY when shrinking, just PTY when expanding)
+            *pending_pty_resize.borrow_mut() = Some((new_rows, new_cols, width, height));
+
+            // Cancel any existing resize timeout
+            if let Some(source_id) = pty_resize_timeout_id.borrow_mut().take() {
+                source_id.remove();
+            }
+
+            // Clone references for the timeout closure
+            let term_for_timeout = term_for_resize.clone();
+            let pty_for_timeout = pty_for_resize.clone();
+            let pending_for_timeout = pending_pty_resize.clone();
+            let timeout_id_ref = pty_resize_timeout_id.clone();
+            let drawing_area_for_timeout = drawing_area_for_resize.clone();
+            let pty_cols_for_timeout = pty_cols_for_resize.clone();
+
+            // 300ms debounce - longer than Revealer animation (150ms) plus buffer
+            // This ensures we only send ONE SIGWINCH after all animation resize events
+            let source_id = glib::timeout_add_local_once(
+                std::time::Duration::from_millis(300),
+                move || {
+                    // Clear the timeout ID
+                    *timeout_id_ref.borrow_mut() = None;
+
+                    // Get the final pending dimensions
+                    if let Some((rows, cols, px_width, px_height)) = pending_for_timeout.borrow_mut().take() {
+                        let current_pty_cols = *pty_cols_for_timeout.borrow();
+                        let was_shrinking = cols <= current_pty_cols;
+
+                        // Clear screen before resize to remove stale content that causes ghost lines
+                        // The shell will redraw fresh content after receiving SIGWINCH
+                        term_for_timeout.borrow_mut().clear_screen();
+
+                        // If we were shrinking, resize grid now (was deferred)
+                        if was_shrinking {
+                            let new_terminal_size = TerminalSize {
+                                rows,
+                                cols,
+                            };
+                            term_for_timeout.borrow_mut().resize(new_terminal_size);
+                        }
+
+                        // Resize PTY - triggers SINGLE SIGWINCH, shell redraws once
+                        if let Some(ref mut pty) = *pty_for_timeout.borrow_mut() {
+                            let new_pty_size = PtySize {
+                                rows: rows as u16,
+                                cols: cols as u16,
+                                pixel_width: px_width as u16,
+                                pixel_height: px_height as u16,
+                            };
+                            if let Err(e) = pty.resize(new_pty_size) {
+                                tracing::error!("Failed to resize PTY: {}", e);
+                            } else {
+                                // PTY resize succeeded - update pty_cols for rendering clipping
+                                *pty_cols_for_timeout.borrow_mut() = cols;
+                            }
+                        }
+
+                        // Queue redraw after resize
+                        drawing_area_for_timeout.queue_draw();
+                    }
+                },
+            );
+
+            *pty_resize_timeout_id.borrow_mut() = Some(source_id);
         });
 
         // Set up keyboard input
@@ -1264,6 +1400,9 @@ impl TerminalView {
 
         drawing_area.add_controller(drag_gesture);
 
+        // Load theme colors
+        let colors = Rc::new(RefCell::new(load_theme_colors()));
+
         Self {
             container,
             drawing_area,
@@ -1280,6 +1419,8 @@ impl TerminalView {
             event_rx,
             cursor_visible,
             bell_flash,
+            colors,
+            pty_cols,
         }
     }
 
@@ -1347,9 +1488,35 @@ impl TerminalView {
 
     /// Get current working directory from terminal (if available)
     pub fn working_directory(&self) -> Option<std::path::PathBuf> {
-        // TODO: Read /proc/<pid>/cwd for the shell process
-        // For now, return None
-        None
+        if let Some(ref pty) = *self.pty.borrow() {
+            // Try to get foreground process group first (the actual running command)
+            // If that fails, fall back to the shell PID
+            let pid = pty.foreground_pid().unwrap_or_else(|| pty.pid());
+
+            // Read /proc/<pid>/cwd symlink
+            let proc_cwd = format!("/proc/{}/cwd", pid);
+            match std::fs::read_link(&proc_cwd) {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    tracing::debug!("Failed to read {}: {}", proc_cwd, e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Get the current directory name for display (just the last component)
+    pub fn current_directory_name(&self) -> String {
+        self.working_directory()
+            .and_then(|path| {
+                // Try to get just the directory name
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "Terminal".to_string())
     }
 
     /// Get visible lines as strings for thumbnail rendering
