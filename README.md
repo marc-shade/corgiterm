@@ -33,10 +33,10 @@
 - **Zero Config** - Works out of the box with Claude CLI or local Ollama
 
 ### ⚡ For Power Users
-- **GPU Rendering** - Silky smooth 144fps performance
-- **500+ Settings** - Customize everything
+- **Command Learning** - Learns your patterns and suggests next commands
+- **User Preferences** - Detects your tool preferences (e.g., `exa` over `ls`)
 - **Plugin System** - WASM and Lua extensibility
-- **SSH Manager** - Visual connection management
+- **Project Sessions** - Restore terminals grouped by project
 - **Searchable History** - Never lose output again
 
 ### 🖥️ Terminal Features
@@ -195,11 +195,11 @@ Features planned for future releases:
 
 - [ ] **ASCII Art Generator** - Create ASCII art from images or text
 - [ ] **Flatpak Package** - Easy installation on any Linux distro
-- [ ] **SSH Manager** - Visual connection management with saved hosts
 - [ ] **Split Panes** - Horizontal and vertical terminal splitting
 - [ ] **Snippets Library** - Save and reuse common commands
-- [ ] **AI Command History** - Learn from your usage patterns
 - [ ] **Theme Creator** - Visual theme builder with live preview
+- [ ] **Inline Images** - Display images directly in terminal output
+- [ ] **macOS/Windows Support** - Cross-platform builds
 
 ## Privacy Promise
 
