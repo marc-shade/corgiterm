@@ -74,6 +74,10 @@ impl TerminalTabs {
         // Get event receiver for title/bell updates
         let event_rx = terminal.event_receiver();
 
+        // Clone bell flash references for the event handler
+        let bell_flash_ref = terminal.bell_flash_ref();
+        let drawing_area_ref = terminal.drawing_area_ref();
+
         // Store content
         self.contents.borrow_mut().push(TabContent::Terminal(terminal));
 
@@ -105,14 +109,42 @@ impl TerminalTabs {
                         }
                     }
                     TerminalEvent::Bell => {
-                        // Flash tab indicator or play sound
-                        page_for_events.set_needs_attention(true);
-                        // Reset attention after a short delay
-                        let page_for_bell = page_for_events.clone();
-                        gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
-                            page_for_bell.set_needs_attention(false);
-                        });
-                        tracing::debug!("Bell from terminal");
+                        // Get bell style from config
+                        let bell_style = crate::app::config_manager()
+                            .map(|cm| cm.read().config().terminal.bell_style)
+                            .unwrap_or(corgiterm_config::BellStyle::Visual);
+
+                        match bell_style {
+                            corgiterm_config::BellStyle::None => {
+                                // Do nothing
+                            }
+                            corgiterm_config::BellStyle::Visual | corgiterm_config::BellStyle::Both => {
+                                // Visual bell: flash the terminal
+                                *bell_flash_ref.borrow_mut() = true;
+                                drawing_area_ref.queue_draw();
+
+                                let bell_flash_reset = bell_flash_ref.clone();
+                                let drawing_area_reset = drawing_area_ref.clone();
+                                gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+                                    *bell_flash_reset.borrow_mut() = false;
+                                    drawing_area_reset.queue_draw();
+                                });
+                            }
+                            corgiterm_config::BellStyle::Audible => {
+                                // Just play sound (no visual)
+                            }
+                        }
+
+                        // Also flash tab indicator for all non-None styles
+                        if bell_style != corgiterm_config::BellStyle::None {
+                            page_for_events.set_needs_attention(true);
+                            let page_for_bell = page_for_events.clone();
+                            gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
+                                page_for_bell.set_needs_attention(false);
+                            });
+                        }
+
+                        tracing::debug!("Bell from terminal (style: {:?})", bell_style);
                     }
                     _ => {}
                 }

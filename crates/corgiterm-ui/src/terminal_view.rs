@@ -96,6 +96,10 @@ pub struct TerminalView {
     search_state: Rc<RefCell<SearchState>>,
     /// Terminal event receiver
     event_rx: Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>>,
+    /// Cursor visible state (for blinking)
+    cursor_visible: Rc<RefCell<bool>>,
+    /// Visual bell flash state
+    bell_flash: Rc<RefCell<bool>>,
 }
 
 impl TerminalView {
@@ -168,6 +172,12 @@ impl TerminalView {
         // Search state
         let search_state: Rc<RefCell<SearchState>> = Rc::new(RefCell::new(SearchState::default()));
 
+        // Cursor blink state
+        let cursor_visible: Rc<RefCell<bool>> = Rc::new(RefCell::new(true));
+
+        // Visual bell flash state
+        let bell_flash: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+
         // Set up drawing callback with Pango for text rendering
         let term_for_draw = terminal.clone();
         let cell_width_for_draw = cell_width.clone();
@@ -177,6 +187,8 @@ impl TerminalView {
         let hover_pos_for_draw = hover_pos.clone();
         let detected_urls_for_draw = detected_urls.clone();
         let search_state_for_draw = search_state.clone();
+        let cursor_visible_for_draw = cursor_visible.clone();
+        let bell_flash_for_draw = bell_flash.clone();
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
             let term = term_for_draw.borrow();
             let grid = term.grid();
@@ -442,8 +454,17 @@ impl TerminalView {
                 }
             }
 
-            // Only draw cursor if not scrolled up (offset == 0)
-            if offset == 0 {
+            // Only draw cursor if not scrolled up (offset == 0) and cursor is visible (for blink)
+            let cursor_is_visible = *cursor_visible_for_draw.borrow();
+            let (cursor_blink_enabled, _blink_rate) = crate::app::config_manager()
+                .map(|cm| {
+                    let config = cm.read().config();
+                    (config.appearance.cursor_blink, config.appearance.cursor_blink_rate)
+                })
+                .unwrap_or((true, 530));
+
+            // Show cursor if: not scrolled, and (blink disabled OR cursor is in visible phase)
+            if offset == 0 && (!cursor_blink_enabled || cursor_is_visible) {
                 let cursor_x = padding + (cursor.1 as f64 * cell_w);
                 let cursor_y = padding + (cursor.0 as f64 * cell_h);
 
@@ -486,6 +507,12 @@ impl TerminalView {
                         cr.stroke().ok();
                     }
                 }
+            }
+
+            // Draw visual bell flash overlay
+            if *bell_flash_for_draw.borrow() {
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.3);
+                cr.paint().ok();
             }
         });
 
@@ -554,6 +581,7 @@ impl TerminalView {
         let pty_for_input = pty.clone();
         let drawing_area_for_clipboard = drawing_area.clone();
         let terminal_for_copy = terminal.clone();
+        let scroll_offset_for_key = scroll_offset.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::{Key, ModifierType};
 
@@ -684,6 +712,13 @@ impl TerminalView {
                 // Convert GDK key to bytes
                 let bytes = key_to_bytes(key, modifier);
                 if !bytes.is_empty() {
+                    // Scroll to bottom on keystroke if enabled
+                    let scroll_on_keystroke = crate::app::config_manager()
+                        .map(|cm| cm.read().config().terminal.scroll_on_keystroke)
+                        .unwrap_or(true);
+                    if scroll_on_keystroke {
+                        *scroll_offset_for_key.borrow_mut() = 0;
+                    }
                     let _ = pty.write(&bytes);
                 }
             }
@@ -931,12 +966,38 @@ impl TerminalView {
                 match pty.read(&mut buf) {
                     Ok(n) if n > 0 => {
                         term_for_read.borrow_mut().process(&buf[..n]);
-                        // Reset scroll to bottom when new output arrives
-                        *scroll_offset_for_reset.borrow_mut() = 0;
+                        // Check scroll_on_output setting - if enabled, scroll to bottom
+                        let scroll_on_output = crate::app::config_manager()
+                            .map(|cm| cm.read().config().terminal.scroll_on_output)
+                            .unwrap_or(false);
+                        if scroll_on_output {
+                            *scroll_offset_for_reset.borrow_mut() = 0;
+                        }
                         drawing_area_clone.queue_draw();
                     }
                     _ => {}
                 }
+            }
+            glib::ControlFlow::Continue
+        });
+
+        // Set up cursor blink timer
+        let cursor_visible_for_blink = cursor_visible.clone();
+        let drawing_area_for_blink = drawing_area.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(530), move || {
+            // Check if cursor blink is enabled
+            let (blink_enabled, reduce_motion) = crate::app::config_manager()
+                .map(|cm| {
+                    let config = cm.read().config();
+                    (config.appearance.cursor_blink, config.accessibility.reduce_motion)
+                })
+                .unwrap_or((true, false));
+
+            // Don't blink if disabled or reduce_motion is enabled
+            if blink_enabled && !reduce_motion {
+                let mut visible = cursor_visible_for_blink.borrow_mut();
+                *visible = !*visible;
+                drawing_area_for_blink.queue_draw();
             }
             glib::ControlFlow::Continue
         });
@@ -1217,6 +1278,8 @@ impl TerminalView {
             detected_urls,
             search_state,
             event_rx,
+            cursor_visible,
+            bell_flash,
         }
     }
 
@@ -1232,6 +1295,32 @@ impl TerminalView {
     /// Get the terminal event receiver for listening to title changes, bells, etc.
     pub fn event_receiver(&self) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
         self.event_rx.clone()
+    }
+
+    /// Trigger a visual bell flash
+    pub fn trigger_visual_bell(&self) {
+        let bell_flash = self.bell_flash.clone();
+        let drawing_area = self.drawing_area.clone();
+
+        // Set flash on
+        *bell_flash.borrow_mut() = true;
+        drawing_area.queue_draw();
+
+        // Turn off after 100ms
+        glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+            *bell_flash.borrow_mut() = false;
+            drawing_area.queue_draw();
+        });
+    }
+
+    /// Get reference to bell flash state (for external bell triggering)
+    pub fn bell_flash_ref(&self) -> Rc<RefCell<bool>> {
+        self.bell_flash.clone()
+    }
+
+    /// Get reference to drawing area (for external redraw)
+    pub fn drawing_area_ref(&self) -> DrawingArea {
+        self.drawing_area.clone()
     }
 }
 
