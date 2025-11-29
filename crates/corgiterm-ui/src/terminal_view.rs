@@ -130,11 +130,15 @@ impl TerminalView {
         let event_rx = Rc::new(event_rx);
 
         // Create PTY and spawn shell
-        let shell = crate::app::config_manager()
-            .map(|cm| cm.read().config().general.shell.clone());
+        let (shell, term) = crate::app::config_manager()
+            .map(|cm| {
+                let config = cm.read().config();
+                (config.general.shell.clone(), config.terminal.term.clone())
+            })
+            .unwrap_or_else(|| (std::env::var("SHELL").unwrap_or("/bin/bash".to_string()), "xterm-256color".to_string()));
         let pty = Rc::new(RefCell::new(None));
         {
-            match Pty::spawn(shell.as_deref(), PtySize::default(), working_dir) {
+            match Pty::spawn(Some(&shell), PtySize::default(), working_dir, Some(&term)) {
                 Ok(p) => {
                     *pty.borrow_mut() = Some(p);
                     tracing::info!("PTY spawned successfully");

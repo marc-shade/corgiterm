@@ -62,11 +62,14 @@ impl Pty {
     /// Create a new PTY and spawn a shell process
     ///
     /// If `working_dir` is provided, the shell will start in that directory.
-    pub fn spawn(shell: Option<&str>, size: PtySize, working_dir: Option<&std::path::Path>) -> Result<Self> {
+    /// If `term` is provided, it will be set as the TERM environment variable.
+    pub fn spawn(shell: Option<&str>, size: PtySize, working_dir: Option<&std::path::Path>, term: Option<&str>) -> Result<Self> {
         let shell = shell
             .map(String::from)
             .or_else(|| std::env::var("SHELL").ok())
             .unwrap_or_else(|| "/bin/bash".to_string());
+
+        let term_value = term.unwrap_or("xterm-256color");
 
         // Open PTY master/slave pair
         let mut master_fd: libc::c_int = 0;
@@ -130,6 +133,12 @@ impl Pty {
                     if let Ok(dir_cstr) = CString::new(dir.to_string_lossy().as_bytes()) {
                         unsafe { libc::chdir(dir_cstr.as_ptr()) };
                     }
+                }
+
+                // Set TERM environment variable
+                if let Ok(term_cstr) = CString::new(term_value) {
+                    let name_cstr = CString::new("TERM").unwrap();
+                    unsafe { libc::setenv(name_cstr.as_ptr(), term_cstr.as_ptr(), 1) };
                 }
 
                 // Execute shell

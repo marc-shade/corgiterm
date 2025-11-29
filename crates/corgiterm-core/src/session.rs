@@ -129,7 +129,7 @@ impl Session {
         };
 
         // Spawn PTY with working directory
-        let pty = Pty::spawn(self.shell.as_deref(), pty_size, Some(&self.cwd))?;
+        let pty = Pty::spawn(self.shell.as_deref(), pty_size, Some(&self.cwd), None)?;
 
         let (tx, _rx) = crossbeam_channel::unbounded();
         let terminal = Terminal::new(size, tx);

@@ -308,6 +308,37 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         }
     });
 
+    // TERM environment variable
+    let current_term = if let Some(config_manager) = get_config() {
+        config_manager.read().config().terminal.term.clone()
+    } else {
+        "xterm-256color".to_string()
+    };
+
+    let term_row = libadwaita::ComboRow::builder()
+        .title("TERM Variable")
+        .subtitle("Terminal type for compatibility")
+        .build();
+    let term_types = ["xterm-256color", "xterm", "vt100", "screen-256color", "tmux-256color"];
+    term_row.set_model(Some(&gtk4::StringList::new(&term_types)));
+    if let Some(pos) = term_types.iter().position(|&t| t == current_term) {
+        term_row.set_selected(pos as u32);
+    }
+    shell_group.add(&term_row);
+
+    term_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if selected < term_types.len() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.terminal.term = term_types[selected].to_string();
+                });
+                let _ = config_manager.read().save();
+                tracing::info!("TERM changed to: {}", term_types[selected]);
+            }
+        }
+    });
+
     terminal_page.add(&shell_group);
 
     // Terminal behavior group
@@ -400,6 +431,44 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
                 config.terminal.scroll_on_keystroke = active;
             });
             let _ = config_manager.read().save();
+        }
+    });
+
+    // Bell style
+    let bell_style_idx = if let Some(config_manager) = get_config() {
+        match config_manager.read().config().terminal.bell_style {
+            corgiterm_config::BellStyle::None => 0,
+            corgiterm_config::BellStyle::Visual => 1,
+            corgiterm_config::BellStyle::Audible => 2,
+            corgiterm_config::BellStyle::Both => 3,
+        }
+    } else {
+        1 // Visual by default
+    };
+
+    let bell_row = libadwaita::ComboRow::builder()
+        .title("Bell Style")
+        .subtitle("How to notify on terminal bell")
+        .build();
+    let bell_styles = ["None", "Visual", "Audible", "Both"];
+    bell_row.set_model(Some(&gtk4::StringList::new(&bell_styles)));
+    bell_row.set_selected(bell_style_idx);
+    behavior_group.add(&bell_row);
+
+    bell_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.terminal.bell_style = match selected {
+                    0 => corgiterm_config::BellStyle::None,
+                    1 => corgiterm_config::BellStyle::Visual,
+                    2 => corgiterm_config::BellStyle::Audible,
+                    3 => corgiterm_config::BellStyle::Both,
+                    _ => corgiterm_config::BellStyle::Visual,
+                };
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Bell style changed to: {}", bell_styles[selected]);
         }
     });
 
@@ -531,6 +600,149 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     });
 
     ai_page.add(&ai_group);
+
+    // AI Provider group
+    let provider_group = libadwaita::PreferencesGroup::builder()
+        .title("Provider")
+        .description("Configure AI provider and API keys")
+        .build();
+
+    // Get current provider settings
+    let (default_provider, claude_key, openai_key, gemini_key, local_enabled, local_endpoint) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.ai.default_provider.clone(),
+                config.ai.claude.api_key.clone().unwrap_or_default(),
+                config.ai.openai.api_key.clone().unwrap_or_default(),
+                config.ai.gemini.api_key.clone().unwrap_or_default(),
+                config.ai.local.enabled,
+                config.ai.local.endpoint.clone(),
+            )
+        } else {
+            ("claude".to_string(), String::new(), String::new(), String::new(), false, "http://localhost:11434".to_string())
+        };
+
+    // Provider selection
+    let provider_row = libadwaita::ComboRow::builder()
+        .title("Default Provider")
+        .subtitle("AI provider to use for commands")
+        .build();
+    let providers = ["claude", "openai", "gemini", "local"];
+    provider_row.set_model(Some(&gtk4::StringList::new(&providers)));
+    if let Some(pos) = providers.iter().position(|&p| p == default_provider) {
+        provider_row.set_selected(pos as u32);
+    }
+    provider_group.add(&provider_row);
+
+    provider_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if selected < providers.len() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.default_provider = providers[selected].to_string();
+                });
+                let _ = config_manager.read().save();
+                tracing::info!("AI provider changed to: {}", providers[selected]);
+            }
+        }
+    });
+
+    // Claude API key
+    let claude_row = libadwaita::PasswordEntryRow::builder()
+        .title("Claude API Key")
+        .text(&claude_key)
+        .build();
+    provider_group.add(&claude_row);
+
+    claude_row.connect_changed(move |row| {
+        let key = row.text().to_string();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.claude.api_key = if key.is_empty() { None } else { Some(key) };
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // OpenAI API key
+    let openai_row = libadwaita::PasswordEntryRow::builder()
+        .title("OpenAI API Key")
+        .text(&openai_key)
+        .build();
+    provider_group.add(&openai_row);
+
+    openai_row.connect_changed(move |row| {
+        let key = row.text().to_string();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.openai.api_key = if key.is_empty() { None } else { Some(key) };
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    // Gemini API key
+    let gemini_row = libadwaita::PasswordEntryRow::builder()
+        .title("Gemini API Key")
+        .text(&gemini_key)
+        .build();
+    provider_group.add(&gemini_row);
+
+    gemini_row.connect_changed(move |row| {
+        let key = row.text().to_string();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.gemini.api_key = if key.is_empty() { None } else { Some(key) };
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    ai_page.add(&provider_group);
+
+    // Local LLM group
+    let local_group = libadwaita::PreferencesGroup::builder()
+        .title("Local LLM")
+        .description("Use a local language model (e.g., Ollama)")
+        .build();
+
+    let local_enabled_row = libadwaita::SwitchRow::builder()
+        .title("Enable Local LLM")
+        .subtitle("Use local AI instead of cloud providers")
+        .active(local_enabled)
+        .build();
+    local_group.add(&local_enabled_row);
+
+    local_enabled_row.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.local.enabled = active;
+            });
+            let _ = config_manager.read().save();
+        }
+    });
+
+    let endpoint_row = libadwaita::EntryRow::builder()
+        .title("Ollama Endpoint")
+        .text(&local_endpoint)
+        .build();
+    local_group.add(&endpoint_row);
+
+    endpoint_row.connect_changed(move |row| {
+        let endpoint = row.text().to_string();
+        if !endpoint.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.ai.local.endpoint = endpoint;
+                });
+                let _ = config_manager.read().save();
+            }
+        }
+    });
+
+    ai_page.add(&local_group);
     dialog.add(&ai_page);
 
     // Safe Mode page
