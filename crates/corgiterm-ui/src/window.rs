@@ -1,16 +1,18 @@
 //! Main application window
 
 use gtk4::prelude::*;
-use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, MenuButton, Orientation, Paned};
+use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, MenuButton, Orientation, Paned, Revealer, RevealerTransitionType};
 use gtk4::gdk::ModifierType;
 use gtk4::gio::{self, Menu, SimpleAction};
 use libadwaita::prelude::*;
 use libadwaita::{ApplicationWindow, HeaderBar, WindowTitle};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::dialogs;
 use crate::sidebar::Sidebar;
 use crate::tab_bar::TerminalTabs;
+use crate::ai_panel::AiPanel;
 
 /// Main application window
 pub struct MainWindow {
@@ -19,6 +21,10 @@ pub struct MainWindow {
     tabs: Rc<TerminalTabs>,
     #[allow(dead_code)]
     sidebar: Rc<Sidebar>,
+    #[allow(dead_code)]
+    ai_panel: Rc<RefCell<AiPanel>>,
+    #[allow(dead_code)]
+    ai_revealer: Revealer,
 }
 
 impl MainWindow {
@@ -65,6 +71,11 @@ impl MainWindow {
             .build();
         header.pack_end(&menu_btn);
 
+        // AI panel toggle button
+        let ai_toggle_btn = Button::from_icon_name("user-available-symbolic");
+        ai_toggle_btn.set_tooltip_text(Some("Toggle AI Assistant (Ctrl+Shift+A)"));
+        header.pack_end(&ai_toggle_btn);
+
         // Add window actions
         let prefs_action = SimpleAction::new("preferences", None);
         let win_for_prefs = window.clone();
@@ -105,7 +116,29 @@ impl MainWindow {
         content_paned.set_shrink_end_child(false);
         content_paned.set_vexpand(true);
 
-        main_box.append(&content_paned);
+        // Create AI panel with slide-out revealer
+        let ai_panel = Rc::new(RefCell::new(AiPanel::new()));
+        let ai_revealer = Revealer::new();
+        ai_revealer.set_transition_type(RevealerTransitionType::SlideLeft);
+        ai_revealer.set_transition_duration(200);
+        ai_revealer.set_reveal_child(false);
+        ai_revealer.set_child(Some(ai_panel.borrow().widget()));
+        ai_panel.borrow().widget().set_width_request(350);
+
+        // Connect AI toggle button
+        let revealer_for_toggle = ai_revealer.clone();
+        ai_toggle_btn.connect_clicked(move |_| {
+            let currently_revealed = revealer_for_toggle.reveals_child();
+            revealer_for_toggle.set_reveal_child(!currently_revealed);
+        });
+
+        // Horizontal box for content + AI panel
+        let content_box = Box::new(Orientation::Horizontal, 0);
+        content_box.append(&content_paned);
+        content_box.append(&ai_revealer);
+        content_box.set_vexpand(true);
+
+        main_box.append(&content_box);
 
         window.set_content(Some(&main_box));
 
@@ -136,6 +169,7 @@ impl MainWindow {
         let key_controller = EventControllerKey::new();
         let tabs_for_keys = tabs.clone();
         let window_for_keys = window.clone();
+        let ai_revealer_for_keys = ai_revealer.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::Key;
 
@@ -230,6 +264,12 @@ impl MainWindow {
                         tabs_for_keys.select_previous_tab();
                         return gtk4::glib::Propagation::Stop;
                     }
+                    Key::a | Key::A => {
+                        // Ctrl+Shift+A: Toggle AI panel
+                        let currently_revealed = ai_revealer_for_keys.reveals_child();
+                        ai_revealer_for_keys.set_reveal_child(!currently_revealed);
+                        return gtk4::glib::Propagation::Stop;
+                    }
                     Key::o | Key::O => {
                         // Ctrl+Shift+O: Open file dialog
                         let tabs = tabs_for_keys.clone();
@@ -285,6 +325,8 @@ impl MainWindow {
             window,
             tabs,
             sidebar,
+            ai_panel,
+            ai_revealer,
         }
     }
 

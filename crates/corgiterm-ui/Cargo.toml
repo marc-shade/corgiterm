@@ -10,6 +10,7 @@ description = "GTK4/libadwaita UI for CorgiTerm"
 corgiterm-core = { path = "../corgiterm-core" }
 corgiterm-config = { path = "../corgiterm-config" }
 corgiterm-ai = { path = "../corgiterm-ai" }
+corgiterm-plugins = { path = "../corgiterm-plugins" }
 
 tokio.workspace = true
 async-trait.workspace = true

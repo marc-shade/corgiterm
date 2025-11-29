@@ -17,6 +17,9 @@ static SESSION_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_core::SessionMa
 /// Global AI manager
 static AI_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::AiManager>>> = std::sync::OnceLock::new();
 
+/// Global plugin manager
+static PLUGIN_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_plugins::PluginManager>>> = std::sync::OnceLock::new();
+
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
     CONFIG_MANAGER.get().cloned()
@@ -30,6 +33,11 @@ pub fn session_manager() -> Option<Arc<RwLock<corgiterm_core::SessionManager>>> 
 /// Get the global AI manager
 pub fn ai_manager() -> Option<Arc<RwLock<corgiterm_ai::AiManager>>> {
     AI_MANAGER.get().cloned()
+}
+
+/// Get the global plugin manager
+pub fn plugin_manager() -> Option<Arc<RwLock<corgiterm_plugins::PluginManager>>> {
+    PLUGIN_MANAGER.get().cloned()
 }
 
 /// Load custom CSS styles
@@ -133,6 +141,41 @@ fn init_ai() {
     tracing::info!("AI manager initialized");
 }
 
+/// Initialize the plugin system
+fn init_plugins() {
+    // Get plugin directory from config or use default
+    let plugin_dir = if let Some(cm) = config_manager() {
+        let config = cm.read().config();
+        config.advanced.plugin_dir.clone()
+    } else {
+        None
+    };
+
+    let plugin_dir = plugin_dir.unwrap_or_else(|| {
+        corgiterm_config::config_dir().join("plugins")
+    });
+
+    let mut plugin_manager = corgiterm_plugins::PluginManager::new(plugin_dir.clone());
+
+    // Discover and load plugins
+    match plugin_manager.discover() {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!("Loaded {} plugins from {:?}", count, plugin_dir);
+            } else {
+                tracing::debug!("No plugins found in {:?}", plugin_dir);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to discover plugins: {}", e);
+        }
+    }
+
+    let plugin_arc = Arc::new(RwLock::new(plugin_manager));
+    let _ = PLUGIN_MANAGER.set(plugin_arc);
+    tracing::info!("Plugin manager initialized");
+}
+
 /// Build the main UI
 pub fn build_ui(app: &Application) {
     // Initialize config first
@@ -143,6 +186,9 @@ pub fn build_ui(app: &Application) {
 
     // Initialize AI providers
     init_ai();
+
+    // Initialize plugin system
+    init_plugins();
 
     // Load custom CSS
     load_css();

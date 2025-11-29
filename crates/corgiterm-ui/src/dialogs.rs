@@ -1485,6 +1485,166 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     a11y_page.add(&a11y_group);
     dialog.add(&a11y_page);
 
+    // Keybindings page
+    let keybindings_page = libadwaita::PreferencesPage::builder()
+        .title("Keybindings")
+        .icon_name("input-keyboard-symbolic")
+        .build();
+
+    let keybindings_group = libadwaita::PreferencesGroup::builder()
+        .title("Keyboard Shortcuts")
+        .description("View and customize keyboard shortcuts")
+        .build();
+
+    // Show current shortcuts as informational rows
+    let shortcuts_info = [
+        ("New Tab", "Ctrl+T", "Create a new terminal tab"),
+        ("Close Tab", "Ctrl+W", "Close the current tab"),
+        ("Next Tab", "Ctrl+Tab", "Switch to next tab"),
+        ("Previous Tab", "Ctrl+Shift+Tab", "Switch to previous tab"),
+        ("Quick Switcher", "Ctrl+K", "Open the quick switcher"),
+        ("Toggle AI Panel", "Ctrl+Shift+A", "Show/hide AI assistant"),
+        ("New Document", "Ctrl+O", "Open a new document tab"),
+        ("Open File", "Ctrl+Shift+O", "Open a file in a new tab"),
+        ("Quit", "Ctrl+Q", "Close the application"),
+    ];
+
+    for (name, shortcut, description) in shortcuts_info {
+        let row = libadwaita::ActionRow::builder()
+            .title(name)
+            .subtitle(description)
+            .build();
+
+        // Add shortcut label as suffix
+        let shortcut_label = gtk4::Label::new(Some(shortcut));
+        shortcut_label.add_css_class("dim-label");
+        shortcut_label.add_css_class("monospace");
+        row.add_suffix(&shortcut_label);
+
+        keybindings_group.add(&row);
+    }
+
+    // Terminal shortcuts
+    let terminal_keybindings_group = libadwaita::PreferencesGroup::builder()
+        .title("Terminal Shortcuts")
+        .build();
+
+    let terminal_shortcuts = [
+        ("Copy", "Ctrl+Shift+C", "Copy selection to clipboard"),
+        ("Paste", "Ctrl+Shift+V", "Paste from clipboard"),
+        ("Select All", "Ctrl+Shift+A", "Select all terminal content"),
+        ("Zoom In", "Ctrl++", "Increase font size"),
+        ("Zoom Out", "Ctrl+-", "Decrease font size"),
+        ("Reset Zoom", "Ctrl+0", "Reset to default font size"),
+    ];
+
+    for (name, shortcut, description) in terminal_shortcuts {
+        let row = libadwaita::ActionRow::builder()
+            .title(name)
+            .subtitle(description)
+            .build();
+
+        let shortcut_label = gtk4::Label::new(Some(shortcut));
+        shortcut_label.add_css_class("dim-label");
+        shortcut_label.add_css_class("monospace");
+        row.add_suffix(&shortcut_label);
+
+        terminal_keybindings_group.add(&row);
+    }
+
+    // Custom keybindings note
+    let custom_note = libadwaita::PreferencesGroup::builder()
+        .title("Custom Keybindings")
+        .description("Custom keybindings can be set in ~/.config/corgiterm/config.toml under [keybindings]")
+        .build();
+
+    keybindings_page.add(&keybindings_group);
+    keybindings_page.add(&terminal_keybindings_group);
+    keybindings_page.add(&custom_note);
+    dialog.add(&keybindings_page);
+
+    // Plugins page
+    let plugins_page = libadwaita::PreferencesPage::builder()
+        .title("Plugins")
+        .icon_name("application-x-addon-symbolic")
+        .build();
+
+    let plugins_group = libadwaita::PreferencesGroup::builder()
+        .title("Installed Plugins")
+        .description("Manage CorgiTerm extensions")
+        .build();
+
+    // Get plugin list
+    if let Some(pm) = crate::app::plugin_manager() {
+        let plugin_mgr = pm.read();
+        let plugins = plugin_mgr.plugins();
+
+        if plugins.is_empty() {
+            let empty_row = libadwaita::ActionRow::builder()
+                .title("No plugins installed")
+                .subtitle("Put plugins in ~/.config/corgiterm/plugins/")
+                .build();
+            plugins_group.add(&empty_row);
+        } else {
+            for plugin in plugins {
+                let row = libadwaita::SwitchRow::builder()
+                    .title(&plugin.manifest.name)
+                    .subtitle(plugin.manifest.description.as_deref().unwrap_or("No description"))
+                    .active(plugin.enabled)
+                    .build();
+
+                // Add version as suffix
+                let version_label = gtk4::Label::new(Some(&format!("v{}", plugin.manifest.version)));
+                version_label.add_css_class("dim-label");
+                row.add_suffix(&version_label);
+
+                plugins_group.add(&row);
+            }
+        }
+    } else {
+        let error_row = libadwaita::ActionRow::builder()
+            .title("Plugin system not initialized")
+            .build();
+        plugins_group.add(&error_row);
+    }
+
+    // Plugin development info
+    let dev_group = libadwaita::PreferencesGroup::builder()
+        .title("Plugin Development")
+        .description("Create your own plugins")
+        .build();
+
+    let dev_info = libadwaita::ActionRow::builder()
+        .title("Plugin Types")
+        .subtitle("WASM (sandboxed) or Lua (lightweight)")
+        .build();
+    dev_group.add(&dev_info);
+
+    let docs_row = libadwaita::ActionRow::builder()
+        .title("Documentation")
+        .subtitle("https://corgiterm.dev/plugins")
+        .activatable(true)
+        .build();
+
+    // Open documentation link when clicked
+    docs_row.connect_activated(|row| {
+        if let Some(root) = row.root() {
+            if let Some(window) = root.downcast_ref::<gtk4::Window>() {
+                let launcher = gtk4::UriLauncher::new("https://corgiterm.dev/plugins");
+                launcher.launch(Some(window), None::<&gtk4::gio::Cancellable>, |result| {
+                    if let Err(e) = result {
+                        tracing::warn!("Failed to open docs: {}", e);
+                    }
+                });
+            }
+        }
+    });
+    dev_group.add(&docs_row);
+
+    plugins_page.add(&plugins_group);
+    plugins_page.add(&dev_group);
+    dialog.add(&plugins_page);
+
     // Advanced page
     let advanced_page = libadwaita::PreferencesPage::builder()
         .title("Advanced")
@@ -1615,6 +1775,7 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
 
     let window_shortcuts = [
         ("Quick Switcher", "<Ctrl>k"),
+        ("Toggle AI Panel", "<Ctrl><Shift>a"),
         ("Quit", "<Ctrl>q"),
     ];
 
