@@ -34,6 +34,9 @@ regex.workspace = true
 # Image processing for ASCII art
 image = "0.25"
 
+# Base64 for Kitty graphics protocol
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4"
 pretty_assertions = "1.4"

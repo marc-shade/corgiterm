@@ -20,6 +20,7 @@ pub mod ascii_art;
 pub mod error;
 pub mod history;
 pub mod history_learning;
+pub mod images;
 pub mod learning;
 pub mod pty;
 pub mod safe_mode;
@@ -42,6 +43,10 @@ pub use pty::{Pty, PtySize};
 pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
 pub use session::{Session, SessionId, SessionManager};
 pub use terminal::{Terminal, TerminalEvent, TerminalSize};
+pub use images::{
+    ImageFormat, ImageId, ImagePlacement, ImageStore, InlineImage, KittyCommand, KittyParser,
+    SixelImage, SixelParser,
+};
 
 /// Core version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

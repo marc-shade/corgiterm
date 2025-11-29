@@ -560,6 +560,67 @@ impl TerminalView {
                 }
             }
 
+            // Draw inline images (Sixel/Kitty) on top of cells
+            for placement in term.image_store().visible_placements() {
+                if let Some(image) = term.image_store().get_image(placement.image_id) {
+                    // Calculate pixel position from cell coordinates
+                    let img_x = padding + (placement.col as f64 * cell_w);
+                    let img_y = padding + (placement.row as f64 * cell_h);
+
+                    // Calculate display dimensions
+                    let display_width = placement.width_cells as f64 * cell_w;
+                    let display_height = placement.height_cells as f64 * cell_h;
+
+                    // Create Cairo ImageSurface from RGBA data
+                    // Cairo expects ARGB32 (premultiplied), so we need to convert from RGBA
+                    let stride = cairo::Format::ARgb32
+                        .stride_for_width(image.width)
+                        .unwrap_or((image.width * 4) as i32);
+                    let mut argb_data = vec![0u8; (stride * image.height as i32) as usize];
+
+                    // Convert RGBA to ARGB32 (Cairo's native format)
+                    for y in 0..image.height {
+                        for x in 0..image.width {
+                            let src_idx = ((y * image.width + x) * 4) as usize;
+                            let dst_idx = (y as i32 * stride + x as i32 * 4) as usize;
+
+                            if src_idx + 3 < image.data.len() && dst_idx + 3 < argb_data.len() {
+                                let r = image.data[src_idx];
+                                let g = image.data[src_idx + 1];
+                                let b = image.data[src_idx + 2];
+                                let a = image.data[src_idx + 3];
+
+                                // Cairo ARGB32: B, G, R, A (little-endian)
+                                argb_data[dst_idx] = b;
+                                argb_data[dst_idx + 1] = g;
+                                argb_data[dst_idx + 2] = r;
+                                argb_data[dst_idx + 3] = a;
+                            }
+                        }
+                    }
+
+                    // Create image surface
+                    if let Ok(surface) = cairo::ImageSurface::create_for_data(
+                        argb_data,
+                        cairo::Format::ARgb32,
+                        image.width as i32,
+                        image.height as i32,
+                        stride,
+                    ) {
+                        // Scale and draw
+                        cr.save().ok();
+                        cr.translate(img_x, img_y);
+                        cr.scale(
+                            display_width / image.width as f64,
+                            display_height / image.height as f64,
+                        );
+                        cr.set_source_surface(&surface, 0.0, 0.0).ok();
+                        cr.paint().ok();
+                        cr.restore().ok();
+                    }
+                }
+            }
+
             // Only draw cursor if not scrolled up (offset == 0) and cursor is visible (for blink)
             let cursor_is_visible = *cursor_visible_for_draw.borrow();
             let (cursor_blink_enabled, _blink_rate) = crate::app::config_manager()

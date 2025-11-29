@@ -2,6 +2,10 @@
 //!
 //! Provides VT100/xterm compatible terminal emulation with modern features.
 
+use crate::images::{
+    ImageFormat, ImageId, ImagePlacement, ImageStore, InlineImage, KittyAction, KittyParser,
+    SixelParser,
+};
 use vte::{Params, Parser, Perform};
 
 /// Terminal dimensions
@@ -32,6 +36,8 @@ pub enum TerminalEvent {
     CursorMoved { row: usize, col: usize },
     /// Screen content changed
     Redraw,
+    /// Inline image added/changed
+    ImageChanged { id: ImageId },
 }
 
 /// Clipboard actions from terminal
@@ -103,6 +109,14 @@ const ANSI_COLORS: [[u8; 4]; 16] = [
     [247, 241, 232, 255], // 15: Bright White
 ];
 
+/// DCS sequence type being received
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DcsMode {
+    None,
+    Sixel,
+    Kitty,
+}
+
 /// Terminal state (separate from parser to avoid borrow issues)
 struct TerminalState {
     /// Terminal grid (rows of cells)
@@ -125,6 +139,16 @@ struct TerminalState {
     current_fg: [u8; 4],
     /// Current background color
     current_bg: [u8; 4],
+    /// Inline image storage
+    image_store: ImageStore,
+    /// Current DCS mode
+    dcs_mode: DcsMode,
+    /// DCS data buffer
+    dcs_buffer: Vec<u8>,
+    /// Sixel parser
+    sixel_parser: SixelParser,
+    /// Kitty graphics parser
+    kitty_parser: KittyParser,
 }
 
 impl TerminalState {
@@ -141,6 +165,11 @@ impl TerminalState {
             current_attrs: CellAttributes::default(),
             current_fg: DEFAULT_FG,
             current_bg: DEFAULT_BG,
+            image_store: ImageStore::new(),
+            dcs_mode: DcsMode::None,
+            dcs_buffer: Vec::new(),
+            sixel_parser: SixelParser::new(),
+            kitty_parser: KittyParser::new(),
         }
     }
 
@@ -319,9 +348,85 @@ impl Perform for TerminalState {
         }
     }
 
-    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {}
-    fn put(&mut self, _byte: u8) {}
-    fn unhook(&mut self) {}
+    fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
+        // DCS sequences:
+        // - Sixel: ESC P <params> q <data> ESC \
+        // - Kitty: ESC _ G <data> ESC \  (APC, but often routed through DCS)
+        self.dcs_buffer.clear();
+
+        // Check for Sixel (final char 'q')
+        if c == 'q' {
+            self.dcs_mode = DcsMode::Sixel;
+            // Store params for Sixel
+            for param in params.iter() {
+                for (i, &p) in param.iter().enumerate() {
+                    if i > 0 {
+                        self.dcs_buffer.push(b';');
+                    }
+                    self.dcs_buffer.extend(format!("{}", p).as_bytes());
+                }
+            }
+            self.dcs_buffer.push(b'q');
+            tracing::debug!("Starting Sixel sequence");
+        } else if !intermediates.is_empty() && intermediates[0] == b'+' && c == 'q' {
+            // DECRQSS - ignore
+            self.dcs_mode = DcsMode::None;
+        } else {
+            self.dcs_mode = DcsMode::None;
+        }
+    }
+
+    fn put(&mut self, byte: u8) {
+        if self.dcs_mode != DcsMode::None {
+            self.dcs_buffer.push(byte);
+        }
+    }
+
+    fn unhook(&mut self) {
+        match self.dcs_mode {
+            DcsMode::Sixel => {
+                // Parse the complete Sixel data
+                if let Some(sixel_image) = self.sixel_parser.parse(&self.dcs_buffer) {
+                    let id = self.image_store.next_id();
+                    let image = InlineImage {
+                        id,
+                        data: sixel_image.data,
+                        width: sixel_image.width,
+                        height: sixel_image.height,
+                        cell_width: 0, // Auto-calculate
+                        cell_height: 0,
+                        x_offset: 0,
+                        y_offset: 0,
+                        z_index: 0,
+                    };
+
+                    // Calculate cell dimensions (assuming ~10x20 pixels per cell)
+                    let cell_width = ((sixel_image.width + 9) / 10) as usize;
+                    let cell_height = ((sixel_image.height + 19) / 20) as usize;
+
+                    self.image_store.add_image(image);
+                    self.image_store.add_placement(ImagePlacement {
+                        image_id: id,
+                        row: self.cursor.0,
+                        col: self.cursor.1,
+                        width_cells: cell_width.max(1),
+                        height_cells: cell_height.max(1),
+                        visible: true,
+                    });
+
+                    self.pending_events.push(TerminalEvent::ImageChanged { id });
+                    tracing::info!("Sixel image added: {}x{} pixels at ({}, {})",
+                        sixel_image.width, sixel_image.height, self.cursor.0, self.cursor.1);
+                }
+            }
+            DcsMode::Kitty => {
+                // Kitty is handled via APC/osc_dispatch
+            }
+            DcsMode::None => {}
+        }
+        self.dcs_mode = DcsMode::None;
+        self.dcs_buffer.clear();
+    }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
         if params.len() >= 2 {
@@ -547,6 +652,26 @@ impl Terminal {
         while self.state.scrollback.len() > self.state.max_scrollback {
             self.state.scrollback.remove(0);
         }
+    }
+
+    /// Get access to inline image store
+    pub fn image_store(&self) -> &ImageStore {
+        &self.state.image_store
+    }
+
+    /// Get mutable access to inline image store
+    pub fn image_store_mut(&mut self) -> &mut ImageStore {
+        &mut self.state.image_store
+    }
+
+    /// Get image placements at a specific cell position
+    pub fn images_at(&self, row: usize, col: usize) -> Vec<&ImagePlacement> {
+        self.state.image_store.placements_at(row, col)
+    }
+
+    /// Get an image by ID
+    pub fn get_image(&self, id: ImageId) -> Option<&InlineImage> {
+        self.state.image_store.get_image(id)
     }
 }
 

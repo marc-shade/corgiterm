@@ -46,6 +46,7 @@
 
 ### 🖥️ Terminal Features
 - **True Color** - Full 24-bit RGB color support (16 million colors)
+- **Inline Images** - Display images directly in terminal output (Sixel/Kitty protocol)
 - **Text Attributes** - Bold, dim, italic, underline, strikethrough, inverse
 - **Scrollback Buffer** - 10,000 lines of history with mouse wheel scroll
 - **URL Detection** - Automatic URL highlighting with Ctrl+click to open
@@ -215,7 +216,6 @@ cargo fmt --all
 
 Features planned for future releases:
 
-- [ ] **Inline Images** - Display images directly in terminal output (Sixel/Kitty protocol)
 - [ ] **macOS/Windows Support** - Cross-platform builds
 
 ## Privacy Promise
