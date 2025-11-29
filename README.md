@@ -36,6 +36,8 @@
 - **Split Panes** - Horizontal and vertical terminal splitting
 - **Snippets Library** - Save and reuse common commands with categories
 - **Theme Creator** - Visual theme builder with live preview and contrast checking
+- **ASCII Art Generator** - Create ASCII art from images or text with live preview
+- **SSH Manager** - Visual connection management with saved hosts and config import
 - **Command Learning** - Learns your patterns and suggests next commands
 - **User Preferences** - Detects your tool preferences (e.g., `exa` over `ls`)
 - **Plugin System** - WASM and Lua extensibility
@@ -196,11 +198,9 @@ cargo fmt --all
 
 Features planned for future releases:
 
-- [ ] **ASCII Art Generator** - Create ASCII art from images or text
 - [ ] **Flatpak Package** - Easy installation on any Linux distro
 - [ ] **Inline Images** - Display images directly in terminal output (Sixel/Kitty protocol)
 - [ ] **macOS/Windows Support** - Cross-platform builds
-- [ ] **SSH Manager** - Visual connection management with saved hosts
 - [ ] **Broadcast Mode** - Type in multiple terminals simultaneously
 
 ## Privacy Promise
