@@ -3,12 +3,14 @@
 //! A comprehensive theme editor that allows users to create custom color schemes
 //! with real-time preview of how the theme looks in practice.
 
-use gtk4::prelude::*;
-use gtk4::{Window, ColorButton, Label, Box, Orientation, ScrolledWindow, TextView};
-use libadwaita::prelude::*;
 use corgiterm_config::themes::Theme;
-use std::rc::Rc;
+use gtk4::prelude::*;
+use gtk4::{
+    Box, ColorDialog, ColorDialogButton, Label, Orientation, ScrolledWindow, TextView, Window,
+};
+use libadwaita::prelude::*;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Color utility to convert between formats
 fn hex_to_rgba(hex: &str) -> gtk4::gdk::RGBA {
@@ -76,6 +78,7 @@ impl ThemeEditor {
         }
     }
 
+    #[allow(dead_code)]
     fn from_theme(theme: Theme) -> Self {
         Self {
             theme: Rc::new(RefCell::new(theme)),
@@ -175,11 +178,10 @@ fn create_color_row(
     css_provider: &Rc<RefCell<gtk4::CssProvider>>,
     contrast_label: &Rc<RefCell<Label>>,
 ) -> libadwaita::ActionRow {
-    let row = libadwaita::ActionRow::builder()
-        .title(label)
-        .build();
+    let row = libadwaita::ActionRow::builder().title(label).build();
 
-    let color_button = ColorButton::new();
+    let color_dialog = ColorDialog::new();
+    let color_button = ColorDialogButton::new(Some(color_dialog));
     color_button.set_rgba(&hex_to_rgba(initial_color));
     color_button.set_valign(gtk4::Align::Center);
 
@@ -212,8 +214,7 @@ fn create_color_row(
                 font-size: 11pt;
                 padding: 8px;
             }}",
-            &theme.colors.background,
-            &theme.colors.foreground,
+            &theme.colors.background, &theme.colors.foreground,
         );
         css_provider_clone.borrow().load_from_string(&css);
 
@@ -228,7 +229,9 @@ fn create_color_row(
         } else {
             "⚠️ Below recommended (consider adjusting)"
         };
-        contrast_label_clone.borrow().set_text(&format!("Contrast Ratio: {:.2}:1 - {}", ratio, status));
+        contrast_label_clone
+            .borrow()
+            .set_text(&format!("Contrast Ratio: {:.2}:1 - {}", ratio, status));
     });
 
     row.add_suffix(&hex_label);
@@ -237,9 +240,7 @@ fn create_color_row(
 }
 
 /// Update the live preview with current theme
-fn update_preview(buffer: &gtk4::TextBuffer, editor: &ThemeEditor) {
-    let theme = editor.get_theme();
-
+fn update_preview(buffer: &gtk4::TextBuffer, _editor: &ThemeEditor) {
     // Create sample terminal content
     let preview_text = r#"user@corgiterm:~/projects/corgiterm$ ls -la
 total 128
@@ -264,7 +265,14 @@ user@corgiterm:~/projects/corgiterm$ █"#;
 }
 
 /// Create the live preview panel
-fn create_preview_panel(editor: &ThemeEditor) -> (Box, gtk4::TextBuffer, Rc<RefCell<gtk4::CssProvider>>, Rc<RefCell<Label>>) {
+fn create_preview_panel(
+    editor: &ThemeEditor,
+) -> (
+    Box,
+    gtk4::TextBuffer,
+    Rc<RefCell<gtk4::CssProvider>>,
+    Rc<RefCell<Label>>,
+) {
     let panel = Box::new(Orientation::Vertical, 12);
     panel.set_margin_start(12);
     panel.set_margin_end(12);
@@ -311,12 +319,13 @@ fn create_preview_panel(editor: &ThemeEditor) -> (Box, gtk4::TextBuffer, Rc<RefC
             font-size: 11pt;
             padding: 8px;
         }}",
-        &theme.colors.background,
-        &theme.colors.foreground,
+        &theme.colors.background, &theme.colors.foreground,
     );
     css_provider.load_from_string(&css);
 
-    text_view.style_context().add_provider(
+    // Apply CSS to the display (GTK4.10+ way)
+    gtk4::style_context_add_provider_for_display(
+        &text_view.display(),
         &css_provider,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
@@ -343,7 +352,12 @@ fn create_preview_panel(editor: &ThemeEditor) -> (Box, gtk4::TextBuffer, Rc<RefC
     contrast_label.set_text(&format!("Contrast Ratio: {:.2}:1 - {}", ratio, status));
     panel.append(&contrast_label);
 
-    (panel, buffer, Rc::new(RefCell::new(css_provider)), Rc::new(RefCell::new(contrast_label)))
+    (
+        panel,
+        buffer,
+        Rc::new(RefCell::new(css_provider)),
+        Rc::new(RefCell::new(contrast_label)),
+    )
 }
 
 /// Show the Theme Creator dialog
@@ -424,7 +438,8 @@ pub fn show_theme_creator<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     editor_box.append(&meta_page);
 
     // Create preview panel early so we can pass its components to color rows
-    let (right_panel, preview_buffer, css_provider, contrast_label_rc) = create_preview_panel(&editor);
+    let (right_panel, preview_buffer, css_provider, contrast_label_rc) =
+        create_preview_panel(&editor);
 
     // Background & Foreground colors
     let bg_fg_group = libadwaita::PreferencesGroup::builder()
@@ -617,9 +632,7 @@ pub fn show_theme_creator<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     toolbar.add_css_class("toolbar");
 
     // Load preset button
-    let preset_btn = gtk4::MenuButton::builder()
-        .label("Load Preset")
-        .build();
+    let preset_btn = gtk4::MenuButton::builder().label("Load Preset").build();
 
     let preset_menu = gtk4::gio::Menu::new();
     preset_menu.append(Some("Corgi Dark"), Some("theme.preset.corgi-dark"));
@@ -686,12 +699,18 @@ fn export_theme<W: IsA<gtk4::Widget>>(parent: &W, editor: &ThemeEditor) {
 
     let file_dialog = gtk4::FileDialog::builder()
         .title("Export Theme")
-        .initial_name(format!("{}.toml", theme.name.to_lowercase().replace(' ', "-")))
+        .initial_name(format!(
+            "{}.toml",
+            theme.name.to_lowercase().replace(' ', "-")
+        ))
         .build();
 
     let editor_clone = editor.clone();
     file_dialog.save(
-        parent.root().and_then(|r| r.downcast::<Window>().ok()).as_ref(),
+        parent
+            .root()
+            .and_then(|r| r.downcast::<Window>().ok())
+            .as_ref(),
         None::<&gtk4::gio::Cancellable>,
         move |result| {
             if let Ok(file) = result {
@@ -712,13 +731,14 @@ fn export_theme<W: IsA<gtk4::Widget>>(parent: &W, editor: &ThemeEditor) {
 
 /// Import theme from TOML file
 fn import_theme<W: IsA<gtk4::Widget>>(parent: &W, editor: &ThemeEditor) {
-    let file_dialog = gtk4::FileDialog::builder()
-        .title("Import Theme")
-        .build();
+    let file_dialog = gtk4::FileDialog::builder().title("Import Theme").build();
 
     let editor_clone = editor.clone();
     file_dialog.open(
-        parent.root().and_then(|r| r.downcast::<Window>().ok()).as_ref(),
+        parent
+            .root()
+            .and_then(|r| r.downcast::<Window>().ok())
+            .as_ref(),
         None::<&gtk4::gio::Cancellable>,
         move |result| {
             if let Ok(file) = result {

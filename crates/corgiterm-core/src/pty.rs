@@ -63,7 +63,12 @@ impl Pty {
     ///
     /// If `working_dir` is provided, the shell will start in that directory.
     /// If `term` is provided, it will be set as the TERM environment variable.
-    pub fn spawn(shell: Option<&str>, size: PtySize, working_dir: Option<&std::path::Path>, term: Option<&str>) -> Result<Self> {
+    pub fn spawn(
+        shell: Option<&str>,
+        size: PtySize,
+        working_dir: Option<&std::path::Path>,
+        term: Option<&str>,
+    ) -> Result<Self> {
         let shell = shell
             .map(String::from)
             .or_else(|| std::env::var("SHELL").ok())

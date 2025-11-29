@@ -1,11 +1,11 @@
 //! Snippets library UI for saving and reusing common commands
 
-use gtk4::prelude::*;
-use gtk4::{Orientation, SelectionMode};
-use libadwaita::prelude::*;
 use corgiterm_config::{Snippet, SnippetsManager};
-use std::sync::Arc;
+use gtk4::prelude::*;
+use gtk4::{DropDown, Orientation, SelectionMode, StringList};
+use libadwaita::prelude::*;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Global snippets manager (initialized by app)
 static SNIPPETS: std::sync::OnceLock<Arc<RwLock<SnippetsManager>>> = std::sync::OnceLock::new();
@@ -21,10 +21,8 @@ pub fn get_snippets() -> Option<Arc<RwLock<SnippetsManager>>> {
 }
 
 /// Show the snippets library dialog
-pub fn show_snippets_dialog<W, F>(
-    parent: &W,
-    on_insert: F,
-) where
+pub fn show_snippets_dialog<W, F>(parent: &W, on_insert: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn(String) + 'static + Clone,
 {
@@ -66,11 +64,9 @@ pub fn show_snippets_dialog<W, F>(
     sort_label.add_css_class("dim-label");
     sort_box.append(&sort_label);
 
-    let sort_combo = gtk4::ComboBoxText::new();
-    sort_combo.append(Some("name"), "Name");
-    sort_combo.append(Some("usage"), "Most Used");
-    sort_combo.append(Some("recent"), "Recently Used");
-    sort_combo.set_active_id(Some("name"));
+    let sort_list = StringList::new(&["Name", "Most Used", "Recently Used"]);
+    let sort_combo = DropDown::new(Some(sort_list), None::<gtk4::Expression>);
+    sort_combo.set_selected(0);
     sort_box.append(&sort_combo);
 
     main_box.append(&sort_box);
@@ -158,8 +154,13 @@ pub fn show_snippets_dialog<W, F>(
         let sort_combo = sort_combo.clone();
         search_entry.connect_search_changed(move |entry| {
             let query = entry.text();
-            let sort_by = sort_combo.active_id().unwrap_or_else(|| "name".into());
-            populate(&query, &sort_by);
+            let sort_by = match sort_combo.selected() {
+                0 => "name",
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            populate(&query, sort_by);
         });
     }
 
@@ -167,16 +168,21 @@ pub fn show_snippets_dialog<W, F>(
     {
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
-        sort_combo.connect_changed(move |combo| {
+        sort_combo.connect_selected_notify(move |dropdown| {
             let query = search_entry.text();
-            let sort_by = combo.active_id().unwrap_or_else(|| "name".into());
-            populate(&query, &sort_by);
+            let sort_by = match dropdown.selected() {
+                0 => "name",
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            populate(&query, sort_by);
         });
     }
 
     // Connect add button
     {
-        let dialog_ref = dialog.clone();
+        let _dialog_ref = dialog.clone();
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
         let sort_combo = sort_combo.clone();
@@ -191,17 +197,28 @@ pub fn show_snippets_dialog<W, F>(
                 if let Ok(window) = root.downcast::<gtk4::Window>() {
                     show_snippet_editor_dialog(&window, None, move || {
                         let query = search_entry_for_callback.text();
-                        let sort_by = sort_combo_for_callback
-                            .active_id()
-                            .unwrap_or_else(|| "name".into());
-                        populate_for_callback(&query, &sort_by);
+                        let sort_by = match sort_combo_for_callback.selected() {
+                            0 => "name",
+                            1 => "usage",
+                            2 => "recent",
+                            _ => "name",
+                        };
+                        populate_for_callback(&query, sort_by);
                     });
                 }
             }
         });
     }
 
-    dialog.set_child(Some(&main_box));
+    // Create header bar (includes close button on right by default)
+    let header = libadwaita::HeaderBar::new();
+
+    // Create toolbar view to wrap content with header
+    let toolbar_view = libadwaita::ToolbarView::new();
+    toolbar_view.add_top_bar(&header);
+    toolbar_view.set_content(Some(&main_box));
+
+    dialog.set_child(Some(&toolbar_view));
     dialog.present(Some(parent));
 
     // Focus search entry
@@ -277,7 +294,7 @@ where
 
     {
         let snippet = snippet.clone();
-        let parent_dialog_for_edit = parent_dialog.clone();
+        let _parent_dialog_for_edit = parent_dialog.clone();
 
         edit_btn.connect_clicked(move |btn| {
             if let Some(root) = btn.root() {
@@ -317,16 +334,17 @@ where
 }
 
 /// Show snippet editor dialog (for creating or editing)
-fn show_snippet_editor_dialog<W, F>(
-    parent: &W,
-    existing_snippet: Option<Snippet>,
-    on_save: F,
-) where
+fn show_snippet_editor_dialog<W, F>(parent: &W, existing_snippet: Option<Snippet>, on_save: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn() + 'static,
 {
     let is_edit = existing_snippet.is_some();
-    let title = if is_edit { "Edit Snippet" } else { "New Snippet" };
+    let title = if is_edit {
+        "Edit Snippet"
+    } else {
+        "New Snippet"
+    };
 
     let dialog = libadwaita::Dialog::builder()
         .title(title)
@@ -340,21 +358,13 @@ fn show_snippet_editor_dialog<W, F>(
     main_box.set_margin_end(24);
 
     // Form fields
-    let name_row = libadwaita::EntryRow::builder()
-        .title("Name")
-        .build();
+    let name_row = libadwaita::EntryRow::builder().title("Name").build();
 
-    let command_row = libadwaita::EntryRow::builder()
-        .title("Command")
-        .build();
+    let command_row = libadwaita::EntryRow::builder().title("Command").build();
 
-    let desc_row = libadwaita::EntryRow::builder()
-        .title("Description")
-        .build();
+    let desc_row = libadwaita::EntryRow::builder().title("Description").build();
 
-    let tags_row = libadwaita::EntryRow::builder()
-        .title("Tags")
-        .build();
+    let tags_row = libadwaita::EntryRow::builder().title("Tags").build();
     // Note: set_subtitle is not available for EntryRow, use a label instead
     // tags_row.set_subtitle("Comma-separated tags for organization");
 
@@ -453,7 +463,15 @@ fn show_snippet_editor_dialog<W, F>(
 
     main_box.append(&button_box);
 
-    dialog.set_child(Some(&main_box));
+    // Create header bar (includes close button on right by default)
+    let header = libadwaita::HeaderBar::new();
+
+    // Create toolbar view to wrap content with header
+    let toolbar_view = libadwaita::ToolbarView::new();
+    toolbar_view.add_top_bar(&header);
+    toolbar_view.set_content(Some(&main_box));
+
+    dialog.set_child(Some(&toolbar_view));
     dialog.present(Some(parent));
 
     // Focus name field
@@ -461,11 +479,8 @@ fn show_snippet_editor_dialog<W, F>(
 }
 
 /// Show delete confirmation dialog
-fn show_delete_confirmation<W>(
-    parent: &W,
-    snippet_name: &str,
-    snippet_id: &str,
-) where
+fn show_delete_confirmation<W>(parent: &W, snippet_name: &str, snippet_id: &str)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
 {
     let dialog = libadwaita::AlertDialog::builder()
@@ -503,10 +518,8 @@ fn show_delete_confirmation<W>(
 }
 
 /// Show quick insert dialog (Ctrl+Shift+P style)
-pub fn show_quick_insert_dialog<W, F>(
-    parent: &W,
-    on_insert: F,
-) where
+pub fn show_quick_insert_dialog<W, F>(parent: &W, on_insert: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn(String) + 'static + Clone,
 {
@@ -546,8 +559,8 @@ pub fn show_quick_insert_dialog<W, F>(
     // Populate function
     let populate = {
         let list_box = list_box.clone();
-        let on_insert = on_insert.clone();
-        let dialog_ref = dialog.clone();
+        let _on_insert = on_insert.clone();
+        let _dialog_ref = dialog.clone();
 
         move |query: &str| {
             // Clear existing
@@ -682,7 +695,15 @@ pub fn show_quick_insert_dialog<W, F>(
     });
     search_entry.add_controller(key_controller);
 
-    dialog.set_child(Some(&main_box));
+    // Create header bar (includes close button on right by default)
+    let header = libadwaita::HeaderBar::new();
+
+    // Create toolbar view to wrap content with header
+    let toolbar_view = libadwaita::ToolbarView::new();
+    toolbar_view.add_top_bar(&header);
+    toolbar_view.set_content(Some(&main_box));
+
+    dialog.set_child(Some(&toolbar_view));
     dialog.present(Some(parent));
 
     // Focus search

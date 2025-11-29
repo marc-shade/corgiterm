@@ -224,10 +224,7 @@ impl OutputHistory {
 
     /// Get output at a specific time ("Time-Travel")
     pub fn at_time(&self, time: DateTime<Utc>) -> Vec<&OutputChunk> {
-        self.chunks
-            .iter()
-            .filter(|c| c.timestamp <= time)
-            .collect()
+        self.chunks.iter().filter(|c| c.timestamp <= time).collect()
     }
 }
 

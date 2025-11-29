@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- CorgiTerm App Icon - NES-style Corgi Mascot "Pixel" -->
+
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1e1e2e"/>
+
+  <!-- Terminal screen background -->
+  <rect x="24" y="36" width="80" height="56" rx="4" fill="#313244"/>
+  <rect x="28" y="40" width="72" height="48" rx="2" fill="#11111b"/>
+
+  <!-- Terminal prompt lines -->
+  <rect x="32" y="46" width="24" height="3" fill="#a6e3a1"/>
+  <rect x="58" y="46" width="36" height="3" fill="#cdd6f4"/>
+  <rect x="32" y="54" width="16" height="3" fill="#a6e3a1"/>
+  <rect x="50" y="54" width="28" height="3" fill="#cdd6f4"/>
+  <rect x="32" y="62" width="24" height="3" fill="#a6e3a1"/>
+  <rect x="58" y="62" width="20" height="3" fill="#89b4fa"/>
+
+  <!-- Cursor blink -->
+  <rect x="32" y="70" width="8" height="3" fill="#f5c2e7"/>
+  <rect x="42" y="70" width="6" height="10" fill="#cdd6f4">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Corgi face - positioned at bottom right -->
+  <g transform="translate(68, 68)">
+    <!-- Corgi head base (cream/tan) -->
+    <ellipse cx="24" cy="20" rx="22" ry="18" fill="#fab387"/>
+
+    <!-- Corgi ears -->
+    <path d="M6 8 L2 -8 L14 4 Z" fill="#fab387"/>
+    <path d="M42 8 L46 -8 L34 4 Z" fill="#fab387"/>
+    <path d="M7 6 L4 -4 L12 4 Z" fill="#f9e2af"/>
+    <path d="M41 6 L44 -4 L36 4 Z" fill="#f9e2af"/>
+
+    <!-- White face marking -->
+    <ellipse cx="24" cy="24" rx="12" ry="14" fill="#f5e0dc"/>
+
+    <!-- Eyes -->
+    <circle cx="17" cy="18" r="4" fill="#1e1e2e"/>
+    <circle cx="31" cy="18" r="4" fill="#1e1e2e"/>
+    <circle cx="18" cy="17" r="1.5" fill="#ffffff"/>
+    <circle cx="32" cy="17" r="1.5" fill="#ffffff"/>
+
+    <!-- Nose -->
+    <ellipse cx="24" cy="26" rx="4" ry="3" fill="#1e1e2e"/>
+    <ellipse cx="24" cy="25" rx="1.5" ry="1" fill="#6c7086"/>
+
+    <!-- Mouth -->
+    <path d="M20 30 Q24 34 28 30" stroke="#1e1e2e" stroke-width="1.5" fill="none"/>
+
+    <!-- Tongue (small peek) -->
+    <ellipse cx="24" cy="32" rx="3" ry="2" fill="#f38ba8"/>
+
+    <!-- Blush marks -->
+    <ellipse cx="12" cy="24" rx="3" ry="2" fill="#f5c2e7" opacity="0.5"/>
+    <ellipse cx="36" cy="24" rx="3" ry="2" fill="#f5c2e7" opacity="0.5"/>
+  </g>
+
+  <!-- Accent ring -->
+  <circle cx="64" cy="64" r="60" fill="none" stroke="#cba6f7" stroke-width="3"/>
+</svg>

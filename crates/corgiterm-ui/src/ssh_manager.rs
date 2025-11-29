@@ -7,15 +7,18 @@
 //! - Add/Edit/Delete hosts
 
 use gtk4::prelude::*;
-use gtk4::{Box, Button, FileDialog, Label, ListBox, Orientation, ScrolledWindow, SearchEntry, SelectionMode};
+use gtk4::{
+    Box, Button, FileDialog, Label, ListBox, Orientation, ScrolledWindow, SearchEntry,
+    SelectionMode,
+};
 use libadwaita::prelude::*;
-use libadwaita::{ActionRow, Dialog, EntryRow, PreferencesGroup};
+use libadwaita::{ActionRow, Dialog, EntryRow, HeaderBar, PreferencesGroup, ToolbarView};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use corgiterm_config::SshHost;
 use crate::dialogs::get_config;
+use corgiterm_config::SshHost;
 
 /// SSH Manager widget
 pub struct SshManager {
@@ -27,7 +30,7 @@ pub struct SshManager {
 
 impl SshManager {
     /// Create a new SSH Manager
-    pub fn new(parent: &impl IsA<gtk4::Widget>) -> Self {
+    pub fn new(_parent: &impl IsA<gtk4::Widget>) -> Self {
         let dialog = Dialog::builder()
             .title("SSH Connection Manager")
             .content_width(700)
@@ -75,7 +78,15 @@ impl SshManager {
         scrolled.set_child(Some(&hosts_list));
         main_box.append(&scrolled);
 
-        dialog.set_child(Some(&main_box));
+        // Create header bar (includes close button on right by default)
+        let header = HeaderBar::new();
+
+        // Create toolbar view to wrap content with header
+        let toolbar_view = ToolbarView::new();
+        toolbar_view.add_top_bar(&header);
+        toolbar_view.set_content(Some(&main_box));
+
+        dialog.set_child(Some(&toolbar_view));
 
         // Load hosts from config
         let all_hosts = Rc::new(RefCell::new(Vec::new()));
@@ -103,7 +114,12 @@ impl SshManager {
         let hosts_list_for_add = hosts_list.clone();
         let all_hosts_for_add = all_hosts.clone();
         add_btn.connect_clicked(move |_| {
-            Self::show_host_editor(&dialog_for_add, None, &hosts_list_for_add, &all_hosts_for_add);
+            Self::show_host_editor(
+                &dialog_for_add,
+                None,
+                &hosts_list_for_add,
+                &all_hosts_for_add,
+            );
         });
 
         // Connect import button
@@ -111,7 +127,11 @@ impl SshManager {
         let hosts_list_for_import = hosts_list.clone();
         let all_hosts_for_import = all_hosts.clone();
         import_btn.connect_clicked(move |_| {
-            Self::import_from_ssh_config(&dialog_for_import, &hosts_list_for_import, &all_hosts_for_import);
+            Self::import_from_ssh_config(
+                &dialog_for_import,
+                &hosts_list_for_import,
+                &all_hosts_for_import,
+            );
         });
 
         // Initial populate
@@ -145,8 +165,15 @@ impl SshManager {
                 query.is_empty()
                     || host.name.to_lowercase().contains(&query_lower)
                     || host.hostname.to_lowercase().contains(&query_lower)
-                    || host.username.as_ref().map(|u| u.to_lowercase().contains(&query_lower)).unwrap_or(false)
-                    || host.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                    || host
+                        .username
+                        .as_ref()
+                        .map(|u| u.to_lowercase().contains(&query_lower))
+                        .unwrap_or(false)
+                    || host
+                        .tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .cloned()
             .collect();
@@ -166,7 +193,11 @@ impl SshManager {
     }
 
     /// Create a row for an SSH host
-    fn create_host_row(host: &SshHost, hosts_list: &ListBox, all_hosts: &Rc<RefCell<Vec<SshHost>>>) -> ActionRow {
+    fn create_host_row(
+        host: &SshHost,
+        hosts_list: &ListBox,
+        all_hosts: &Rc<RefCell<Vec<SshHost>>>,
+    ) -> ActionRow {
         let row = ActionRow::builder()
             .title(&host.name)
             .subtitle(&host.display_string())
@@ -206,14 +237,19 @@ impl SshManager {
         edit_btn.connect_clicked(move |btn| {
             // Get the main SSH manager dialog - we need to traverse up to find it
             // For now, we'll create a new dialog context
-            if let Some(root) = btn.root() {
+            if let Some(_root) = btn.root() {
                 // Try to get an adw::Dialog from the widget hierarchy
                 // Since we can't downcast Root to Dialog directly, we'll use a workaround
                 // by finding the parent dialog widget
                 let mut current = btn.clone().upcast::<gtk4::Widget>();
                 loop {
                     if let Ok(dlg) = current.clone().downcast::<Dialog>() {
-                        Self::show_host_editor(&dlg, Some(&host_for_edit), &hosts_list_for_edit, &all_hosts_for_edit);
+                        Self::show_host_editor(
+                            &dlg,
+                            Some(&host_for_edit),
+                            &hosts_list_for_edit,
+                            &all_hosts_for_edit,
+                        );
                         break;
                     }
                     if let Some(parent) = current.parent() {
@@ -236,7 +272,11 @@ impl SshManager {
         let hosts_list_for_delete = hosts_list.clone();
         let all_hosts_for_delete = all_hosts.clone();
         delete_btn.connect_clicked(move |_| {
-            Self::delete_host(&host_for_delete, &hosts_list_for_delete, &all_hosts_for_delete);
+            Self::delete_host(
+                &host_for_delete,
+                &hosts_list_for_delete,
+                &all_hosts_for_delete,
+            );
         });
 
         row
@@ -244,24 +284,30 @@ impl SshManager {
 
     /// Connect to an SSH host
     fn connect_to_host(host: &SshHost) {
-        tracing::info!("Connecting to SSH host: {} ({})", host.name, host.display_string());
+        tracing::info!(
+            "Connecting to SSH host: {} ({})",
+            host.name,
+            host.display_string()
+        );
 
         // Get the terminal tabs instance and create new tab
         if let Some(app) = gtk4::gio::Application::default() {
             if let Ok(gtk_app) = app.downcast::<gtk4::Application>() {
-            if let Some(window) = gtk_app.active_window() {
-                // Build SSH command
-                let ssh_cmd = host.build_command();
-                let cmd_string = ssh_cmd.join(" ");
+                if let Some(window) = gtk_app.active_window() {
+                    // Build SSH command
+                    let ssh_cmd = host.build_command();
+                    let cmd_string = ssh_cmd.join(" ");
 
-                // Create new terminal tab with SSH command
-                // This will be handled by the tab bar integration
-                tracing::info!("SSH command: {}", cmd_string);
+                    // Create new terminal tab with SSH command
+                    // This will be handled by the tab bar integration
+                    tracing::info!("SSH command: {}", cmd_string);
 
-                // For now, we'll trigger this via a custom action
-                // The actual terminal spawning will be handled by the window/tab_bar
-                window.activate_action("win.ssh-connect", Some(&cmd_string.to_variant())).ok();
-            }
+                    // For now, we'll trigger this via a custom action
+                    // The actual terminal spawning will be handled by the window/tab_bar
+                    window
+                        .activate_action("win.ssh-connect", Some(&cmd_string.to_variant()))
+                        .ok();
+                }
             }
         }
     }
@@ -274,7 +320,11 @@ impl SshManager {
         all_hosts: &Rc<RefCell<Vec<SshHost>>>,
     ) {
         let editor_dialog = Dialog::builder()
-            .title(if host.is_some() { "Edit SSH Host" } else { "Add SSH Host" })
+            .title(if host.is_some() {
+                "Edit SSH Host"
+            } else {
+                "Add SSH Host"
+            })
             .content_width(500)
             .build();
 
@@ -323,7 +373,9 @@ impl SshManager {
         prefs_group.add(&username_entry);
 
         // Identity file field
-        let identity_text = host.and_then(|h| h.identity_file.as_ref().map(|p| p.display().to_string())).unwrap_or_default();
+        let identity_text = host
+            .and_then(|h| h.identity_file.as_ref().map(|p| p.display().to_string()))
+            .unwrap_or_default();
         let identity_entry = EntryRow::builder()
             .title("Identity File (Private Key)")
             .text(&identity_text)
@@ -335,7 +387,7 @@ impl SshManager {
         identity_entry.add_suffix(&browse_btn);
 
         let identity_entry_for_browse = identity_entry.clone();
-        let editor_dialog_for_browse = editor_dialog.clone();
+        let _editor_dialog_for_browse = editor_dialog.clone();
         browse_btn.connect_clicked(move |btn| {
             let file_dialog = FileDialog::builder()
                 .title("Select Identity File")
@@ -365,10 +417,7 @@ impl SshManager {
 
         // Tags field
         let tags_text = host.map(|h| h.tags.join(", ")).unwrap_or_default();
-        let tags_entry = EntryRow::builder()
-            .title("Tags")
-            .text(&tags_text)
-            .build();
+        let tags_entry = EntryRow::builder().title("Tags").text(&tags_text).build();
         tags_entry.add_suffix(&Label::new(Some("Comma-separated")));
         prefs_group.add(&tags_entry);
 
@@ -412,8 +461,16 @@ impl SshManager {
                 name,
                 hostname,
                 port: port_row.value() as u16,
-                username: if username.is_empty() { None } else { Some(username.to_string()) },
-                identity_file: if identity_text.is_empty() { None } else { Some(PathBuf::from(identity_text.as_str())) },
+                username: if username.is_empty() {
+                    None
+                } else {
+                    Some(username.to_string())
+                },
+                identity_file: if identity_text.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(identity_text.as_str()))
+                },
                 options: Vec::new(),
                 tags: tags_text
                     .split(',')
@@ -479,7 +536,11 @@ impl SshManager {
     }
 
     /// Import hosts from ~/.ssh/config
-    fn import_from_ssh_config(parent: &Dialog, hosts_list: &ListBox, all_hosts: &Rc<RefCell<Vec<SshHost>>>) {
+    fn import_from_ssh_config(
+        _parent: &Dialog,
+        hosts_list: &ListBox,
+        all_hosts: &Rc<RefCell<Vec<SshHost>>>,
+    ) {
         let ssh_config_path = dirs::home_dir()
             .map(|h| h.join(".ssh/config"))
             .unwrap_or_else(|| PathBuf::from("~/.ssh/config"));

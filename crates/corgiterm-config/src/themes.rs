@@ -393,9 +393,9 @@ impl ThemeManager {
 
     /// Get current theme
     pub fn current(&self) -> &Theme {
-        self.themes.get(&self.current).unwrap_or_else(|| {
-            self.themes.values().next().expect("No themes available")
-        })
+        self.themes
+            .get(&self.current)
+            .unwrap_or_else(|| self.themes.values().next().expect("No themes available"))
     }
 
     /// Set current theme by name

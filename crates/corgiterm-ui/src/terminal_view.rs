@@ -1,23 +1,26 @@
 //! Terminal rendering view with PTY integration
 
-use gtk4::prelude::*;
-use gtk4::glib;
-use gtk4::{Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion, EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label, Orientation, PopoverMenu, Revealer, RevealerTransitionType, Scrollbar};
 use gtk4::gio::{Menu, SimpleAction};
-use std::cell::RefCell;
-use std::rc::Rc;
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::{
+    Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion,
+    EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label,
+    Orientation, PopoverMenu, Revealer, RevealerTransitionType, Scrollbar,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use corgiterm_core::{Pty, PtySize, Terminal, TerminalSize, terminal::Cell};
-use std::path::Path;
 use crate::app::config_manager;
 use corgiterm_config::themes::ThemeManager;
+use corgiterm_core::{terminal::Cell, Pty, PtySize, Terminal, TerminalSize};
+use std::path::Path;
 
 /// URL regex pattern
-static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap()
-});
+static URL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap());
 
 /// Detected URL with position info
 #[derive(Debug, Clone)]
@@ -55,23 +58,23 @@ struct Selection {
 /// Default ANSI colors (fallback if theme not loaded)
 const DEFAULT_COLORS: [(f64, f64, f64); 16] = [
     // Standard colors 0-7
-    (0.118, 0.106, 0.086),  // 0: Black (background)
-    (0.800, 0.341, 0.322),  // 1: Red
-    (0.573, 0.706, 0.447),  // 2: Green
-    (0.898, 0.659, 0.294),  // 3: Yellow
-    (0.467, 0.573, 0.702),  // 4: Blue
-    (0.694, 0.494, 0.627),  // 5: Magenta
-    (0.529, 0.675, 0.686),  // 6: Cyan
-    (0.910, 0.859, 0.769),  // 7: White (foreground)
+    (0.118, 0.106, 0.086), // 0: Black (background)
+    (0.800, 0.341, 0.322), // 1: Red
+    (0.573, 0.706, 0.447), // 2: Green
+    (0.898, 0.659, 0.294), // 3: Yellow
+    (0.467, 0.573, 0.702), // 4: Blue
+    (0.694, 0.494, 0.627), // 5: Magenta
+    (0.529, 0.675, 0.686), // 6: Cyan
+    (0.910, 0.859, 0.769), // 7: White (foreground)
     // Bright colors 8-15
-    (0.392, 0.373, 0.345),  // 8: Bright Black
-    (0.898, 0.498, 0.467),  // 9: Bright Red
-    (0.714, 0.820, 0.596),  // 10: Bright Green
-    (0.949, 0.792, 0.478),  // 11: Bright Yellow
-    (0.627, 0.718, 0.831),  // 12: Bright Blue
-    (0.824, 0.651, 0.776),  // 13: Bright Magenta
-    (0.671, 0.808, 0.816),  // 14: Bright Cyan
-    (0.969, 0.945, 0.910),  // 15: Bright White
+    (0.392, 0.373, 0.345), // 8: Bright Black
+    (0.898, 0.498, 0.467), // 9: Bright Red
+    (0.714, 0.820, 0.596), // 10: Bright Green
+    (0.949, 0.792, 0.478), // 11: Bright Yellow
+    (0.627, 0.718, 0.831), // 12: Bright Blue
+    (0.824, 0.651, 0.776), // 13: Bright Magenta
+    (0.671, 0.808, 0.816), // 14: Bright Cyan
+    (0.969, 0.945, 0.910), // 15: Bright White
 ];
 
 /// Convert hex color string to RGB tuple
@@ -96,22 +99,22 @@ fn load_theme_colors() -> [(f64, f64, f64); 16] {
             // Index 0 = background, Index 7 = foreground (used for default colors)
             // Other indices = ANSI colors
             return [
-                hex_to_rgb(&colors.background),    // 0: Background
-                hex_to_rgb(&colors.red),           // 1: Red
-                hex_to_rgb(&colors.green),         // 2: Green
-                hex_to_rgb(&colors.yellow),        // 3: Yellow
-                hex_to_rgb(&colors.blue),          // 4: Blue
-                hex_to_rgb(&colors.magenta),       // 5: Magenta
-                hex_to_rgb(&colors.cyan),          // 6: Cyan
-                hex_to_rgb(&colors.foreground),    // 7: Foreground
-                hex_to_rgb(&colors.bright_black),  // 8: Bright Black
-                hex_to_rgb(&colors.bright_red),    // 9: Bright Red
-                hex_to_rgb(&colors.bright_green),  // 10: Bright Green
-                hex_to_rgb(&colors.bright_yellow), // 11: Bright Yellow
-                hex_to_rgb(&colors.bright_blue),   // 12: Bright Blue
-                hex_to_rgb(&colors.bright_magenta),// 13: Bright Magenta
-                hex_to_rgb(&colors.bright_cyan),   // 14: Bright Cyan
-                hex_to_rgb(&colors.bright_white),  // 15: Bright White
+                hex_to_rgb(&colors.background),     // 0: Background
+                hex_to_rgb(&colors.red),            // 1: Red
+                hex_to_rgb(&colors.green),          // 2: Green
+                hex_to_rgb(&colors.yellow),         // 3: Yellow
+                hex_to_rgb(&colors.blue),           // 4: Blue
+                hex_to_rgb(&colors.magenta),        // 5: Magenta
+                hex_to_rgb(&colors.cyan),           // 6: Cyan
+                hex_to_rgb(&colors.foreground),     // 7: Foreground
+                hex_to_rgb(&colors.bright_black),   // 8: Bright Black
+                hex_to_rgb(&colors.bright_red),     // 9: Bright Red
+                hex_to_rgb(&colors.bright_green),   // 10: Bright Green
+                hex_to_rgb(&colors.bright_yellow),  // 11: Bright Yellow
+                hex_to_rgb(&colors.bright_blue),    // 12: Bright Blue
+                hex_to_rgb(&colors.bright_magenta), // 13: Bright Magenta
+                hex_to_rgb(&colors.bright_cyan),    // 14: Bright Cyan
+                hex_to_rgb(&colors.bright_white),   // 15: Bright White
             ];
         }
     }
@@ -192,7 +195,12 @@ impl TerminalView {
                 let config = cm.read().config();
                 (config.general.shell.clone(), config.terminal.term.clone())
             })
-            .unwrap_or_else(|| (std::env::var("SHELL").unwrap_or("/bin/bash".to_string()), "xterm-256color".to_string()));
+            .unwrap_or_else(|| {
+                (
+                    std::env::var("SHELL").unwrap_or("/bin/bash".to_string()),
+                    "xterm-256color".to_string(),
+                )
+            });
         let pty = Rc::new(RefCell::new(None));
         {
             match Pty::spawn(Some(&shell), PtySize::default(), working_dir, Some(&term)) {
@@ -264,19 +272,24 @@ impl TerminalView {
             let pango_context = area.pango_context();
 
             // Configure font from config or use default
-            let (font_family, font_size) = if let Some(config_manager) = crate::app::config_manager() {
-                let config = config_manager.read().config();
-                (config.appearance.font_family.clone(), config.appearance.font_size)
-            } else {
-                ("Source Code Pro".to_string(), 11.0)
-            };
+            let (font_family, font_size) =
+                if let Some(config_manager) = crate::app::config_manager() {
+                    let config = config_manager.read().config();
+                    (
+                        config.appearance.font_family.clone(),
+                        config.appearance.font_size,
+                    )
+                } else {
+                    ("Source Code Pro".to_string(), 11.0)
+                };
             let font_string = format!("{} {}", font_family, font_size as u32);
             let font_desc = pango::FontDescription::from_string(&font_string);
 
             // Get font metrics for cell sizing
             let metrics = pango_context.metrics(Some(&font_desc), None);
             let cell_w = (metrics.approximate_char_width() as f64 / pango::SCALE as f64).ceil();
-            let cell_h = ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64).ceil();
+            let cell_h =
+                ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64).ceil();
             let ascent = metrics.ascent() as f64 / pango::SCALE as f64;
 
             // Store cell dimensions for resize calculations
@@ -300,7 +313,12 @@ impl TerminalView {
             cr.set_source_rgb(fg_r, fg_g, fg_b);
 
             // Helper to draw a cell
-            let draw_cell = |cr: &cairo::Context, layout: &pango::Layout, cell: &Cell, x: f64, y: f64, font_desc: &pango::FontDescription| {
+            let draw_cell = |cr: &cairo::Context,
+                             layout: &pango::Layout,
+                             cell: &Cell,
+                             x: f64,
+                             y: f64,
+                             font_desc: &pango::FontDescription| {
                 // Handle inverse and hidden attributes
                 let cell_fg = if cell.attrs.inverse {
                     cell.bg // Swap fg/bg for inverse
@@ -334,7 +352,11 @@ impl TerminalView {
 
                     // Apply color modifiers
                     if cell.attrs.bold {
-                        cr.set_source_rgb((r * 1.2).min(1.0), (g * 1.2).min(1.0), (b * 1.2).min(1.0));
+                        cr.set_source_rgb(
+                            (r * 1.2).min(1.0),
+                            (g * 1.2).min(1.0),
+                            (b * 1.2).min(1.0),
+                        );
                     } else if cell.attrs.dim {
                         cr.set_source_rgb(r * 0.6, g * 0.6, b * 0.6);
                     } else {
@@ -391,9 +413,16 @@ impl TerminalView {
             let mut urls = Vec::new();
             for (row_idx, row) in grid.iter().enumerate() {
                 // Build line text
-                let line_text: String = row.iter().map(|c| {
-                    if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
-                }).collect();
+                let line_text: String = row
+                    .iter()
+                    .map(|c| {
+                        if c.content.is_empty() {
+                            ' '
+                        } else {
+                            c.content.chars().next().unwrap_or(' ')
+                        }
+                    })
+                    .collect();
 
                 // Find URLs in this line
                 for mat in URL_REGEX.find_iter(&line_text) {
@@ -476,8 +505,13 @@ impl TerminalView {
 
                         // Check if this cell is part of a search match
                         if source == "grid" && search.active {
-                            for (match_idx, (match_row, match_start, match_end)) in search.matches.iter().enumerate() {
-                                if actual_row == *match_row && col_idx >= *match_start && col_idx < *match_end {
+                            for (match_idx, (match_row, match_start, match_end)) in
+                                search.matches.iter().enumerate()
+                            {
+                                if actual_row == *match_row
+                                    && col_idx >= *match_start
+                                    && col_idx < *match_end
+                                {
                                     // Different color for current match vs other matches
                                     if match_idx == search.current_match {
                                         // Current match: bright orange/yellow
@@ -497,12 +531,12 @@ impl TerminalView {
                         let is_url_hovered = if source == "grid" {
                             if let Some((hover_row, hover_col)) = hover {
                                 urls.iter().any(|url| {
-                                    url.row == actual_row &&
-                                    col_idx >= url.start_col &&
-                                    col_idx <= url.end_col &&
-                                    hover_row == url.row &&
-                                    hover_col >= url.start_col &&
-                                    hover_col <= url.end_col
+                                    url.row == actual_row
+                                        && col_idx >= url.start_col
+                                        && col_idx <= url.end_col
+                                        && hover_row == url.row
+                                        && hover_col >= url.start_col
+                                        && hover_col <= url.end_col
                                 })
                             } else {
                                 false
@@ -531,7 +565,10 @@ impl TerminalView {
             let (cursor_blink_enabled, _blink_rate) = crate::app::config_manager()
                 .map(|cm| {
                     let config = cm.read().config();
-                    (config.appearance.cursor_blink, config.appearance.cursor_blink_rate)
+                    (
+                        config.appearance.cursor_blink,
+                        config.appearance.cursor_blink_rate,
+                    )
                 })
                 .unwrap_or((true, 530));
 
@@ -565,7 +602,12 @@ impl TerminalView {
                     }
                     corgiterm_config::CursorStyle::Underline => {
                         let line_height = 2.0;
-                        cr.rectangle(cursor_x, cursor_y + cell_h - line_height, cell_w, line_height);
+                        cr.rectangle(
+                            cursor_x,
+                            cursor_y + cell_h - line_height,
+                            cell_w,
+                            line_height,
+                        );
                         cr.fill().ok();
                     }
                     corgiterm_config::CursorStyle::Bar => {
@@ -600,8 +642,10 @@ impl TerminalView {
         let pty_cols_for_resize = pty_cols.clone();
 
         // Track pending PTY resize (grid resizes immediately, PTY is debounced)
-        let pending_pty_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> = Rc::new(RefCell::new(None));
-        let pty_resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+        let pending_pty_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> =
+            Rc::new(RefCell::new(None));
+        let pty_resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> =
+            Rc::new(RefCell::new(None));
 
         drawing_area.connect_resize(move |_area, width, height| {
             let cell_w = *cell_width_for_resize.borrow();
@@ -663,14 +707,15 @@ impl TerminalView {
 
             // 300ms debounce - longer than Revealer animation (150ms) plus buffer
             // This ensures we only send ONE SIGWINCH after all animation resize events
-            let source_id = glib::timeout_add_local_once(
-                std::time::Duration::from_millis(300),
-                move || {
+            let source_id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
                     // Clear the timeout ID
                     *timeout_id_ref.borrow_mut() = None;
 
                     // Get the final pending dimensions
-                    if let Some((rows, cols, px_width, px_height)) = pending_for_timeout.borrow_mut().take() {
+                    if let Some((rows, cols, px_width, px_height)) =
+                        pending_for_timeout.borrow_mut().take()
+                    {
                         let current_pty_cols = *pty_cols_for_timeout.borrow();
                         let was_shrinking = cols <= current_pty_cols;
 
@@ -680,10 +725,7 @@ impl TerminalView {
 
                         // If we were shrinking, resize grid now (was deferred)
                         if was_shrinking {
-                            let new_terminal_size = TerminalSize {
-                                rows,
-                                cols,
-                            };
+                            let new_terminal_size = TerminalSize { rows, cols };
                             term_for_timeout.borrow_mut().resize(new_terminal_size);
                         }
 
@@ -706,8 +748,7 @@ impl TerminalView {
                         // Queue redraw after resize
                         drawing_area_for_timeout.queue_draw();
                     }
-                },
-            );
+                });
 
             *pty_resize_timeout_id.borrow_mut() = Some(source_id);
         });
@@ -922,16 +963,15 @@ impl TerminalView {
 
                     // Find URL at this position
                     let urls = detected_urls_for_click.borrow();
-                    if let Some(url) = urls.iter().find(|u| {
-                        u.row == row && col >= u.start_col && col <= u.end_col
-                    }) {
+                    if let Some(url) = urls
+                        .iter()
+                        .find(|u| u.row == row && col >= u.start_col && col <= u.end_col)
+                    {
                         // Open URL in default browser using xdg-open
                         tracing::info!("Opening URL: {}", url.url);
                         let url_str = url.url.clone();
                         std::thread::spawn(move || {
-                            let _ = std::process::Command::new("xdg-open")
-                                .arg(&url_str)
-                                .spawn();
+                            let _ = std::process::Command::new("xdg-open").arg(&url_str).spawn();
                         });
                     }
                 }
@@ -1041,7 +1081,11 @@ impl TerminalView {
                 while let Some(widget) = child {
                     if let Some(revealer) = widget.downcast_ref::<Revealer>() {
                         revealer.set_reveal_child(true);
-                        if let Some(entry) = revealer.child().and_then(|c| c.first_child()).and_then(|c| c.first_child()) {
+                        if let Some(entry) = revealer
+                            .child()
+                            .and_then(|c| c.first_child())
+                            .and_then(|c| c.first_child())
+                        {
                             if let Some(entry) = entry.downcast_ref::<Entry>() {
                                 entry.grab_focus();
                             }
@@ -1125,7 +1169,10 @@ impl TerminalView {
             let (blink_enabled, reduce_motion) = crate::app::config_manager()
                 .map(|cm| {
                     let config = cm.read().config();
-                    (config.appearance.cursor_blink, config.accessibility.reduce_motion)
+                    (
+                        config.appearance.cursor_blink,
+                        config.accessibility.reduce_motion,
+                    )
                 })
                 .unwrap_or((true, false));
 
@@ -1206,9 +1253,16 @@ impl TerminalView {
 
                 for (row_idx, row) in grid.iter().enumerate() {
                     // Build line text
-                    let line_text: String = row.iter().map(|c| {
-                        if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
-                    }).collect();
+                    let line_text: String = row
+                        .iter()
+                        .map(|c| {
+                            if c.content.is_empty() {
+                                ' '
+                            } else {
+                                c.content.chars().next().unwrap_or(' ')
+                            }
+                        })
+                        .collect();
 
                     // Find all matches in this line (case-insensitive)
                     let lower_line = line_text.to_lowercase();
@@ -1216,7 +1270,9 @@ impl TerminalView {
                     let mut start = 0;
                     while let Some(pos) = lower_line[start..].find(&lower_query) {
                         let actual_pos = start + pos;
-                        state.matches.push((row_idx, actual_pos, actual_pos + query.len()));
+                        state
+                            .matches
+                            .push((row_idx, actual_pos, actual_pos + query.len()));
                         start = actual_pos + 1;
                     }
                 }
@@ -1240,7 +1296,11 @@ impl TerminalView {
             let mut state = search_state_for_nav.borrow_mut();
             if !state.matches.is_empty() {
                 state.current_match = (state.current_match + 1) % state.matches.len();
-                match_label_for_nav.set_text(&format!("{}/{}", state.current_match + 1, state.matches.len()));
+                match_label_for_nav.set_text(&format!(
+                    "{}/{}",
+                    state.current_match + 1,
+                    state.matches.len()
+                ));
             }
             drop(state);
             drawing_area_for_nav.queue_draw();
@@ -1371,16 +1431,21 @@ impl TerminalView {
                 let term = terminal_for_copy_sel.borrow();
                 let grid = term.grid();
 
-                let (start_row, start_col, end_row, end_col) = normalize_selection(
-                    sel.start.0, sel.start.1, sel.end.0, sel.end.1
-                );
+                let (start_row, start_col, end_row, end_col) =
+                    normalize_selection(sel.start.0, sel.start.1, sel.end.0, sel.end.1);
 
                 let mut text = String::new();
                 for row in start_row..=end_row {
-                    if row >= grid.len() { break; }
+                    if row >= grid.len() {
+                        break;
+                    }
 
                     let col_start = if row == start_row { start_col } else { 0 };
-                    let col_end = if row == end_row { end_col + 1 } else { grid[row].len() };
+                    let col_end = if row == end_row {
+                        end_col + 1
+                    } else {
+                        grid[row].len()
+                    };
 
                     for col in col_start..col_end.min(grid[row].len()) {
                         text.push_str(&grid[row][col].content);
@@ -1434,7 +1499,9 @@ impl TerminalView {
     }
 
     /// Get the terminal event receiver for listening to title changes, bells, etc.
-    pub fn event_receiver(&self) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
+    pub fn event_receiver(
+        &self,
+    ) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
         self.event_rx.clone()
     }
 
@@ -1526,7 +1593,11 @@ impl TerminalView {
         let grid = terminal.grid();
 
         let mut lines = Vec::new();
-        let start = if grid.len() > max_lines { grid.len() - max_lines } else { 0 };
+        let start = if grid.len() > max_lines {
+            grid.len() - max_lines
+        } else {
+            0
+        };
 
         for row in grid.iter().skip(start).take(max_lines) {
             let mut line = String::new();
@@ -1557,7 +1628,12 @@ impl Default for TerminalView {
 }
 
 /// Normalize selection to ensure start is before end
-fn normalize_selection(start_row: usize, start_col: usize, end_row: usize, end_col: usize) -> (usize, usize, usize, usize) {
+fn normalize_selection(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> (usize, usize, usize, usize) {
     if start_row < end_row || (start_row == end_row && start_col <= end_col) {
         (start_row, start_col, end_row, end_col)
     } else {
@@ -1571,9 +1647,8 @@ fn is_cell_selected(row: usize, col: usize, sel: &Selection) -> bool {
         return false;
     }
 
-    let (start_row, start_col, end_row, end_col) = normalize_selection(
-        sel.start.0, sel.start.1, sel.end.0, sel.end.1
-    );
+    let (start_row, start_col, end_row, end_col) =
+        normalize_selection(sel.start.0, sel.start.1, sel.end.0, sel.end.1);
 
     if row < start_row || row > end_row {
         return false;

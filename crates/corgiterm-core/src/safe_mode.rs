@@ -157,8 +157,7 @@ impl SafeMode {
         for pattern in &self.dangerous_patterns {
             if pattern.pattern.is_match(command) {
                 // Only override if new risk is higher
-                if pattern.risk as u8 > preview.risk as u8 ||
-                   preview.risk == RiskLevel::Unknown {
+                if pattern.risk as u8 > preview.risk as u8 || preview.risk == RiskLevel::Unknown {
                     preview.risk = pattern.risk;
                 }
                 preview.explanation.push(pattern.explanation.to_string());
@@ -173,7 +172,9 @@ impl SafeMode {
             if command.starts_with(safe) {
                 preview.risk = RiskLevel::Safe;
                 preview.explanation.clear();
-                preview.explanation.push(format!("This is a safe, read-only command"));
+                preview
+                    .explanation
+                    .push(format!("This is a safe, read-only command"));
                 break;
             }
         }
@@ -191,9 +192,13 @@ impl SafeMode {
         }
 
         // Network commands
-        if command.contains("curl") || command.contains("wget") ||
-           command.contains("ssh") || command.contains("scp") ||
-           command.contains("npm") || command.contains("pip") {
+        if command.contains("curl")
+            || command.contains("wget")
+            || command.contains("ssh")
+            || command.contains("scp")
+            || command.contains("npm")
+            || command.contains("pip")
+        {
             preview.network_access = true;
         }
 
@@ -210,7 +215,8 @@ impl SafeMode {
             DangerPattern {
                 pattern: regex::Regex::new(r"rm\s+-rf?\s+/").unwrap(),
                 risk: RiskLevel::Danger,
-                explanation: "Recursively removes files from the root directory - EXTREMELY DANGEROUS",
+                explanation:
+                    "Recursively removes files from the root directory - EXTREMELY DANGEROUS",
                 undo_hint: None,
             },
             DangerPattern {
@@ -317,8 +323,11 @@ impl SafeMode {
         }
 
         // Install commands
-        if command.contains("install") || command.contains("apt") ||
-           command.contains("dnf") || command.contains("yum") {
+        if command.contains("install")
+            || command.contains("apt")
+            || command.contains("dnf")
+            || command.contains("yum")
+        {
             return RiskLevel::Caution;
         }
 
@@ -354,7 +363,11 @@ impl SafeMode {
                         }
                     }
                 }
-                if files.is_empty() { None } else { Some(files) }
+                if files.is_empty() {
+                    None
+                } else {
+                    Some(files)
+                }
             }
             _ => None,
         }
@@ -372,7 +385,11 @@ impl SafeMode {
                 }
             }
         }
-        if total > 0 { Some(total) } else { None }
+        if total > 0 {
+            Some(total)
+        } else {
+            None
+        }
     }
 
     fn suggest_alternatives(&self, command: &str) -> Vec<CommandAlternative> {

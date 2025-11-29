@@ -11,12 +11,15 @@
 //! 5. System defaults
 
 pub mod schema;
-pub mod themes;
 pub mod shortcuts;
+pub mod themes;
 
 use directories::ProjectDirs;
-use figment::{Figment, providers::{Format, Toml, Env}};
-use notify::{Watcher, RecursiveMode, Event, recommended_watcher};
+use figment::{
+    providers::{Env, Format, Toml},
+    Figment,
+};
+use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -387,6 +390,7 @@ pub struct ShortcutsConfig {
     pub toggle_ai: Option<String>,
     pub quick_switcher: Option<String>,
     pub ssh_manager: Option<String>,
+    pub emoji_picker: Option<String>,
     pub open_file: Option<String>,
 
     // Application
@@ -425,6 +429,7 @@ impl Default for ShortcutsConfig {
             toggle_ai: Some("Ctrl+Shift+A".to_string()),
             quick_switcher: Some("Ctrl+K".to_string()),
             ssh_manager: Some("Ctrl+S".to_string()),
+            emoji_picker: Some("Ctrl+Shift+E".to_string()),
             open_file: Some("Ctrl+Shift+O".to_string()),
 
             // Application
@@ -465,7 +470,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            default_provider: "auto".to_string(),  // Auto-detect best available provider
+            default_provider: "auto".to_string(), // Auto-detect best available provider
             claude: ClaudeConfig::default(),
             openai: OpenAiConfig::default(),
             gemini: GeminiConfig::default(),
@@ -581,9 +586,9 @@ pub struct LocalLlmConfig {
 impl Default for LocalLlmConfig {
     fn default() -> Self {
         Self {
-            enabled: true,  // Enable by default - auto-detects if Ollama is running
-            endpoint: "http://localhost:11434".to_string(),  // Standard Ollama port
-            model: "codellama".to_string(),  // Common model for command generation
+            enabled: true, // Enable by default - auto-detects if Ollama is running
+            endpoint: "http://localhost:11434".to_string(), // Standard Ollama port
+            model: "codellama".to_string(), // Common model for command generation
         }
     }
 }
@@ -807,7 +812,7 @@ impl Snippet {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs() as i64
+                .as_secs() as i64,
         );
     }
 }
@@ -866,7 +871,9 @@ impl SnippetsConfig {
                 s.name.to_lowercase().contains(&query_lower)
                     || s.description.to_lowercase().contains(&query_lower)
                     || s.command.to_lowercase().contains(&query_lower)
-                    || s.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                    || s.tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .collect()
     }
@@ -881,13 +888,11 @@ impl SnippetsConfig {
     /// Get snippets sorted by recency (most recently used first)
     pub fn by_recency(&self) -> Vec<&Snippet> {
         let mut sorted: Vec<&Snippet> = self.snippets.iter().collect();
-        sorted.sort_by(|a, b| {
-            match (b.last_used, a.last_used) {
-                (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => b.created_at.cmp(&a.created_at),
-            }
+        sorted.sort_by(|a, b| match (b.last_used, a.last_used) {
+            (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.created_at.cmp(&a.created_at),
         });
         sorted
     }

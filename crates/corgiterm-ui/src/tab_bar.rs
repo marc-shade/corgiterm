@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::document_view::DocumentView;
-use crate::split_pane::{SplitPane, SplitDirection};
+use crate::split_pane::{SplitDirection, SplitPane};
 
 /// Type of tab content
 pub enum TabContent {
@@ -86,9 +86,7 @@ impl TerminalTabs {
         tabs.add_terminal_tab("Terminal", None);
 
         // Connect drag-out handler (disabled for now)
-        tabs.tab_view.connect_create_window(move |_| {
-            None
-        });
+        tabs.tab_view.connect_create_window(move |_| None);
 
         tabs
     }
@@ -103,12 +101,16 @@ impl TerminalTabs {
         let widget = split_pane.widget().clone();
 
         // Store content (SplitPane wraps TerminalView internally)
-        self.contents.borrow_mut().push(TabContent::Terminal(split_pane));
+        self.contents
+            .borrow_mut()
+            .push(TabContent::Terminal(split_pane));
 
         // Add to tab view
         let page = self.tab_view.append(&widget);
         page.set_title(title);
-        page.set_icon(Some(&gtk4::gio::ThemedIcon::new("utilities-terminal-symbolic")));
+        page.set_icon(Some(&gtk4::gio::ThemedIcon::new(
+            "utilities-terminal-symbolic",
+        )));
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
@@ -130,7 +132,9 @@ impl TerminalTabs {
         let widget = document.widget().clone();
 
         // Store content
-        self.contents.borrow_mut().push(TabContent::Document(document));
+        self.contents
+            .borrow_mut()
+            .push(TabContent::Document(document));
 
         // Add to tab view
         let page = self.tab_view.append(&widget);
@@ -177,9 +181,9 @@ impl TerminalTabs {
 
     /// Get the content at the current tab position
     pub fn current_content(&self) -> Option<usize> {
-        self.tab_view.selected_page().map(|page| {
-            self.tab_view.page_position(&page) as usize
-        })
+        self.tab_view
+            .selected_page()
+            .map(|page| self.tab_view.page_position(&page) as usize)
     }
 
     /// Switch to the next tab (wraps around to first tab)

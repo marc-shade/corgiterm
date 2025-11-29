@@ -10,10 +10,10 @@
 //! - Add UI elements
 //! - Integrate with external services
 
+pub mod api;
 pub mod loader;
 pub mod lua_runtime;
 pub mod wasm_runtime;
-pub mod api;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

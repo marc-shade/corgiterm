@@ -8,7 +8,7 @@
 //! - User preferences (alternative commands)
 
 use crate::history::CommandEntry;
-use chrono::{DateTime, Utc, Timelike};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -159,8 +159,10 @@ impl CommandLearning {
     fn update_stats(&mut self, entry: &CommandEntry) {
         let base_command = extract_base_command(&entry.command);
 
-        let stats = self.stats.entry(base_command.clone()).or_insert_with(|| {
-            CommandStats {
+        let stats = self
+            .stats
+            .entry(base_command.clone())
+            .or_insert_with(|| CommandStats {
                 command: base_command.clone(),
                 total_count: 0,
                 success_count: 0,
@@ -169,8 +171,7 @@ impl CommandLearning {
                 directories: Vec::new(),
                 last_used: entry.timestamp,
                 frequency_score: 0.0,
-            }
-        });
+            });
 
         stats.total_count += 1;
 
@@ -200,8 +201,14 @@ impl CommandLearning {
         // Release the mutable borrow before accessing self.stats again
 
         // Now we can borrow self immutably
-        let max_count = self.stats.values().map(|s| s.total_count).max().unwrap_or(1);
-        let frequency_score = Self::calculate_frequency_score_static(total_count, last_used, max_count);
+        let max_count = self
+            .stats
+            .values()
+            .map(|s| s.total_count)
+            .max()
+            .unwrap_or(1);
+        let frequency_score =
+            Self::calculate_frequency_score_static(total_count, last_used, max_count);
 
         // Update the frequency score
         if let Some(stats) = self.stats.get_mut(&base_command) {
@@ -210,13 +217,23 @@ impl CommandLearning {
     }
 
     /// Calculate frequency score based on count and recency
+    #[allow(dead_code)]
     fn calculate_frequency_score(&self, stats: &CommandStats) -> f32 {
-        let max_count = self.stats.values().map(|s| s.total_count).max().unwrap_or(1);
+        let max_count = self
+            .stats
+            .values()
+            .map(|s| s.total_count)
+            .max()
+            .unwrap_or(1);
         Self::calculate_frequency_score_static(stats.total_count, stats.last_used, max_count)
     }
 
     /// Static version of frequency score calculation
-    fn calculate_frequency_score_static(total_count: usize, last_used: DateTime<Utc>, max_count: usize) -> f32 {
+    fn calculate_frequency_score_static(
+        total_count: usize,
+        last_used: DateTime<Utc>,
+        max_count: usize,
+    ) -> f32 {
         let recency_weight = 0.6;
         let count_weight = 0.4;
 
@@ -249,7 +266,8 @@ impl CommandLearning {
                 if let Some(pattern) = self.patterns.iter_mut().find(|p| p.sequence == sequence) {
                     pattern.frequency += 1;
                     pattern.last_seen = Utc::now();
-                    pattern.confidence = (pattern.frequency as f32 / self.recent_commands.len() as f32).min(1.0);
+                    pattern.confidence =
+                        (pattern.frequency as f32 / self.recent_commands.len() as f32).min(1.0);
                 } else if self.should_create_pattern(&sequence) {
                     // Create new pattern
                     let context = PatternContext {
@@ -273,7 +291,8 @@ impl CommandLearning {
         }
 
         // Prune low-confidence patterns
-        self.patterns.retain(|p| p.frequency >= self.min_pattern_frequency);
+        self.patterns
+            .retain(|p| p.frequency >= self.min_pattern_frequency);
     }
 
     /// Check if a sequence should become a pattern
@@ -317,7 +336,8 @@ impl CommandLearning {
 
     /// Get commands used in a specific directory
     pub fn directory_commands(&self, dir: &PathBuf, limit: usize) -> Vec<&CommandStats> {
-        let mut dir_stats: Vec<_> = self.stats
+        let mut dir_stats: Vec<_> = self
+            .stats
             .values()
             .filter(|s| s.directories.contains(dir))
             .collect();
@@ -332,9 +352,15 @@ impl CommandLearning {
         let base_current = extract_base_command(current);
 
         // Look for patterns starting with current command
-        let matching_patterns: Vec<_> = self.patterns
+        let matching_patterns: Vec<_> = self
+            .patterns
             .iter()
-            .filter(|p| p.sequence.first().map(|s| s == &base_current).unwrap_or(false))
+            .filter(|p| {
+                p.sequence
+                    .first()
+                    .map(|s| s == &base_current)
+                    .unwrap_or(false)
+            })
             .collect();
 
         if let Some(pattern) = matching_patterns.iter().max_by_key(|p| p.frequency) {
@@ -384,7 +410,8 @@ impl CommandLearning {
                     let preference_ratio = alt_count as f32 / total as f32;
 
                     // Update or create preference
-                    if let Some(pref) = self.preferences.iter_mut().find(|p| p.standard == standard) {
+                    if let Some(pref) = self.preferences.iter_mut().find(|p| p.standard == standard)
+                    {
                         pref.preferred = alt.to_string();
                         pref.preference_ratio = preference_ratio;
                     } else {

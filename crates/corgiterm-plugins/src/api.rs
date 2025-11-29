@@ -41,7 +41,11 @@ pub enum UiCommand {
     /// Show a notification
     Notify { title: String, message: String },
     /// Show a dialog
-    Dialog { title: String, content: String, buttons: Vec<String> },
+    Dialog {
+        title: String,
+        content: String,
+        buttons: Vec<String>,
+    },
     /// Add a status bar item
     StatusItem { id: String, text: String },
     /// Remove a status bar item

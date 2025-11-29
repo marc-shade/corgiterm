@@ -2,7 +2,7 @@
 //!
 //! Manages configurable keyboard shortcuts loaded from config.
 
-use corgiterm_config::shortcuts::{parse_shortcut, matches_shortcut, ParsedShortcut};
+use corgiterm_config::shortcuts::{matches_shortcut, parse_shortcut, ParsedShortcut};
 use corgiterm_config::ShortcutsConfig;
 use std::collections::HashMap;
 
@@ -38,6 +38,7 @@ pub enum ShortcutAction {
     ToggleAi,
     QuickSwitcher,
     SshManager,
+    EmojiPicker,
     OpenFile,
 
     // Application
@@ -215,6 +216,13 @@ impl KeyboardShortcuts {
                 tracing::warn!("Failed to parse shortcut 'ssh_manager': {}", s);
             }
         }
+        if let Some(ref s) = config.emoji_picker {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::EmojiPicker, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'emoji_picker': {}", s);
+            }
+        }
         if let Some(ref s) = config.open_file {
             if let Ok(parsed) = parse_shortcut(s) {
                 shortcuts.insert(ShortcutAction::OpenFile, parsed);
@@ -236,7 +244,12 @@ impl KeyboardShortcuts {
     }
 
     /// Check if a key event matches an action
-    pub fn matches(&self, action: ShortcutAction, key: gtk4::gdk::Key, modifiers: gtk4::gdk::ModifierType) -> bool {
+    pub fn matches(
+        &self,
+        action: ShortcutAction,
+        key: gtk4::gdk::Key,
+        modifiers: gtk4::gdk::ModifierType,
+    ) -> bool {
         if let Some(shortcut) = self.shortcuts.get(&action) {
             matches_shortcut(shortcut, key, modifiers)
         } else {

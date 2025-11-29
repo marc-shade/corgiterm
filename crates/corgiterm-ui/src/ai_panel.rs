@@ -6,12 +6,12 @@
 //! - Cline's Plan/Act modes (approval before execution)
 //! - GitHub Copilot's /slash commands
 
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, Label, Orientation, ScrolledWindow,
-    TextView, TextBuffer, Frame, Separator, Stack, StackSwitcher,
+    Box, Button, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack, StackSwitcher,
+    TextBuffer, TextView,
 };
-use gtk4::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -58,12 +58,13 @@ impl AiPanelMode {
 pub struct GeneratedCommand {
     pub command: String,
     pub explanation: Option<String>,
-    pub risk_level: String,  // safe, caution, danger
+    pub risk_level: String, // safe, caution, danger
     pub provider: String,
     pub latency_ms: u64,
 }
 
 /// AI assistant panel widget with mode-specific interfaces
+#[allow(dead_code)]
 pub struct AiPanel {
     container: Box,
     mode: Rc<RefCell<AiPanelMode>>,
@@ -100,8 +101,10 @@ impl AiPanel {
         let mode = Rc::new(RefCell::new(AiPanelMode::Chat));
         let is_processing = Rc::new(RefCell::new(false));
         let generated_command = Rc::new(RefCell::new(None));
-        let execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>> = Rc::new(RefCell::new(None));
-        let mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>> = Rc::new(RefCell::new(None));
+        let execute_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>> =
+            Rc::new(RefCell::new(None));
+        let mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>> =
+            Rc::new(RefCell::new(None));
 
         // Header
         let header = Box::new(Orientation::Horizontal, 8);
@@ -137,12 +140,17 @@ impl AiPanel {
         stack.add_titled(&chat_page, Some("chat"), "Chat");
 
         // === EXPLAIN MODE (like Copilot's /explain) ===
-        let (explain_page, explain_input, explain_result) = Self::build_explain_mode(is_processing.clone());
+        let (explain_page, explain_input, explain_result) =
+            Self::build_explain_mode(is_processing.clone());
         stack.add_titled(&explain_page, Some("explain"), "Explain");
 
         // === COMMAND MODE (like Warp's # trigger) ===
-        let (command_page, command_input, command_result_box) =
-            Self::build_command_mode(is_processing.clone(), generated_command.clone(), execute_callback.clone(), mode_switch_callback.clone());
+        let (command_page, command_input, command_result_box) = Self::build_command_mode(
+            is_processing.clone(),
+            generated_command.clone(),
+            execute_callback.clone(),
+            mode_switch_callback.clone(),
+        );
         stack.add_titled(&command_page, Some("command"), "Command");
 
         container.append(&stack);
@@ -236,7 +244,7 @@ impl AiPanel {
         // Result area (generated command + actions)
         let result_box = Box::new(Orientation::Vertical, 8);
         result_box.set_margins(8);
-        result_box.set_visible(false);  // Hidden until we have a result
+        result_box.set_visible(false); // Hidden until we have a result
 
         page.append(&result_box);
 
@@ -303,11 +311,18 @@ impl AiPanel {
                          Output ONLY the command, nothing else. No explanation, no markdown, just the raw command.";
 
             let messages = vec![
-                Message { role: Role::System, content: system.to_string() },
-                Message { role: Role::User, content: prompt.to_string() },
+                Message {
+                    role: Role::System,
+                    content: system.to_string(),
+                },
+                Message {
+                    role: Role::User,
+                    content: prompt.to_string(),
+                },
             ];
 
-            let (sender, receiver) = crossbeam_channel::unbounded::<Result<(String, String, u64), String>>();
+            let (sender, receiver) =
+                crossbeam_channel::unbounded::<Result<(String, String, u64), String>>();
 
             let ai_manager = am.clone();
             std::thread::spawn(move || {
@@ -374,7 +389,8 @@ impl AiPanel {
                                 cmd_box.append(&cmd_label);
 
                                 // Provider info
-                                let info = Label::new(Some(&format!("via {} ({}ms)", provider, latency)));
+                                let info =
+                                    Label::new(Some(&format!("via {} ({}ms)", provider, latency)));
                                 info.add_css_class("dim-label");
                                 info.add_css_class("caption");
                                 info.set_xalign(0.0);
@@ -448,9 +464,7 @@ impl AiPanel {
                         *is_processing.borrow_mut() = false;
                         glib::ControlFlow::Break
                     }
-                    Err(crossbeam_channel::TryRecvError::Empty) => {
-                        glib::ControlFlow::Continue
-                    }
+                    Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(crossbeam_channel::TryRecvError::Disconnected) => {
                         while let Some(child) = result_box.first_child() {
                             result_box.remove(&child);
@@ -539,19 +553,21 @@ impl AiPanel {
         (page, buffer, input)
     }
 
-    fn chat_response(
-        prompt: &str,
-        buffer: TextBuffer,
-        is_processing: Rc<RefCell<bool>>,
-    ) {
+    fn chat_response(prompt: &str, buffer: TextBuffer, is_processing: Rc<RefCell<bool>>) {
         if let Some(am) = ai_manager() {
             let system = "You are a helpful terminal assistant integrated into CorgiTerm. \
                          Help users with shell commands, scripting, and terminal usage. \
                          Be concise but thorough. Use code blocks for commands.";
 
             let messages = vec![
-                Message { role: Role::System, content: system.to_string() },
-                Message { role: Role::User, content: prompt.to_string() },
+                Message {
+                    role: Role::System,
+                    content: system.to_string(),
+                },
+                Message {
+                    role: Role::User,
+                    content: prompt.to_string(),
+                },
             ];
 
             let (sender, receiver) = crossbeam_channel::unbounded::<Result<String, String>>();
@@ -583,30 +599,28 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                match receiver.try_recv() {
-                    Ok(result) => {
-                        let mut iter = buffer.end_iter();
-                        match result {
-                            Ok(content) => {
-                                buffer.insert(&mut iter, &format!("Assistant: {}\n\n", content));
-                            }
-                            Err(error) => {
-                                buffer.insert(&mut iter, &format!("Error: {}\n\n", error));
-                            }
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || match receiver
+                .try_recv()
+            {
+                Ok(result) => {
+                    let mut iter = buffer.end_iter();
+                    match result {
+                        Ok(content) => {
+                            buffer.insert(&mut iter, &format!("Assistant: {}\n\n", content));
                         }
-                        *is_processing.borrow_mut() = false;
-                        glib::ControlFlow::Break
+                        Err(error) => {
+                            buffer.insert(&mut iter, &format!("Error: {}\n\n", error));
+                        }
                     }
-                    Err(crossbeam_channel::TryRecvError::Empty) => {
-                        glib::ControlFlow::Continue
-                    }
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                        let mut iter = buffer.end_iter();
-                        buffer.insert(&mut iter, "Error: Request failed\n\n");
-                        *is_processing.borrow_mut() = false;
-                        glib::ControlFlow::Break
-                    }
+                    *is_processing.borrow_mut() = false;
+                    glib::ControlFlow::Break
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    let mut iter = buffer.end_iter();
+                    buffer.insert(&mut iter, "Error: Request failed\n\n");
+                    *is_processing.borrow_mut() = false;
+                    glib::ControlFlow::Break
                 }
             });
         }
@@ -689,11 +703,7 @@ impl AiPanel {
         (page, input, result_buffer)
     }
 
-    fn explain_command(
-        command: &str,
-        buffer: TextBuffer,
-        is_processing: Rc<RefCell<bool>>,
-    ) {
+    fn explain_command(command: &str, buffer: TextBuffer, is_processing: Rc<RefCell<bool>>) {
         if let Some(am) = ai_manager() {
             let system = "You are a shell command expert. Explain the given command in detail:\n\
                          1. What does this command do overall?\n\
@@ -703,8 +713,14 @@ impl AiPanel {
                          Be thorough but clear for beginners.";
 
             let messages = vec![
-                Message { role: Role::System, content: system.to_string() },
-                Message { role: Role::User, content: format!("Explain this command: {}", command) },
+                Message {
+                    role: Role::System,
+                    content: system.to_string(),
+                },
+                Message {
+                    role: Role::User,
+                    content: format!("Explain this command: {}", command),
+                },
             ];
 
             let (sender, receiver) = crossbeam_channel::unbounded::<Result<String, String>>();
@@ -736,37 +752,35 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                match receiver.try_recv() {
-                    Ok(result) => {
-                        let start = buffer.start_iter();
-                        let end = buffer.end_iter();
-                        buffer.delete(&mut start.clone(), &mut end.clone());
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || match receiver
+                .try_recv()
+            {
+                Ok(result) => {
+                    let start = buffer.start_iter();
+                    let end = buffer.end_iter();
+                    buffer.delete(&mut start.clone(), &mut end.clone());
 
-                        let mut iter = buffer.end_iter();
-                        match result {
-                            Ok(explanation) => {
-                                buffer.insert(&mut iter, &explanation);
-                            }
-                            Err(error) => {
-                                buffer.insert(&mut iter, &format!("Error: {}", error));
-                            }
+                    let mut iter = buffer.end_iter();
+                    match result {
+                        Ok(explanation) => {
+                            buffer.insert(&mut iter, &explanation);
                         }
-                        *is_processing.borrow_mut() = false;
-                        glib::ControlFlow::Break
+                        Err(error) => {
+                            buffer.insert(&mut iter, &format!("Error: {}", error));
+                        }
                     }
-                    Err(crossbeam_channel::TryRecvError::Empty) => {
-                        glib::ControlFlow::Continue
-                    }
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                        let start = buffer.start_iter();
-                        let end = buffer.end_iter();
-                        buffer.delete(&mut start.clone(), &mut end.clone());
-                        let mut iter = buffer.end_iter();
-                        buffer.insert(&mut iter, "Request failed");
-                        *is_processing.borrow_mut() = false;
-                        glib::ControlFlow::Break
-                    }
+                    *is_processing.borrow_mut() = false;
+                    glib::ControlFlow::Break
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    let start = buffer.start_iter();
+                    let end = buffer.end_iter();
+                    buffer.delete(&mut start.clone(), &mut end.clone());
+                    let mut iter = buffer.end_iter();
+                    buffer.insert(&mut iter, "Request failed");
+                    *is_processing.borrow_mut() = false;
+                    glib::ControlFlow::Break
                 }
             });
         }
@@ -790,25 +804,34 @@ impl AiPanel {
     /// Add a message to the chat
     pub fn add_message(&self, role: &str, content: &str) {
         let mut end = self.chat_buffer.end_iter();
-        self.chat_buffer.insert(&mut end, &format!("{}: {}\n\n", role, content));
+        self.chat_buffer
+            .insert(&mut end, &format!("{}: {}\n\n", role, content));
     }
 
     /// Clear the chat history
     pub fn clear_chat(&self) {
         let start = self.chat_buffer.start_iter();
         let end = self.chat_buffer.end_iter();
-        self.chat_buffer.delete(&mut start.clone(), &mut end.clone());
+        self.chat_buffer
+            .delete(&mut start.clone(), &mut end.clone());
 
         let mut iter = self.chat_buffer.start_iter();
-        self.chat_buffer.insert(&mut iter, "Chat cleared. How can I help?\n\n");
+        self.chat_buffer
+            .insert(&mut iter, "Chat cleared. How can I help?\n\n");
     }
 
     /// Focus the input field for current mode
     pub fn focus_input(&self) {
         match *self.mode.borrow() {
-            AiPanelMode::Command => { self.command_input.grab_focus(); }
-            AiPanelMode::Chat => { self.chat_input.grab_focus(); }
-            AiPanelMode::Explain => { self.explain_input.grab_focus(); }
+            AiPanelMode::Command => {
+                self.command_input.grab_focus();
+            }
+            AiPanelMode::Chat => {
+                self.chat_input.grab_focus();
+            }
+            AiPanelMode::Explain => {
+                self.explain_input.grab_focus();
+            }
         }
     }
 
@@ -828,7 +851,10 @@ impl AiPanel {
 
     /// Get the last generated command (for execution)
     pub fn last_generated_command(&self) -> Option<String> {
-        self.generated_command.borrow().as_ref().map(|c| c.command.clone())
+        self.generated_command
+            .borrow()
+            .as_ref()
+            .map(|c| c.command.clone())
     }
 
     /// Set the callback for executing commands

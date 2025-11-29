@@ -547,12 +547,7 @@ impl AiProvider for OllamaProvider {
         };
 
         let url = format!("{}/api/generate", self.endpoint);
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(&request).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -668,7 +663,8 @@ impl AiProvider for ClaudeCliProvider {
         let content = if stdout.to_lowercase().contains("error")
             || stdout.to_lowercase().contains("credit balance")
             || stdout.to_lowercase().contains("rate limit")
-            || stdout.to_lowercase().contains("unauthorized") {
+            || stdout.to_lowercase().contains("unauthorized")
+        {
             return Err(AiError::ApiError(format!("claude CLI: {}", stdout)));
         } else {
             stdout
@@ -934,7 +930,8 @@ mod tests {
 
     #[test]
     fn test_ollama_provider_name() {
-        let provider = OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string());
+        let provider =
+            OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string());
         assert_eq!(provider.name(), "ollama");
     }
 

@@ -1,10 +1,19 @@
-# CorgiTerm 🐕
+<p align="center">
+  <img src="assets/icons/corgiterm.svg" alt="CorgiTerm Logo" width="128" height="128">
+</p>
 
-**CorgiTerm** is a next-generation, AI-powered terminal emulator that makes the command line accessible to everyone - from nervous beginners to power users who demand maximum control.
+<h1 align="center">CorgiTerm</h1>
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![GTK4](https://img.shields.io/badge/GTK-4.x-green.svg)](https://gtk.org/)
+<p align="center">
+  <strong>A next-generation, AI-powered terminal emulator</strong><br>
+  Making the command line accessible to everyone - from nervous beginners to power users who demand maximum control.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.75+-orange.svg" alt="Rust"></a>
+  <a href="https://gtk.org/"><img src="https://img.shields.io/badge/GTK-4.x-green.svg" alt="GTK4"></a>
+</p>
 
 ## Features
 
@@ -49,7 +58,7 @@
 sudo dnf install gtk4-devel libadwaita-devel
 
 # Build
-git clone https://github.com/corgiterm/corgiterm
+git clone https://github.com/marc-shade/corgiterm
 cd corgiterm
 cargo build --release
 
@@ -161,7 +170,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Clone
-git clone https://github.com/corgiterm/corgiterm
+git clone https://github.com/marc-shade/corgiterm
 cd corgiterm
 
 # Install dev dependencies
@@ -210,4 +219,7 @@ CorgiTerm is dual-licensed under MIT and Apache 2.0. See [LICENSE-MIT](LICENSE-M
 
 ---
 
-**Made with ❤️ by the CorgiTerm Team**
+<p align="center">
+  <strong>Made with ❤️ by Marc Shade and Claude Code</strong><br>
+  <sub>With moral support from Pixel the Corgi 🐕</sub>
+</p>

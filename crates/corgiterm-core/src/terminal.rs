@@ -85,22 +85,22 @@ pub struct CellAttributes {
 
 /// ANSI 16-color palette (Corgi Dark theme)
 const ANSI_COLORS: [[u8; 4]; 16] = [
-    [30, 27, 22, 255],      // 0: Black (background)
-    [204, 87, 82, 255],     // 1: Red
-    [146, 180, 114, 255],   // 2: Green
-    [229, 168, 75, 255],    // 3: Yellow
-    [119, 146, 179, 255],   // 4: Blue
-    [177, 126, 160, 255],   // 5: Magenta
-    [135, 172, 175, 255],   // 6: Cyan
-    [232, 219, 196, 255],   // 7: White (foreground)
-    [100, 95, 88, 255],     // 8: Bright Black
-    [229, 127, 119, 255],   // 9: Bright Red
-    [182, 209, 152, 255],   // 10: Bright Green
-    [242, 202, 122, 255],   // 11: Bright Yellow
-    [160, 183, 212, 255],   // 12: Bright Blue
-    [210, 166, 198, 255],   // 13: Bright Magenta
-    [171, 206, 208, 255],   // 14: Bright Cyan
-    [247, 241, 232, 255],   // 15: Bright White
+    [30, 27, 22, 255],    // 0: Black (background)
+    [204, 87, 82, 255],   // 1: Red
+    [146, 180, 114, 255], // 2: Green
+    [229, 168, 75, 255],  // 3: Yellow
+    [119, 146, 179, 255], // 4: Blue
+    [177, 126, 160, 255], // 5: Magenta
+    [135, 172, 175, 255], // 6: Cyan
+    [232, 219, 196, 255], // 7: White (foreground)
+    [100, 95, 88, 255],   // 8: Bright Black
+    [229, 127, 119, 255], // 9: Bright Red
+    [182, 209, 152, 255], // 10: Bright Green
+    [242, 202, 122, 255], // 11: Bright Yellow
+    [160, 183, 212, 255], // 12: Bright Blue
+    [210, 166, 198, 255], // 13: Bright Magenta
+    [171, 206, 208, 255], // 14: Bright Cyan
+    [247, 241, 232, 255], // 15: Bright White
 ];
 
 /// Terminal state (separate from parser to avoid borrow issues)
@@ -329,7 +329,8 @@ impl Perform for TerminalState {
                 b"0" | b"2" => {
                     if let Ok(title) = std::str::from_utf8(params[1]) {
                         self.title = title.to_string();
-                        self.pending_events.push(TerminalEvent::TitleChanged(title.to_string()));
+                        self.pending_events
+                            .push(TerminalEvent::TitleChanged(title.to_string()));
                     }
                 }
                 _ => {}
@@ -360,10 +361,7 @@ impl Perform for TerminalState {
             'H' | 'f' => {
                 let row = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
                 let col = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                self.cursor = (
-                    row.min(self.size.rows - 1),
-                    col.min(self.size.cols - 1),
-                );
+                self.cursor = (row.min(self.size.rows - 1), col.min(self.size.cols - 1));
             }
             'J' => {
                 let mode = params.first().copied().unwrap_or(0);

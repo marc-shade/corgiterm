@@ -5,8 +5,8 @@
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Orientation, Paned, Widget};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::terminal_view::TerminalView;
 
@@ -91,7 +91,8 @@ impl SplitPane {
         // Add root widget to container
         container.append(&root.borrow().widget());
 
-        let focused_pane: Rc<RefCell<Option<Rc<RefCell<PaneNode>>>>> = Rc::new(RefCell::new(Some(root.clone())));
+        let focused_pane: Rc<RefCell<Option<Rc<RefCell<PaneNode>>>>> =
+            Rc::new(RefCell::new(Some(root.clone())));
 
         let working_dir = Rc::new(RefCell::new(working_dir.map(|p| p.to_path_buf())));
 
@@ -143,11 +144,16 @@ impl SplitPane {
         // Take ownership of the old terminal
         let old_content = {
             let mut node_mut = node.borrow_mut();
-            std::mem::replace(&mut node_mut.content, PaneContent::Terminal(TerminalView::new()))
+            std::mem::replace(
+                &mut node_mut.content,
+                PaneContent::Terminal(TerminalView::new()),
+            )
         };
 
         // Create child1 from old content
-        let child1 = Rc::new(RefCell::new(PaneNode { content: old_content }));
+        let child1 = Rc::new(RefCell::new(PaneNode {
+            content: old_content,
+        }));
 
         // Set up the paned widget
         paned.set_start_child(Some(&child1.borrow().widget()));
@@ -207,7 +213,9 @@ impl SplitPane {
             }
 
             // Find parent and sibling
-            if let Some((parent, sibling, is_start_child)) = self.find_parent_and_sibling(&focused_node) {
+            if let Some((parent, sibling, is_start_child)) =
+                self.find_parent_and_sibling(&focused_node)
+            {
                 self.close_pane_with_parent(parent, sibling, is_start_child);
 
                 // Update all_panes cache
@@ -266,7 +274,10 @@ impl SplitPane {
         // Take the sibling's content and put it in the parent
         let sibling_content = {
             let mut sibling_mut = sibling.borrow_mut();
-            std::mem::replace(&mut sibling_mut.content, PaneContent::Terminal(TerminalView::new()))
+            std::mem::replace(
+                &mut sibling_mut.content,
+                PaneContent::Terminal(TerminalView::new()),
+            )
         };
 
         // Replace parent's content with sibling's content
@@ -321,7 +332,11 @@ impl SplitPane {
     }
 
     /// Recursively collect all terminal nodes
-    fn collect_terminals(&self, node: &Rc<RefCell<PaneNode>>, panes: &mut Vec<Rc<RefCell<PaneNode>>>) {
+    fn collect_terminals(
+        &self,
+        node: &Rc<RefCell<PaneNode>>,
+        panes: &mut Vec<Rc<RefCell<PaneNode>>>,
+    ) {
         match &node.borrow().content {
             PaneContent::Terminal(_) => {
                 panes.push(node.clone());

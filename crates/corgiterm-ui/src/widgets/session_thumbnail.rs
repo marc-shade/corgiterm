@@ -71,9 +71,15 @@ impl SessionThumbnail {
                     // Color code based on content
                     if line.starts_with('$') || line.starts_with('#') || line.starts_with('>') {
                         cr.set_source_rgb(0.573, 0.706, 0.447); // Green for prompts
-                    } else if line.contains("error") || line.contains("Error") || line.contains("ERROR") {
+                    } else if line.contains("error")
+                        || line.contains("Error")
+                        || line.contains("ERROR")
+                    {
                         cr.set_source_rgb(0.800, 0.341, 0.322); // Red for errors
-                    } else if line.contains("warning") || line.contains("Warning") || line.contains("WARN") {
+                    } else if line.contains("warning")
+                        || line.contains("Warning")
+                        || line.contains("WARN")
+                    {
                         cr.set_source_rgb(0.898, 0.659, 0.294); // Yellow for warnings
                     } else {
                         cr.set_source_rgb(0.7, 0.65, 0.58); // Light for normal text
