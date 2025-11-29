@@ -57,19 +57,51 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
         .title("Startup")
         .build();
 
+    // Get current startup settings from config
+    let (restore_sessions, show_welcome) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (config.general.restore_sessions, config.general.show_welcome)
+    } else {
+        (true, true)
+    };
+
     let restore_switch = libadwaita::SwitchRow::builder()
         .title("Restore Previous Session")
         .subtitle("Open windows and tabs from last time")
-        .active(true)
+        .active(restore_sessions)
         .build();
     startup_group.add(&restore_switch);
+
+    // Connect restore sessions toggle
+    restore_switch.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.general.restore_sessions = active;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Restore sessions {}", if active { "enabled" } else { "disabled" });
+        }
+    });
 
     let welcome_switch = libadwaita::SwitchRow::builder()
         .title("Show Welcome Screen")
         .subtitle("Display tips for new users")
-        .active(true)
+        .active(show_welcome)
         .build();
     startup_group.add(&welcome_switch);
+
+    // Connect welcome screen toggle
+    welcome_switch.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.general.show_welcome = active;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Welcome screen {}", if active { "enabled" } else { "disabled" });
+        }
+    });
 
     general_page.add(&startup_group);
     window.add(&general_page);
@@ -84,17 +116,39 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
         .title("Theme")
         .build();
 
+    // Get current theme from config
+    let current_theme = if let Some(config_manager) = get_config() {
+        config_manager.read().config().appearance.theme.clone()
+    } else {
+        "Corgi Dark".to_string()
+    };
+
     let theme_row = libadwaita::ComboRow::builder()
         .title("Color Theme")
         .subtitle("Choose your preferred color scheme")
         .build();
-    theme_row.set_model(Some(&gtk4::StringList::new(&[
-        "Corgi Dark",
-        "Corgi Light",
-        "Corgi Sunset",
-        "Pembroke",
-    ])));
+    let themes = ["Corgi Dark", "Corgi Light", "Corgi Sunset", "Pembroke"];
+    theme_row.set_model(Some(&gtk4::StringList::new(&themes)));
+
+    // Set current theme selection
+    if let Some(pos) = themes.iter().position(|&t| t == current_theme) {
+        theme_row.set_selected(pos as u32);
+    }
     theme_group.add(&theme_row);
+
+    // Connect theme change
+    theme_row.connect_selected_notify(move |row| {
+        let selected = row.selected() as usize;
+        if selected < themes.len() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.appearance.theme = themes[selected].to_string();
+                });
+                let _ = config_manager.read().save();
+                tracing::info!("Theme changed to: {}", themes[selected]);
+            }
+        }
+    });
 
     appearance_page.add(&theme_group);
 
@@ -171,13 +225,35 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
 
     let shell_group = libadwaita::PreferencesGroup::builder()
         .title("Shell")
+        .description("Configure your terminal shell")
         .build();
+
+    // Get current shell from config
+    let current_shell = if let Some(config_manager) = get_config() {
+        config_manager.read().config().general.shell.clone()
+    } else {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+    };
 
     let shell_row = libadwaita::EntryRow::builder()
         .title("Default Shell")
-        .text("/bin/bash")
+        .text(&current_shell)
         .build();
     shell_group.add(&shell_row);
+
+    // Connect shell change
+    shell_row.connect_changed(move |row| {
+        let shell = row.text().to_string();
+        if !shell.is_empty() {
+            if let Some(config_manager) = get_config() {
+                config_manager.read().update(|config| {
+                    config.general.shell = shell.clone();
+                });
+                let _ = config_manager.read().save();
+                tracing::info!("Shell changed to: {}", shell);
+            }
+        }
+    });
 
     terminal_page.add(&shell_group);
     window.add(&terminal_page);
@@ -193,18 +269,51 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
         .description("Configure AI-powered assistance")
         .build();
 
+    // Get current AI settings
+    let (ai_is_enabled, natural_lang_enabled) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (config.ai.enabled, config.ai.natural_language)
+    } else {
+        (true, true)
+    };
+
     let ai_enabled = libadwaita::SwitchRow::builder()
         .title("Enable AI Features")
-        .active(true)
+        .subtitle("Use AI to help with commands")
+        .active(ai_is_enabled)
         .build();
     ai_group.add(&ai_enabled);
+
+    // Connect AI enabled toggle
+    ai_enabled.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.enabled = active;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("AI features {}", if active { "enabled" } else { "disabled" });
+        }
+    });
 
     let natural_lang = libadwaita::SwitchRow::builder()
         .title("Natural Language Input")
         .subtitle("Type commands in plain English")
-        .active(true)
+        .active(natural_lang_enabled)
         .build();
     ai_group.add(&natural_lang);
+
+    // Connect natural language toggle
+    natural_lang.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.natural_language = active;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Natural language input {}", if active { "enabled" } else { "disabled" });
+        }
+    });
 
     ai_page.add(&ai_group);
     window.add(&ai_page);
@@ -220,12 +329,31 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
         .description("Preview commands before execution")
         .build();
 
+    // Get current safe mode settings
+    let safe_is_enabled = if let Some(config_manager) = get_config() {
+        config_manager.read().config().safe_mode.enabled
+    } else {
+        false
+    };
+
     let safe_enabled = libadwaita::SwitchRow::builder()
         .title("Enable Safe Mode")
         .subtitle("Show preview for dangerous commands")
-        .active(false)
+        .active(safe_is_enabled)
         .build();
     safe_group.add(&safe_enabled);
+
+    // Connect safe mode toggle
+    safe_enabled.connect_active_notify(move |row| {
+        let active = row.is_active();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.safe_mode.enabled = active;
+            });
+            let _ = config_manager.read().save();
+            tracing::info!("Safe mode {}", if active { "enabled" } else { "disabled" });
+        }
+    });
 
     safe_page.add(&safe_group);
     window.add(&safe_page);
