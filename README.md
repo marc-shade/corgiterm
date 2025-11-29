@@ -177,6 +177,18 @@ cargo test --workspace
 cargo fmt --all
 ```
 
+## Roadmap
+
+Features planned for future releases:
+
+- [ ] **ASCII Art Generator** - Create ASCII art from images or text
+- [ ] **Flatpak Package** - Easy installation on any Linux distro
+- [ ] **SSH Manager** - Visual connection management with saved hosts
+- [ ] **Split Panes** - Horizontal and vertical terminal splitting
+- [ ] **Snippets Library** - Save and reuse common commands
+- [ ] **AI Command History** - Learn from your usage patterns
+- [ ] **Theme Creator** - Visual theme builder with live preview
+
 ## Privacy Promise
 
 CorgiTerm respects your privacy:
