@@ -3,7 +3,6 @@
 use corgiterm_core::{CommandPreview, RiskLevel};
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Label, Orientation};
-use libadwaita::prelude::*;
 
 /// Safe Mode preview popup widget
 pub struct SafeModePreviewWidget {

@@ -2,7 +2,8 @@
 
 use gtk4::prelude::*;
 use gtk4::glib;
-use gtk4::{Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion, EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label, Orientation, Revealer, RevealerTransitionType, Scrollbar};
+use gtk4::{Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion, EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label, Orientation, PopoverMenu, Revealer, RevealerTransitionType, Scrollbar};
+use gtk4::gio::{Menu, SimpleAction};
 use std::cell::RefCell;
 use std::rc::Rc;
 use once_cell::sync::Lazy;
@@ -72,6 +73,7 @@ const COLORS: [(f64, f64, f64); 16] = [
 ];
 
 /// Terminal view widget with PTY
+#[allow(dead_code)]
 pub struct TerminalView {
     container: Box,
     drawing_area: DrawingArea,
@@ -92,6 +94,8 @@ pub struct TerminalView {
     detected_urls: Rc<RefCell<Vec<DetectedUrl>>>,
     /// Search state
     search_state: Rc<RefCell<SearchState>>,
+    /// Terminal event receiver
+    event_rx: Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>>,
 }
 
 impl TerminalView {
@@ -111,11 +115,12 @@ impl TerminalView {
         drawing_area.set_focusable(true);
 
         // Create terminal emulator
-        let (event_tx, _event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::unbounded();
         let terminal = Rc::new(RefCell::new(Terminal::new(
             TerminalSize { rows: 24, cols: 80 },
             event_tx,
         )));
+        let event_rx = Rc::new(event_rx);
 
         // Create PTY and spawn shell
         let pty = Rc::new(RefCell::new(None));
@@ -206,28 +211,39 @@ impl TerminalView {
             cr.set_source_rgb(fg_r, fg_g, fg_b);
 
             // Helper to draw a cell
-            let draw_cell = |cr: &cairo::Context, layout: &pango::Layout, cell: &Cell, x: f64, y: f64| {
-                // Draw cell background if not default
-                let cell_bg = cell.bg;
-                if cell_bg[0] != 30 || cell_bg[1] != 27 || cell_bg[2] != 22 {
+            let draw_cell = |cr: &cairo::Context, layout: &pango::Layout, cell: &Cell, x: f64, y: f64, font_desc: &pango::FontDescription| {
+                // Handle inverse and hidden attributes
+                let cell_fg = if cell.attrs.inverse {
+                    cell.bg // Swap fg/bg for inverse
+                } else {
+                    cell.fg
+                };
+                let cell_bg_draw = if cell.attrs.inverse {
+                    cell.fg // Swap fg/bg for inverse
+                } else {
+                    cell.bg
+                };
+
+                if cell_bg_draw[0] != 30 || cell_bg_draw[1] != 27 || cell_bg_draw[2] != 22 {
                     cr.set_source_rgba(
-                        cell_bg[0] as f64 / 255.0,
-                        cell_bg[1] as f64 / 255.0,
-                        cell_bg[2] as f64 / 255.0,
-                        cell_bg[3] as f64 / 255.0,
+                        cell_bg_draw[0] as f64 / 255.0,
+                        cell_bg_draw[1] as f64 / 255.0,
+                        cell_bg_draw[2] as f64 / 255.0,
+                        cell_bg_draw[3] as f64 / 255.0,
                     );
                     cr.rectangle(x, y, cell_w, cell_h);
                     cr.fill().ok();
                 }
 
-                if !cell.content.is_empty() {
-                    let fg = cell.fg;
+                if !cell.content.is_empty() && !cell.attrs.hidden {
+                    let fg = cell_fg;
                     let (r, g, b) = (
                         fg[0] as f64 / 255.0,
                         fg[1] as f64 / 255.0,
                         fg[2] as f64 / 255.0,
                     );
 
+                    // Apply color modifiers
                     if cell.attrs.bold {
                         cr.set_source_rgb((r * 1.2).min(1.0), (g * 1.2).min(1.0), (b * 1.2).min(1.0));
                     } else if cell.attrs.dim {
@@ -236,9 +252,41 @@ impl TerminalView {
                         cr.set_source_rgb(r, g, b);
                     }
 
+                    // Apply font styles (italic, bold weight)
+                    let mut styled_font = font_desc.clone();
+                    if cell.attrs.italic {
+                        styled_font.set_style(pango::Style::Italic);
+                    }
+                    if cell.attrs.bold {
+                        styled_font.set_weight(pango::Weight::Bold);
+                    }
+                    layout.set_font_description(Some(&styled_font));
+
                     layout.set_text(&cell.content);
-                    cr.move_to(x, y + (cell_h - ascent) / 2.0);
+                    let text_y = y + (cell_h - ascent) / 2.0;
+                    cr.move_to(x, text_y);
                     pangocairo::functions::show_layout(cr, layout);
+
+                    // Draw underline
+                    if cell.attrs.underline {
+                        cr.set_line_width(1.0);
+                        let underline_y = y + cell_h - 2.0;
+                        cr.move_to(x, underline_y);
+                        cr.line_to(x + cell_w, underline_y);
+                        cr.stroke().ok();
+                    }
+
+                    // Draw strikethrough
+                    if cell.attrs.strikethrough {
+                        cr.set_line_width(1.0);
+                        let strike_y = y + cell_h / 2.0;
+                        cr.move_to(x, strike_y);
+                        cr.line_to(x + cell_w, strike_y);
+                        cr.stroke().ok();
+                    }
+
+                    // Reset font description for next cell
+                    layout.set_font_description(Some(font_desc));
                 }
             };
 
@@ -366,7 +414,7 @@ impl TerminalView {
                             false
                         };
 
-                        draw_cell(cr, &layout, cell, x, y);
+                        draw_cell(cr, &layout, cell, x, y, &font_desc);
 
                         // Draw underline for hovered URLs
                         if is_url_hovered {
@@ -495,6 +543,39 @@ impl TerminalView {
                 // Join lines and set clipboard
                 let text = lines.join("\n");
                 clipboard.set_text(&text);
+
+                return glib::Propagation::Stop;
+            }
+
+            // Check for Ctrl+Shift+A (select all)
+            if ctrl && shift && matches!(key, Key::A | Key::a) {
+                // Copy all content (scrollback + visible) to clipboard
+                let clipboard = drawing_area_for_clipboard.clipboard();
+                let term = terminal_for_copy.borrow();
+
+                // Collect scrollback lines first
+                let mut lines = Vec::new();
+                for row in term.scrollback() {
+                    let mut line = String::new();
+                    for cell in row.iter() {
+                        line.push_str(&cell.content);
+                    }
+                    lines.push(line.trim_end().to_string());
+                }
+
+                // Then visible grid
+                for row in term.grid().iter() {
+                    let mut line = String::new();
+                    for cell in row.iter() {
+                        line.push_str(&cell.content);
+                    }
+                    lines.push(line.trim_end().to_string());
+                }
+
+                // Join lines and set clipboard
+                let text = lines.join("\n");
+                clipboard.set_text(&text);
+                tracing::info!("Copied {} lines to clipboard (select all)", lines.len());
 
                 return glib::Propagation::Stop;
             }
@@ -648,6 +729,126 @@ impl TerminalView {
             }
         });
         drawing_area.add_controller(click_gesture);
+
+        // Right-click context menu
+        let right_click_gesture = GestureClick::new();
+        right_click_gesture.set_button(3); // Right mouse button
+        let drawing_area_for_context = drawing_area.clone();
+        let terminal_for_context = terminal.clone();
+        let pty_for_context = pty.clone();
+        let container_for_context = container.clone();
+
+        right_click_gesture.connect_pressed(move |_gesture, _n_press, x, y| {
+            // Create context menu
+            let menu = Menu::new();
+            menu.append(Some("Copy"), Some("term.copy"));
+            menu.append(Some("Paste"), Some("term.paste"));
+            menu.append(Some("Select All"), Some("term.select-all"));
+            menu.append(Some("Find..."), Some("term.find"));
+
+            // Create popover menu
+            let popover = PopoverMenu::from_model(Some(&menu));
+            popover.set_parent(&drawing_area_for_context);
+            popover.set_has_arrow(true);
+            popover.set_pointing_to(Some(&gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+            // Add actions to the drawing area's action group
+            let action_group = gtk4::gio::SimpleActionGroup::new();
+
+            // Copy action
+            let copy_action = SimpleAction::new("copy", None);
+            let terminal_copy = terminal_for_context.clone();
+            let da_copy = drawing_area_for_context.clone();
+            copy_action.connect_activate(move |_, _| {
+                let clipboard = da_copy.clipboard();
+                let term = terminal_copy.borrow();
+                let grid = term.grid();
+
+                let mut lines = Vec::new();
+                for row in grid.iter() {
+                    let mut line = String::new();
+                    for cell in row.iter() {
+                        line.push_str(&cell.content);
+                    }
+                    lines.push(line.trim_end().to_string());
+                }
+                let text = lines.join("\n");
+                clipboard.set_text(&text);
+            });
+            action_group.add_action(&copy_action);
+
+            // Paste action
+            let paste_action = SimpleAction::new("paste", None);
+            let pty_paste = pty_for_context.clone();
+            let da_paste = drawing_area_for_context.clone();
+            paste_action.connect_activate(move |_, _| {
+                let clipboard = da_paste.clipboard();
+                let pty_clone = pty_paste.clone();
+                clipboard.read_text_async(None::<&gtk4::gio::Cancellable>, move |result| {
+                    if let Ok(Some(text)) = result {
+                        if let Some(ref pty) = *pty_clone.borrow() {
+                            let _ = pty.write(text.as_bytes());
+                        }
+                    }
+                });
+            });
+            action_group.add_action(&paste_action);
+
+            // Select All action
+            let select_all_action = SimpleAction::new("select-all", None);
+            let terminal_select = terminal_for_context.clone();
+            let da_select = drawing_area_for_context.clone();
+            select_all_action.connect_activate(move |_, _| {
+                let clipboard = da_select.clipboard();
+                let term = terminal_select.borrow();
+
+                let mut lines = Vec::new();
+                for row in term.scrollback() {
+                    let mut line = String::new();
+                    for cell in row.iter() {
+                        line.push_str(&cell.content);
+                    }
+                    lines.push(line.trim_end().to_string());
+                }
+                for row in term.grid().iter() {
+                    let mut line = String::new();
+                    for cell in row.iter() {
+                        line.push_str(&cell.content);
+                    }
+                    lines.push(line.trim_end().to_string());
+                }
+                let text = lines.join("\n");
+                clipboard.set_text(&text);
+                tracing::info!("Copied {} lines to clipboard", lines.len());
+            });
+            action_group.add_action(&select_all_action);
+
+            // Find action
+            let find_action = SimpleAction::new("find", None);
+            let container_find = container_for_context.clone();
+            find_action.connect_activate(move |_, _| {
+                // Find and show the search revealer
+                let mut child = container_find.first_child();
+                while let Some(widget) = child {
+                    if let Some(revealer) = widget.downcast_ref::<Revealer>() {
+                        revealer.set_reveal_child(true);
+                        if let Some(entry) = revealer.child().and_then(|c| c.first_child()).and_then(|c| c.first_child()) {
+                            if let Some(entry) = entry.downcast_ref::<Entry>() {
+                                entry.grab_focus();
+                            }
+                        }
+                        break;
+                    }
+                    child = widget.next_sibling();
+                }
+            });
+            action_group.add_action(&find_action);
+
+            drawing_area_for_context.insert_action_group("term", Some(&action_group));
+
+            popover.popup();
+        });
+        drawing_area.add_controller(right_click_gesture);
 
         // Add mouse wheel scroll for scrollback
         let scroll_controller = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
@@ -971,6 +1172,7 @@ impl TerminalView {
             hover_pos,
             detected_urls,
             search_state,
+            event_rx,
         }
     }
 
@@ -981,6 +1183,11 @@ impl TerminalView {
     /// Queue a redraw
     pub fn queue_draw(&self) {
         self.drawing_area.queue_draw();
+    }
+
+    /// Get the terminal event receiver for listening to title changes, bells, etc.
+    pub fn event_receiver(&self) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
+        self.event_rx.clone()
     }
 }
 

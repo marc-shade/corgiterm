@@ -27,11 +27,9 @@
 
 use crate::{CoreError, Result, Terminal, TerminalSize, Pty};
 use chrono::{DateTime, Utc};
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use uuid::Uuid;
 
 /// Unique identifier for a session

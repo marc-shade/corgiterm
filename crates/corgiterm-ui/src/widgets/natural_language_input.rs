@@ -2,7 +2,6 @@
 
 use gtk4::prelude::*;
 use gtk4::{Box, Entry, Label, Orientation};
-use libadwaita::prelude::*;
 
 /// Natural language input widget
 pub struct NaturalLanguageInput {

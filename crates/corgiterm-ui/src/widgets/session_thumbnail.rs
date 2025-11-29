@@ -21,7 +21,7 @@ impl SessionThumbnail {
         drawing_area.add_css_class("thumbnail-preview");
 
         // Draw a miniature terminal preview
-        drawing_area.set_draw_func(|_area, cr, width, height| {
+        drawing_area.set_draw_func(|_area, cr, _width, _height| {
             // Background
             cr.set_source_rgb(0.118, 0.106, 0.086);
             cr.paint().ok();

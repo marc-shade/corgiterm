@@ -2,7 +2,6 @@
 
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Label, Orientation, ScrolledWindow, Stack, StackTransitionType, TextView};
-use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::PathBuf;

@@ -1,6 +1,6 @@
 //! Plugin loading utilities
 
-use crate::{Plugin, PluginManifest, PluginType};
+use crate::PluginManifest;
 use std::path::Path;
 
 /// Load a plugin manifest from a directory

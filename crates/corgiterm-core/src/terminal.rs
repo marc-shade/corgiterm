@@ -2,7 +2,6 @@
 //!
 //! Provides VT100/xterm compatible terminal emulation with modern features.
 
-use std::cell::RefCell;
 use vte::{Params, Parser, Perform};
 
 /// Terminal dimensions

@@ -1,9 +1,7 @@
 //! Main application setup
 
-use gtk4::prelude::*;
 use gtk4::gdk::Display;
 use gtk4::{Application, CssProvider};
-use libadwaita::prelude::*;
 use std::sync::Arc;
 use parking_lot::RwLock;
 

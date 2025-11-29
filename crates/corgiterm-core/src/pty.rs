@@ -5,7 +5,7 @@
 use crate::{CoreError, Result};
 use nix::unistd::{dup2, execvp, fork, setsid, ForkResult, Pid};
 use std::ffi::CString;
-use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::io::RawFd;
 
 /// Terminal size in rows and columns
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

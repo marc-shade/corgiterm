@@ -33,6 +33,16 @@
 - **SSH Manager** - Visual connection management
 - **Searchable History** - Never lose output again
 
+### 🖥️ Terminal Features
+- **True Color** - Full 24-bit RGB color support (16 million colors)
+- **Text Attributes** - Bold, dim, italic, underline, strikethrough, inverse
+- **Scrollback Buffer** - 10,000 lines of history with mouse wheel scroll
+- **URL Detection** - Automatic URL highlighting with Ctrl+click to open
+- **Quick Switcher** - VS Code-style tab switching with `Ctrl+K`
+- **Context Menu** - Right-click for Copy, Paste, Select All, Find
+- **Bell Notifications** - Visual tab indicator for terminal bell events
+- **Dynamic Titles** - Tab titles update based on current directory/command
+
 ## Installation
 
 ### From Source (Linux)
@@ -77,8 +87,10 @@ corgiterm -e "npm run dev"
 |--------|----------|
 | New Tab | `Ctrl+T` |
 | Close Tab | `Ctrl+W` |
+| Quick Switcher | `Ctrl+K` |
 | Copy | `Ctrl+Shift+C` |
 | Paste | `Ctrl+Shift+V` |
+| Select All | `Ctrl+Shift+A` |
 | Zoom In | `Ctrl++` or `Ctrl+=` |
 | Zoom Out | `Ctrl+-` |
 | Reset Zoom | `Ctrl+0` |
@@ -90,6 +102,7 @@ corgiterm -e "npm run dev"
 | Next Tab | `Ctrl+Tab` |
 | Previous Tab | `Ctrl+Shift+Tab` |
 | Open File | `Ctrl+Shift+O` |
+| Open URL | `Ctrl+Click` on URL |
 | Quit | `Ctrl+Q` |
 
 ## Configuration

@@ -4,7 +4,6 @@
 //! to interact with the terminal in a structured way.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// MCP server for terminal integration
 pub struct McpServer {

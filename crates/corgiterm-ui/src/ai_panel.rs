@@ -2,7 +2,6 @@
 
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Entry, Label, Orientation, ScrolledWindow, TextView};
-use libadwaita::prelude::*;
 
 /// AI panel modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

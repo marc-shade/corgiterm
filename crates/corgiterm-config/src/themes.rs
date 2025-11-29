@@ -3,7 +3,6 @@
 //! CorgiTerm comes with beautiful built-in themes including
 //! the signature "Corgi Collection" themes.
 
-use palette::Srgba;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

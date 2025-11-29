@@ -1,7 +1,7 @@
 //! Main application window
 
 use gtk4::prelude::*;
-use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, MenuButton, Orientation, Paned, PopoverMenu};
+use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, MenuButton, Orientation, Paned};
 use gtk4::gdk::ModifierType;
 use gtk4::gio::{self, Menu, SimpleAction};
 use libadwaita::prelude::*;
@@ -15,6 +15,7 @@ use crate::tab_bar::TerminalTabs;
 /// Main application window
 pub struct MainWindow {
     window: ApplicationWindow,
+    #[allow(dead_code)]
     tabs: Rc<TerminalTabs>,
     #[allow(dead_code)]
     sidebar: Rc<Sidebar>,
@@ -80,8 +81,9 @@ impl MainWindow {
         window.add_action(&about_action);
 
         let shortcuts_action = SimpleAction::new("shortcuts", None);
+        let win_for_shortcuts = window.clone();
         shortcuts_action.connect_activate(move |_, _| {
-            tracing::info!("Keyboard shortcuts dialog not yet implemented");
+            dialogs::show_shortcuts_dialog(&win_for_shortcuts);
         });
         window.add_action(&shortcuts_action);
 
@@ -157,22 +159,6 @@ impl MainWindow {
                         window_for_keys.close();
                         return gtk4::glib::Propagation::Stop;
                     }
-                    Key::plus | Key::equal => {
-                        // Ctrl++: Zoom in (TODO)
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::minus => {
-                        // Ctrl+-: Zoom out (TODO)
-                        return gtk4::glib::Propagation::Stop;
-                    }
-                    Key::_0 => {
-                        // Ctrl+0: Switch to last tab
-                        let n_tabs = tabs_for_keys.tab_count() as usize;
-                        if n_tabs > 0 {
-                            tabs_for_keys.select_tab_by_index(n_tabs - 1);
-                        }
-                        return gtk4::glib::Propagation::Stop;
-                    }
                     Key::_1 => {
                         // Ctrl+1: Switch to tab 1
                         tabs_for_keys.select_tab_by_index(0);
@@ -228,16 +214,17 @@ impl MainWindow {
                         tabs_for_keys.select_next_tab();
                         return gtk4::glib::Propagation::Stop;
                     }
+                    Key::k | Key::K => {
+                        // Ctrl+K: Quick switcher
+                        dialogs::show_quick_switcher(&window_for_keys, tabs_for_keys.tab_view_widget());
+                        return gtk4::glib::Propagation::Stop;
+                    }
                     _ => {}
                 }
             }
 
             if ctrl && shift {
                 match key {
-                    Key::T => {
-                        // Ctrl+Shift+T: Reopen closed tab (TODO)
-                        return gtk4::glib::Propagation::Stop;
-                    }
                     Key::Tab | Key::ISO_Left_Tab => {
                         // Ctrl+Shift+Tab: Previous tab
                         tabs_for_keys.select_previous_tab();

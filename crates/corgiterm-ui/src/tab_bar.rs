@@ -1,8 +1,6 @@
 //! Tab management using libadwaita TabView
 
 use gtk4::prelude::*;
-use gtk4::glib;
-use libadwaita::prelude::*;
 use libadwaita::{TabBar, TabPage, TabView};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -73,6 +71,9 @@ impl TerminalTabs {
         };
         let widget = terminal.widget().clone();
 
+        // Get event receiver for title/bell updates
+        let event_rx = terminal.event_receiver();
+
         // Store content
         self.contents.borrow_mut().push(TabContent::Terminal(terminal));
 
@@ -83,6 +84,41 @@ impl TerminalTabs {
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
+
+        // Set up event listener for title changes and bells
+        let page_for_events = page.clone();
+        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            use corgiterm_core::terminal::TerminalEvent;
+
+            while let Ok(event) = event_rx.try_recv() {
+                match event {
+                    TerminalEvent::TitleChanged(new_title) => {
+                        // Update tab title with the terminal's title (e.g., current directory)
+                        if !new_title.is_empty() {
+                            // Truncate long titles for tab display
+                            let display_title = if new_title.len() > 30 {
+                                format!("...{}", &new_title[new_title.len()-27..])
+                            } else {
+                                new_title
+                            };
+                            page_for_events.set_title(&display_title);
+                        }
+                    }
+                    TerminalEvent::Bell => {
+                        // Flash tab indicator or play sound
+                        page_for_events.set_needs_attention(true);
+                        // Reset attention after a short delay
+                        let page_for_bell = page_for_events.clone();
+                        gtk4::glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
+                            page_for_bell.set_needs_attention(false);
+                        });
+                        tracing::debug!("Bell from terminal");
+                    }
+                    _ => {}
+                }
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
 
         page
     }

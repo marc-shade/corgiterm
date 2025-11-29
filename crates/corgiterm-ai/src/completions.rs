@@ -3,6 +3,7 @@
 use crate::{AiProvider, Message, Result, Role};
 
 /// AI-powered completion engine
+#[allow(dead_code)]
 pub struct CompletionEngine {
     provider: Box<dyn AiProvider>,
     context_lines: usize,

@@ -21,30 +21,28 @@ pub fn get_config() -> Option<Arc<RwLock<ConfigManager>>> {
 }
 
 /// Show the about dialog
-pub fn show_about_dialog(parent: &impl IsA<Window>) {
-    let dialog = libadwaita::AboutWindow::builder()
+pub fn show_about_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
+    let dialog = libadwaita::AboutDialog::builder()
         .application_name("CorgiTerm")
         .application_icon("dev.corgiterm.CorgiTerm")
-        .developer_name("CorgiTerm Team")
+        .developers(vec!["CorgiTerm Team".to_string()])
         .version(crate::version())
         .website("https://corgiterm.dev")
         .issue_url("https://github.com/corgiterm/corgiterm/issues")
         .license_type(gtk4::License::MitX11)
         .comments("A next-generation, AI-powered terminal emulator that makes the command line accessible to everyone.")
-        .transient_for(parent)
         .build();
 
     // Add mascot credit
     dialog.add_credit_section(Some("Mascot"), &["Pixel the Corgi 🐕"]);
 
-    dialog.present();
+    dialog.present(Some(parent));
 }
 
-/// Show the preferences window
-pub fn show_preferences(parent: &impl IsA<Window>) {
-    let window = libadwaita::PreferencesWindow::builder()
+/// Show the preferences dialog
+pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
+    let dialog = libadwaita::PreferencesDialog::builder()
         .title("Preferences")
-        .transient_for(parent)
         .build();
 
     // General page
@@ -104,7 +102,7 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     });
 
     general_page.add(&startup_group);
-    window.add(&general_page);
+    dialog.add(&general_page);
 
     // Appearance page
     let appearance_page = libadwaita::PreferencesPage::builder()
@@ -215,7 +213,7 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     });
 
     appearance_page.add(&font_group);
-    window.add(&appearance_page);
+    dialog.add(&appearance_page);
 
     // Terminal page
     let terminal_page = libadwaita::PreferencesPage::builder()
@@ -256,7 +254,7 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     });
 
     terminal_page.add(&shell_group);
-    window.add(&terminal_page);
+    dialog.add(&terminal_page);
 
     // AI page
     let ai_page = libadwaita::PreferencesPage::builder()
@@ -316,7 +314,7 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     });
 
     ai_page.add(&ai_group);
-    window.add(&ai_page);
+    dialog.add(&ai_page);
 
     // Safe Mode page
     let safe_page = libadwaita::PreferencesPage::builder()
@@ -356,12 +354,322 @@ pub fn show_preferences(parent: &impl IsA<Window>) {
     });
 
     safe_page.add(&safe_group);
-    window.add(&safe_page);
+    dialog.add(&safe_page);
 
-    window.present();
+    dialog.present(Some(parent));
 }
 
-/// Show quick switcher (Cmd+K style)
-pub fn show_quick_switcher(parent: &impl IsA<Window>) {
-    // TODO: Implement quick switcher dialog
+/// Show keyboard shortcuts dialog
+pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
+    let dialog = gtk4::ShortcutsWindow::builder()
+        .transient_for(parent)
+        .modal(true)
+        .build();
+
+    // Create shortcuts section for terminal
+    let terminal_section = gtk4::ShortcutsSection::builder()
+        .section_name("terminal")
+        .title("Terminal")
+        .build();
+
+    // Tab management group
+    let tab_group = gtk4::ShortcutsGroup::builder()
+        .title("Tabs")
+        .build();
+
+    let shortcuts = [
+        ("New Tab", "<Ctrl>t"),
+        ("Close Tab", "<Ctrl>w"),
+        ("Next Tab", "<Ctrl>Tab"),
+        ("Previous Tab", "<Ctrl><Shift>Tab"),
+        ("Switch to Tab 1-9", "<Ctrl>1...9"),
+    ];
+
+    for (title, accel) in shortcuts {
+        let shortcut = gtk4::ShortcutsShortcut::builder()
+            .title(title)
+            .accelerator(accel)
+            .build();
+        tab_group.append(&shortcut);
+    }
+    terminal_section.append(&tab_group);
+
+    // Window group
+    let window_group = gtk4::ShortcutsGroup::builder()
+        .title("Window")
+        .build();
+
+    let window_shortcuts = [
+        ("Quick Switcher", "<Ctrl>k"),
+        ("Quit", "<Ctrl>q"),
+    ];
+
+    for (title, accel) in window_shortcuts {
+        let shortcut = gtk4::ShortcutsShortcut::builder()
+            .title(title)
+            .accelerator(accel)
+            .build();
+        window_group.append(&shortcut);
+    }
+    terminal_section.append(&window_group);
+
+    // Terminal group
+    let term_group = gtk4::ShortcutsGroup::builder()
+        .title("Terminal")
+        .build();
+
+    let term_shortcuts = [
+        ("Copy", "<Ctrl><Shift>c"),
+        ("Paste", "<Ctrl><Shift>v"),
+        ("Select All", "<Ctrl><Shift>a"),
+        ("Find in Terminal", "<Ctrl><Shift>f"),
+        ("Zoom In", "<Ctrl>plus"),
+        ("Zoom Out", "<Ctrl>minus"),
+        ("Reset Zoom", "<Ctrl>0"),
+    ];
+
+    for (title, accel) in term_shortcuts {
+        let shortcut = gtk4::ShortcutsShortcut::builder()
+            .title(title)
+            .accelerator(accel)
+            .build();
+        term_group.append(&shortcut);
+    }
+    terminal_section.append(&term_group);
+
+    // Documents group
+    let doc_group = gtk4::ShortcutsGroup::builder()
+        .title("Documents")
+        .build();
+
+    let doc_shortcuts = [
+        ("New Document", "<Ctrl>o"),
+        ("Open File", "<Ctrl><Shift>o"),
+    ];
+
+    for (title, accel) in doc_shortcuts {
+        let shortcut = gtk4::ShortcutsShortcut::builder()
+            .title(title)
+            .accelerator(accel)
+            .build();
+        doc_group.append(&shortcut);
+    }
+    terminal_section.append(&doc_group);
+
+    dialog.add_section(&terminal_section);
+    dialog.present();
+}
+
+/// Show quick switcher (Ctrl+K style) for switching between tabs and actions
+pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
+    parent: &W,
+    tab_view: &libadwaita::TabView,
+) {
+    use gtk4::{Label, ListBox, ListBoxRow, Orientation, SelectionMode, ScrolledWindow};
+
+    // Create modal dialog
+    let dialog = libadwaita::Dialog::builder()
+        .title("Quick Switcher")
+        .content_width(500)
+        .content_height(400)
+        .build();
+
+    // Main container
+    let main_box = gtk4::Box::new(Orientation::Vertical, 12);
+    main_box.set_margin_top(12);
+    main_box.set_margin_bottom(12);
+    main_box.set_margin_start(12);
+    main_box.set_margin_end(12);
+
+    // Search entry
+    let search_entry = gtk4::SearchEntry::builder()
+        .placeholder_text("Type to search tabs...")
+        .hexpand(true)
+        .build();
+    main_box.append(&search_entry);
+
+    // Scrolled list of tabs
+    let scrolled = ScrolledWindow::builder()
+        .vexpand(true)
+        .min_content_height(300)
+        .build();
+
+    let list_box = ListBox::builder()
+        .selection_mode(SelectionMode::Single)
+        .css_classes(vec!["boxed-list"])
+        .build();
+
+    // Collect tab info (index, title, icon)
+    let tab_view_ref = tab_view.clone();
+    let n_pages = tab_view.n_pages();
+
+    for i in 0..n_pages {
+        let page = tab_view.nth_page(i);
+        let title = page.title().to_string();
+        let icon_name = page.icon()
+            .and_then(|icon| icon.downcast::<gtk4::gio::ThemedIcon>().ok())
+            .and_then(|themed| themed.names().first().map(|s| s.to_string()))
+            .unwrap_or_else(|| "utilities-terminal-symbolic".to_string());
+
+        // Create row with icon and title
+        let row_box = gtk4::Box::new(Orientation::Horizontal, 12);
+        row_box.set_margin_top(8);
+        row_box.set_margin_bottom(8);
+        row_box.set_margin_start(12);
+        row_box.set_margin_end(12);
+
+        let icon = gtk4::Image::from_icon_name(&icon_name);
+        icon.set_pixel_size(24);
+        row_box.append(&icon);
+
+        let title_label = Label::new(Some(&title));
+        title_label.set_halign(gtk4::Align::Start);
+        title_label.set_hexpand(true);
+        row_box.append(&title_label);
+
+        // Tab number hint
+        let hint_label = Label::new(Some(&format!("Ctrl+{}", i + 1)));
+        hint_label.add_css_class("dim-label");
+        row_box.append(&hint_label);
+
+        let row = ListBoxRow::new();
+        row.set_child(Some(&row_box));
+        // Store the page index in the widget name for retrieval
+        row.set_widget_name(&format!("tab-{}", i));
+        list_box.append(&row);
+    }
+
+    // Select first row by default
+    if let Some(first_row) = list_box.row_at_index(0) {
+        list_box.select_row(Some(&first_row));
+    }
+
+    scrolled.set_child(Some(&list_box));
+    main_box.append(&scrolled);
+
+    // Handle row activation (click or Enter)
+    let dialog_ref = dialog.clone();
+    let tab_view_for_activate = tab_view_ref.clone();
+    list_box.connect_row_activated(move |_, row| {
+        let name = row.widget_name();
+        if let Some(idx_str) = name.strip_prefix("tab-") {
+            if let Ok(idx) = idx_str.parse::<i32>() {
+                let page = tab_view_for_activate.nth_page(idx);
+                tab_view_for_activate.set_selected_page(&page);
+            }
+        }
+        dialog_ref.close();
+    });
+
+    // Handle search filtering
+    let list_box_for_filter = list_box.clone();
+    search_entry.connect_search_changed(move |entry| {
+        let query = entry.text().to_lowercase();
+        let mut first_visible: Option<ListBoxRow> = None;
+
+        for i in 0..n_pages {
+            if let Some(row) = list_box_for_filter.row_at_index(i) {
+                // Get the title from the row's box child
+                let visible = if query.is_empty() {
+                    true
+                } else if let Some(row_box) = row.child().and_then(|c| c.downcast::<gtk4::Box>().ok()) {
+                    let mut found = false;
+                    let mut child = row_box.first_child();
+                    while let Some(widget) = child {
+                        if let Ok(label) = widget.clone().downcast::<Label>() {
+                            if label.text().to_lowercase().contains(&query) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        child = widget.next_sibling();
+                    }
+                    found
+                } else {
+                    true
+                };
+                row.set_visible(visible);
+                if visible && first_visible.is_none() {
+                    first_visible = Some(row);
+                }
+            }
+        }
+
+        // Select first visible row
+        if let Some(row) = first_visible {
+            list_box_for_filter.select_row(Some(&row));
+        }
+    });
+
+    // Handle Enter key on search entry
+    let list_box_for_enter = list_box.clone();
+    let dialog_for_enter = dialog.clone();
+    let tab_view_for_enter = tab_view_ref.clone();
+    search_entry.connect_activate(move |_| {
+        if let Some(selected_row) = list_box_for_enter.selected_row() {
+            let name = selected_row.widget_name();
+            if let Some(idx_str) = name.strip_prefix("tab-") {
+                if let Ok(idx) = idx_str.parse::<i32>() {
+                    let page = tab_view_for_enter.nth_page(idx);
+                    tab_view_for_enter.set_selected_page(&page);
+                }
+            }
+            dialog_for_enter.close();
+        }
+    });
+
+    // Handle keyboard navigation in list
+    let key_controller = gtk4::EventControllerKey::new();
+    let list_box_for_keys = list_box.clone();
+    let dialog_for_escape = dialog.clone();
+    key_controller.connect_key_pressed(move |_, key, _keycode, _modifier| {
+        use gtk4::gdk::Key;
+
+        match key {
+            Key::Escape => {
+                dialog_for_escape.close();
+                gtk4::glib::Propagation::Stop
+            }
+            Key::Up => {
+                if let Some(row) = list_box_for_keys.selected_row() {
+                    let idx = row.index();
+                    // Find previous visible row
+                    for i in (0..idx).rev() {
+                        if let Some(prev_row) = list_box_for_keys.row_at_index(i) {
+                            if prev_row.is_visible() {
+                                list_box_for_keys.select_row(Some(&prev_row));
+                                break;
+                            }
+                        }
+                    }
+                }
+                gtk4::glib::Propagation::Stop
+            }
+            Key::Down => {
+                if let Some(row) = list_box_for_keys.selected_row() {
+                    let idx = row.index();
+                    // Find next visible row
+                    for i in (idx + 1).. {
+                        if let Some(next_row) = list_box_for_keys.row_at_index(i) {
+                            if next_row.is_visible() {
+                                list_box_for_keys.select_row(Some(&next_row));
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                gtk4::glib::Propagation::Stop
+            }
+            _ => gtk4::glib::Propagation::Proceed
+        }
+    });
+    search_entry.add_controller(key_controller);
+
+    dialog.set_child(Some(&main_box));
+    dialog.present(Some(parent));
+
+    // Focus search entry
+    search_entry.grab_focus();
 }
