@@ -382,6 +382,50 @@ impl SplitPane {
         false
     }
 
+    /// Send raw input bytes to all terminals in this pane (for broadcast mode)
+    /// Returns true if at least one terminal received the input
+    pub fn send_input(&self, input: &[u8]) -> bool {
+        let mut success = false;
+        self.send_input_recursive(&self.root, input, &mut success);
+        success
+    }
+
+    /// Recursively send input to all terminals
+    fn send_input_recursive(&self, node: &Rc<RefCell<PaneNode>>, input: &[u8], success: &mut bool) {
+        match &node.borrow().content {
+            PaneContent::Terminal(tv) => {
+                tv.send_input(input);
+                *success = true;
+            }
+            PaneContent::Split { child1, child2, .. } => {
+                self.send_input_recursive(child1, input, success);
+                self.send_input_recursive(child2, input, success);
+            }
+        }
+    }
+
+    /// Send command to ALL terminals in this pane (for broadcast mode)
+    /// Returns the number of terminals that received the command
+    pub fn broadcast_command(&self, command: &str) -> usize {
+        let mut count = 0;
+        self.broadcast_recursive(&self.root, command, &mut count);
+        count
+    }
+
+    /// Recursively send command to all terminals
+    fn broadcast_recursive(&self, node: &Rc<RefCell<PaneNode>>, command: &str, count: &mut usize) {
+        match &node.borrow().content {
+            PaneContent::Terminal(tv) => {
+                tv.send_command(command);
+                *count += 1;
+            }
+            PaneContent::Split { child1, child2, .. } => {
+                self.broadcast_recursive(child1, command, count);
+                self.broadcast_recursive(child2, command, count);
+            }
+        }
+    }
+
     /// Get visible lines from focused terminal (for thumbnails)
     pub fn get_visible_lines(&self, max_lines: usize) -> Vec<String> {
         // Try focused first

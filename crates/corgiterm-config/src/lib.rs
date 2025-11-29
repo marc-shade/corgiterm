@@ -392,6 +392,7 @@ pub struct ShortcutsConfig {
     pub ssh_manager: Option<String>,
     pub emoji_picker: Option<String>,
     pub open_file: Option<String>,
+    pub toggle_broadcast: Option<String>,
 
     // Application
     pub quit: Option<String>,
@@ -431,6 +432,7 @@ impl Default for ShortcutsConfig {
             ssh_manager: Some("Ctrl+S".to_string()),
             emoji_picker: Some("Ctrl+Shift+E".to_string()),
             open_file: Some("Ctrl+Shift+O".to_string()),
+            toggle_broadcast: Some("Ctrl+Shift+B".to_string()),
 
             // Application
             quit: Some("Ctrl+Q".to_string()),

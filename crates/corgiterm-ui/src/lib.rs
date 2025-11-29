@@ -27,6 +27,7 @@
 pub mod ai_panel;
 pub mod app;
 pub mod ascii_art_dialog;
+pub mod broadcast;
 pub mod dialogs;
 pub mod document_view;
 pub mod emoji_picker;

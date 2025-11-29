@@ -1553,6 +1553,11 @@ impl TerminalView {
         }
     }
 
+    /// Send raw input to the terminal (alias for send_bytes, for broadcast mode)
+    pub fn send_input(&self, input: &[u8]) {
+        self.send_bytes(input);
+    }
+
     /// Get current working directory from terminal (if available)
     pub fn working_directory(&self) -> Option<std::path::PathBuf> {
         if let Some(ref pty) = *self.pty.borrow() {

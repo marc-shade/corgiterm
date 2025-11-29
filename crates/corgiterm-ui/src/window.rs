@@ -78,6 +78,7 @@ impl MainWindow {
         tools_menu.append(Some("_SSH Manager"), Some("win.ssh_manager"));
         tools_menu.append(Some("_ASCII Art Generator"), Some("win.ascii_art"));
         tools_menu.append(Some("_Emoji Picker"), Some("win.emoji_picker"));
+        tools_menu.append(Some("_Broadcast Mode"), Some("win.broadcast_toggle"));
         menu.append_submenu(Some("_Tools"), &tools_menu);
 
         menu.append(Some("_Preferences"), Some("win.preferences"));
@@ -174,6 +175,23 @@ impl MainWindow {
             });
         });
         window.add_action(&emoji_picker_action);
+
+        // Broadcast Mode toggle action
+        let broadcast_toggle_action = SimpleAction::new("broadcast_toggle", None);
+        let win_for_broadcast = window.clone();
+        broadcast_toggle_action.connect_activate(move |_, _| {
+            let enabled = crate::broadcast::toggle_broadcast();
+            let status = if enabled { "ENABLED" } else { "disabled" };
+            tracing::info!("Broadcast mode {}", status);
+
+            // Update window title to show broadcast mode status
+            if enabled {
+                win_for_broadcast.set_title(Some("CorgiTerm [BROADCAST]"));
+            } else {
+                win_for_broadcast.set_title(Some("CorgiTerm"));
+            }
+        });
+        window.add_action(&broadcast_toggle_action);
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);
@@ -683,6 +701,14 @@ impl MainWindow {
                         }
                     }
                 });
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::ToggleBroadcast, key, modifier) {
+                gtk4::prelude::ActionGroupExt::activate_action(
+                    &window_for_keys,
+                    "broadcast_toggle",
+                    None,
+                );
                 return gtk4::glib::Propagation::Stop;
             }
 

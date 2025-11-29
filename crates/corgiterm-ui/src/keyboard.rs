@@ -40,6 +40,7 @@ pub enum ShortcutAction {
     SshManager,
     EmojiPicker,
     OpenFile,
+    ToggleBroadcast,
 
     // Application
     Quit,
@@ -228,6 +229,13 @@ impl KeyboardShortcuts {
                 shortcuts.insert(ShortcutAction::OpenFile, parsed);
             } else {
                 tracing::warn!("Failed to parse shortcut 'open_file': {}", s);
+            }
+        }
+        if let Some(ref s) = config.toggle_broadcast {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::ToggleBroadcast, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'toggle_broadcast': {}", s);
             }
         }
 

@@ -249,6 +249,37 @@ impl TerminalTabs {
         &self.contents
     }
 
+    /// Send a command to ALL terminal tabs (for broadcast mode)
+    /// Returns the number of terminals that received the command
+    pub fn broadcast_command(&self, command: &str) -> usize {
+        let contents = self.contents.borrow();
+        let mut count = 0;
+        for content in contents.iter() {
+            if content.send_command(command) {
+                count += 1;
+            }
+        }
+        if count > 0 {
+            tracing::info!("Broadcast command to {} terminals: {}", count, command);
+        }
+        count
+    }
+
+    /// Send input bytes to ALL terminal tabs (for broadcast mode keystroke forwarding)
+    /// Returns the number of terminals that received the input
+    pub fn broadcast_input(&self, input: &[u8]) -> usize {
+        let contents = self.contents.borrow();
+        let mut count = 0;
+        for content in contents.iter() {
+            if let TabContent::Terminal(sp) = content {
+                if sp.send_input(input) {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
     /// Access current split pane for direct operations
     pub fn with_current_split_pane<F, R>(&self, f: F) -> Option<R>
     where
