@@ -1,6 +1,7 @@
 //! Sidebar with project folders
 //!
-//! Simple file manager that shows project folders. Clicking a folder
+//! Project sidebar that shows saved project folders. Projects persist
+//! across restarts using the SessionManager. Clicking a project folder
 //! opens a terminal in that directory.
 
 use gtk4::prelude::*;
@@ -11,6 +12,8 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::app::session_manager;
+
 /// Callback when a project folder is clicked - receives full path
 pub type ProjectCallback = Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str, &str)>>>>; // (name, path)
 pub type AiActionCallback = Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>;
@@ -19,7 +22,7 @@ pub type AiActionCallback = Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>>;
 pub struct Sidebar {
     container: gtk4::Box,
     project_list: ListBox,
-    /// Stored project paths (name -> full path)
+    /// Stored project paths (name -> full path) - synced with SessionManager
     projects: Rc<RefCell<Vec<(String, PathBuf)>>>,
     on_project_click: ProjectCallback,
     on_ai_action: AiActionCallback,
@@ -73,14 +76,26 @@ impl Sidebar {
             on_ai_action: on_ai_action.clone(),
         };
 
-        // Add default project folders (home and common paths)
-        if let Some(home) = dirs::home_dir() {
-            sidebar.add_project_folder(&home);
+        // Load projects from SessionManager (persisted)
+        if let Some(sm) = session_manager() {
+            let session_mgr = sm.read();
+            for project in session_mgr.projects() {
+                sidebar.add_project_folder(&project.path);
+            }
+            drop(session_mgr);
+            tracing::info!("Loaded {} projects from session manager", sidebar.projects.borrow().len());
+        }
 
-            // Add ~/projects if it exists
-            let projects_dir = home.join("projects");
-            if projects_dir.exists() {
-                sidebar.add_project_folder(&projects_dir);
+        // If no saved projects, add default folders
+        if sidebar.projects.borrow().is_empty() {
+            if let Some(home) = dirs::home_dir() {
+                sidebar.add_project_folder(&home);
+
+                // Add ~/projects if it exists
+                let projects_dir = home.join("projects");
+                if projects_dir.exists() {
+                    sidebar.add_project_folder(&projects_dir);
+                }
             }
         }
 
@@ -131,7 +146,16 @@ impl Sidebar {
                                 });
 
                                 list.append(&row);
-                                projects.borrow_mut().push((name, path));
+                                projects.borrow_mut().push((name, path.clone()));
+
+                                // Persist to SessionManager
+                                if let Some(sm) = session_manager() {
+                                    let mut session_mgr = sm.write();
+                                    session_mgr.open_project(path);
+                                    if let Err(e) = session_mgr.save() {
+                                        tracing::error!("Failed to save projects: {}", e);
+                                    }
+                                }
 
                                 tracing::info!("Added project folder: {}", path_str);
                             }

@@ -1887,3 +1887,171 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
     // Focus search entry
     search_entry.grab_focus();
 }
+
+/// Show Safe Mode preview dialog for a command
+/// Returns true if user confirms execution, false if cancelled
+pub fn show_safe_mode_preview<F>(
+    parent: &impl IsA<gtk4::Widget>,
+    preview: &corgiterm_core::CommandPreview,
+    on_execute: F,
+) where
+    F: Fn() + 'static,
+{
+    use corgiterm_core::RiskLevel;
+
+    let dialog = libadwaita::Dialog::builder()
+        .title("🐕 Safe Mode Preview")
+        .build();
+    dialog.set_follows_content_size(true);
+
+    let main_box = gtk4::Box::new(gtk4::Orientation::Vertical, 16);
+    main_box.set_margin_start(24);
+    main_box.set_margin_end(24);
+    main_box.set_margin_top(24);
+    main_box.set_margin_bottom(24);
+    main_box.set_width_request(500);
+
+    // Command section
+    let cmd_label = gtk4::Label::new(Some("Command:"));
+    cmd_label.set_xalign(0.0);
+    cmd_label.add_css_class("dim-label");
+    main_box.append(&cmd_label);
+
+    let cmd_text = gtk4::Label::new(Some(&preview.command));
+    cmd_text.set_xalign(0.0);
+    cmd_text.add_css_class("monospace");
+    cmd_text.set_selectable(true);
+    cmd_text.set_margin_bottom(12);
+    main_box.append(&cmd_text);
+
+    // Risk level banner
+    let risk_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    risk_box.set_margin_bottom(12);
+
+    let (risk_icon, risk_text, risk_class) = match preview.risk {
+        RiskLevel::Safe => ("✅", "SAFE - This command is safe to run", "success"),
+        RiskLevel::Caution => ("⚠️", "CAUTION - This will make changes", "warning"),
+        RiskLevel::Danger => ("🚨", "DANGER - This could cause data loss", "error"),
+        RiskLevel::Unknown => ("❓", "UNKNOWN - Unable to assess risk", "dim-label"),
+    };
+
+    let risk_emoji = gtk4::Label::new(Some(risk_icon));
+    risk_emoji.set_margin_end(4);
+    risk_box.append(&risk_emoji);
+
+    let risk_label = gtk4::Label::new(Some(risk_text));
+    risk_label.add_css_class(risk_class);
+    risk_label.add_css_class("heading");
+    risk_box.append(&risk_label);
+
+    main_box.append(&risk_box);
+
+    // Explanation section
+    if !preview.explanation.is_empty() {
+        let exp_header = gtk4::Label::new(Some("What it does:"));
+        exp_header.set_xalign(0.0);
+        exp_header.add_css_class("dim-label");
+        main_box.append(&exp_header);
+
+        for exp in &preview.explanation {
+            let bullet = gtk4::Label::new(Some(&format!("• {}", exp)));
+            bullet.set_xalign(0.0);
+            bullet.set_wrap(true);
+            main_box.append(&bullet);
+        }
+    }
+
+    // Affected files
+    if let Some(count) = preview.affected_count {
+        let size_str = preview.affected_size.map(|s| {
+            if s > 1_000_000_000 { format!(" ({:.1} GB)", s as f64 / 1_000_000_000.0) }
+            else if s > 1_000_000 { format!(" ({:.1} MB)", s as f64 / 1_000_000.0) }
+            else if s > 1_000 { format!(" ({:.1} KB)", s as f64 / 1_000.0) }
+            else { format!(" ({} bytes)", s) }
+        }).unwrap_or_default();
+
+        let affected = gtk4::Label::new(Some(&format!("• Will affect {} file(s){}", count, size_str)));
+        affected.set_xalign(0.0);
+        main_box.append(&affected);
+    }
+
+    // Network access warning
+    if preview.network_access {
+        let net_label = gtk4::Label::new(Some("• Requires network access"));
+        net_label.set_xalign(0.0);
+        main_box.append(&net_label);
+    }
+
+    // Sudo warning
+    if preview.needs_sudo {
+        let sudo_label = gtk4::Label::new(Some("• Requires administrator privileges (sudo)"));
+        sudo_label.set_xalign(0.0);
+        sudo_label.add_css_class("warning");
+        main_box.append(&sudo_label);
+    }
+
+    // Undo hint
+    if let Some(ref undo) = preview.undo_hint {
+        let undo_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+        undo_box.set_margin_top(8);
+        let undo_prefix = gtk4::Label::new(Some("To undo: "));
+        undo_prefix.add_css_class("dim-label");
+        undo_box.append(&undo_prefix);
+        let undo_cmd = gtk4::Label::new(Some(undo));
+        undo_cmd.add_css_class("monospace");
+        undo_box.append(&undo_cmd);
+        main_box.append(&undo_box);
+    }
+
+    // Safer alternatives
+    if !preview.alternatives.is_empty() {
+        let alt_header = gtk4::Label::new(Some("Safer alternatives:"));
+        alt_header.set_xalign(0.0);
+        alt_header.add_css_class("dim-label");
+        alt_header.set_margin_top(12);
+        main_box.append(&alt_header);
+
+        for alt in &preview.alternatives {
+            let alt_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+            let alt_cmd = gtk4::Label::new(Some(&alt.command));
+            alt_cmd.add_css_class("monospace");
+            alt_box.append(&alt_cmd);
+            let alt_desc = gtk4::Label::new(Some(&format!("- {}", alt.description)));
+            alt_desc.add_css_class("dim-label");
+            alt_box.append(&alt_desc);
+            main_box.append(&alt_box);
+        }
+    }
+
+    // Buttons
+    let button_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    button_box.set_margin_top(20);
+    button_box.set_halign(gtk4::Align::End);
+
+    let cancel_btn = gtk4::Button::with_label("Cancel");
+    cancel_btn.add_css_class("pill");
+    let dialog_for_cancel = dialog.clone();
+    cancel_btn.connect_clicked(move |_| {
+        dialog_for_cancel.close();
+    });
+    button_box.append(&cancel_btn);
+
+    let execute_btn = gtk4::Button::with_label("Execute");
+    execute_btn.add_css_class("pill");
+    execute_btn.add_css_class(if preview.risk == RiskLevel::Danger {
+        "destructive-action"
+    } else {
+        "suggested-action"
+    });
+    let dialog_for_exec = dialog.clone();
+    execute_btn.connect_clicked(move |_| {
+        on_execute();
+        dialog_for_exec.close();
+    });
+    button_box.append(&execute_btn);
+
+    main_box.append(&button_box);
+
+    dialog.set_child(Some(&main_box));
+    dialog.present(Some(parent));
+}
