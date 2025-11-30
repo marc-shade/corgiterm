@@ -62,9 +62,9 @@ toml = "0.8"
 vte = "0.13"
 alacritty_terminal = "0.24"
 
-# GTK4 UI
-gtk4 = { version = "0.9", features = ["v4_16"] }
-libadwaita = { version = "0.7", features = ["v1_6"] }
+# GTK4 UI (v4_14 for Ubuntu 24.04 CI compatibility)
+gtk4 = { version = "0.9", features = ["v4_14"] }
+libadwaita = { version = "0.7", features = ["v1_5"] }
 glib = "0.20"
 gio = "0.20"
 gdk4 = "0.9"
