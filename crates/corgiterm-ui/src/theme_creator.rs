@@ -4,7 +4,7 @@
 //! with real-time preview of how the theme looks in practice.
 
 use gtk4::prelude::*;
-use gtk4::{Window, ColorButton, Label, Box, Orientation, ScrolledWindow, TextView};
+use gtk4::{Window, ColorDialog, ColorDialogButton, Label, Box, Orientation, ScrolledWindow, TextView};
 use libadwaita::prelude::*;
 use corgiterm_config::themes::Theme;
 use std::rc::Rc;
@@ -76,6 +76,7 @@ impl ThemeEditor {
         }
     }
 
+    #[allow(dead_code)]
     fn from_theme(theme: Theme) -> Self {
         Self {
             theme: Rc::new(RefCell::new(theme)),
@@ -179,9 +180,15 @@ fn create_color_row(
         .title(label)
         .build();
 
-    let color_button = ColorButton::new();
-    color_button.set_rgba(&hex_to_rgba(initial_color));
-    color_button.set_valign(gtk4::Align::Center);
+    // Use modern ColorDialogButton instead of deprecated ColorButton
+    let color_dialog = ColorDialog::builder()
+        .with_alpha(false)
+        .build();
+    let color_button = ColorDialogButton::builder()
+        .dialog(&color_dialog)
+        .rgba(&hex_to_rgba(initial_color))
+        .valign(gtk4::Align::Center)
+        .build();
 
     // Add hex label
     let hex_label = Label::new(Some(initial_color));
@@ -195,6 +202,7 @@ fn create_color_row(
     let css_provider_clone = css_provider.clone();
     let contrast_label_clone = contrast_label.clone();
 
+    // ColorDialogButton uses notify::rgba signal
     color_button.connect_rgba_notify(move |button| {
         let rgba = button.rgba();
         let hex = rgba_to_hex(&rgba);
@@ -202,10 +210,10 @@ fn create_color_row(
         setter(&editor_clone, hex);
         update_preview(&preview_buffer_clone, &editor_clone);
 
-        // Update CSS
+        // Update CSS (use .theme-preview class for the preview widget)
         let theme = editor_clone.get_theme();
         let css = format!(
-            "textview {{
+            ".theme-preview {{
                 background-color: {};
                 color: {};
                 font-family: 'Source Code Pro', monospace;
@@ -237,9 +245,8 @@ fn create_color_row(
 }
 
 /// Update the live preview with current theme
-fn update_preview(buffer: &gtk4::TextBuffer, editor: &ThemeEditor) {
-    let theme = editor.get_theme();
-
+fn update_preview(buffer: &gtk4::TextBuffer, _editor: &ThemeEditor) {
+    // Note: _editor could be used for color-aware text styling in future
     // Create sample terminal content
     let preview_text = r#"user@corgiterm:~/projects/corgiterm$ ls -la
 total 128
@@ -301,10 +308,10 @@ fn create_preview_panel(editor: &ThemeEditor) -> (Box, gtk4::TextBuffer, Rc<RefC
     // Apply theme colors to the preview widget
     let theme = editor.get_theme();
 
-    // Create CSS for preview styling
+    // Create CSS for preview styling using widget-specific class
     let css_provider = gtk4::CssProvider::new();
     let css = format!(
-        "textview {{
+        ".theme-preview {{
             background-color: {};
             color: {};
             font-family: 'Source Code Pro', monospace;
@@ -316,10 +323,15 @@ fn create_preview_panel(editor: &ThemeEditor) -> (Box, gtk4::TextBuffer, Rc<RefC
     );
     css_provider.load_from_string(&css);
 
-    text_view.style_context().add_provider(
-        &css_provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-    );
+    // Add CSS class and register provider with display (modern GTK4 4.10+ approach)
+    text_view.add_css_class("theme-preview");
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &css_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
 
     scrolled.set_child(Some(&text_view));
     panel.append(&scrolled);

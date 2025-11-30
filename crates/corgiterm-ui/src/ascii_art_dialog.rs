@@ -10,8 +10,8 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, ComboBoxText, FileChooserAction, FileChooserDialog,
-    Label, Notebook, Orientation, ResponseType, Scale, ScrolledWindow, TextView, Window,
+    Align, Box, Button, DropDown, FileDialog, StringList,
+    Label, Notebook, Orientation, Scale, ScrolledWindow, TextView, Window,
 };
 use libadwaita::{prelude::*, ActionRow, HeaderBar, PreferencesGroup};
 
@@ -33,18 +33,19 @@ pub struct AsciiArtDialog {
     // Image tab
     image_preview: TextView,
     image_width_scale: Scale,
-    image_charset_combo: ComboBoxText,
+    image_charset_dropdown: DropDown,
     image_colored_check: gtk4::CheckButton,
     image_inverted_check: gtk4::CheckButton,
     current_image: Rc<RefCell<Option<image::DynamicImage>>>,
 
     // Text tab
     text_input: gtk4::Entry,
-    text_font_combo: ComboBoxText,
+    text_font_dropdown: DropDown,
     text_preview: TextView,
 
-    // Corgi tab
-    corgi_list: ComboBoxText,
+    // Corgi tab (corgi_dropdown stored but accessed via connect_selected_notify callback)
+    #[allow(dead_code)]
+    corgi_dropdown: DropDown,
     corgi_preview: TextView,
 
     // Result
@@ -84,16 +85,16 @@ impl AsciiArtDialog {
         notebook.set_vexpand(true);
 
         // Image tab
-        let (image_tab, image_preview, image_width_scale, image_charset_combo,
+        let (image_tab, image_preview, image_width_scale, image_charset_dropdown,
              image_colored_check, image_inverted_check) = Self::create_image_tab();
         notebook.append_page(&image_tab, Some(&Label::new(Some("From Image"))));
 
         // Text tab
-        let (text_tab, text_input, text_font_combo, text_preview) = Self::create_text_tab();
+        let (text_tab, text_input, text_font_dropdown, text_preview) = Self::create_text_tab();
         notebook.append_page(&text_tab, Some(&Label::new(Some("From Text"))));
 
         // Corgi tab
-        let (corgi_tab, corgi_list, corgi_preview) = Self::create_corgi_tab();
+        let (corgi_tab, corgi_dropdown, corgi_preview) = Self::create_corgi_tab();
         notebook.append_page(&corgi_tab, Some(&Label::new(Some("🐕 Corgi Art"))));
 
         // Layout
@@ -112,14 +113,14 @@ impl AsciiArtDialog {
             notebook,
             image_preview,
             image_width_scale,
-            image_charset_combo,
+            image_charset_dropdown,
             image_colored_check,
             image_inverted_check,
             current_image,
             text_input,
-            text_font_combo,
+            text_font_dropdown,
             text_preview,
-            corgi_list,
+            corgi_dropdown,
             corgi_preview,
             result,
             insert_callback,
@@ -130,7 +131,7 @@ impl AsciiArtDialog {
     }
 
     /// Create the image tab
-    fn create_image_tab() -> (Box, TextView, Scale, ComboBoxText, gtk4::CheckButton, gtk4::CheckButton) {
+    fn create_image_tab() -> (Box, TextView, Scale, DropDown, gtk4::CheckButton, gtk4::CheckButton) {
         let vbox = Box::new(Orientation::Vertical, 12);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
@@ -156,15 +157,16 @@ impl AsciiArtDialog {
         width_row.add_suffix(&width_scale);
         settings_group.add(&width_row);
 
-        // Character set
+        // Character set - use modern DropDown
         let charset_row = ActionRow::new();
         charset_row.set_title("Character Set");
-        let charset_combo = ComboBoxText::new();
-        for set in CharacterSet::all() {
-            charset_combo.append_text(set.name());
-        }
-        charset_combo.set_active(Some(0));
-        charset_row.add_suffix(&charset_combo);
+        let charset_names: Vec<&str> = CharacterSet::all().iter().map(|s| s.name()).collect();
+        let charset_model = StringList::new(&charset_names);
+        let charset_dropdown = DropDown::builder()
+            .model(&charset_model)
+            .selected(0)
+            .build();
+        charset_row.add_suffix(&charset_dropdown);
         settings_group.add(&charset_row);
 
         // Colored checkbox
@@ -200,11 +202,11 @@ impl AsciiArtDialog {
         scrolled.set_child(Some(&preview));
         vbox.append(&scrolled);
 
-        (vbox, preview, width_scale, charset_combo, colored_check, inverted_check)
+        (vbox, preview, width_scale, charset_dropdown, colored_check, inverted_check)
     }
 
     /// Create the text tab
-    fn create_text_tab() -> (Box, gtk4::Entry, ComboBoxText, TextView) {
+    fn create_text_tab() -> (Box, gtk4::Entry, DropDown, TextView) {
         let vbox = Box::new(Orientation::Vertical, 12);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
@@ -221,17 +223,18 @@ impl AsciiArtDialog {
         text_input.set_max_length(20); // ASCII art gets wide quickly
         vbox.append(&text_input);
 
-        // Font selection
+        // Font selection - use modern DropDown
         let font_group = PreferencesGroup::new();
         font_group.set_title("Font");
 
         let font_row = ActionRow::new();
         font_row.set_title("Font Style");
-        let font_combo = ComboBoxText::new();
-        font_combo.append_text("Standard");
-        font_combo.append_text("Small");
-        font_combo.set_active(Some(0));
-        font_row.add_suffix(&font_combo);
+        let font_model = StringList::new(&["Standard", "Small"]);
+        let font_dropdown = DropDown::builder()
+            .model(&font_model)
+            .selected(0)
+            .build();
+        font_row.add_suffix(&font_dropdown);
         font_group.add(&font_row);
 
         vbox.append(&font_group);
@@ -251,11 +254,11 @@ impl AsciiArtDialog {
         scrolled.set_child(Some(&preview));
         vbox.append(&scrolled);
 
-        (vbox, text_input, font_combo, preview)
+        (vbox, text_input, font_dropdown, preview)
     }
 
     /// Create the corgi tab
-    fn create_corgi_tab() -> (Box, ComboBoxText, TextView) {
+    fn create_corgi_tab() -> (Box, DropDown, TextView) {
         let vbox = Box::new(Orientation::Vertical, 12);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
@@ -266,12 +269,14 @@ impl AsciiArtDialog {
         label.set_halign(Align::Start);
         vbox.append(&label);
 
-        let corgi_list = ComboBoxText::new();
-        for (name, _) in CorgiArt::all() {
-            corgi_list.append_text(name);
-        }
-        corgi_list.set_active(Some(0));
-        vbox.append(&corgi_list);
+        // Use modern DropDown instead of ComboBoxText
+        let corgi_names: Vec<&str> = CorgiArt::all().iter().map(|(name, _)| *name).collect();
+        let corgi_model = StringList::new(&corgi_names);
+        let corgi_dropdown = DropDown::builder()
+            .model(&corgi_model)
+            .selected(0)
+            .build();
+        vbox.append(&corgi_dropdown);
 
         let random_btn = Button::with_label("🎲 Random Corgi");
         random_btn.set_halign(Align::Start);
@@ -287,9 +292,6 @@ impl AsciiArtDialog {
         scrolled.set_child(Some(&preview));
         vbox.append(&scrolled);
 
-        // Store result for initial corgi art
-        let initial_art = CorgiArt::all()[0].1;
-
         // Connect random button
         let preview_clone = preview.clone();
         random_btn.connect_clicked(move |_| {
@@ -298,19 +300,18 @@ impl AsciiArtDialog {
             buffer.set_text(art);
         });
 
-        // Connect corgi selection
+        // Connect corgi selection using DropDown's selected_notify
         let preview_clone = preview.clone();
-        corgi_list.connect_changed(move |combo| {
-            if let Some(idx) = combo.active() {
-                let arts = CorgiArt::all();
-                if let Some((_, art)) = arts.get(idx as usize) {
-                    let buffer = preview_clone.buffer();
-                    buffer.set_text(art);
-                }
+        corgi_dropdown.connect_selected_notify(move |dropdown| {
+            let idx = dropdown.selected() as usize;
+            let arts = CorgiArt::all();
+            if let Some((_, art)) = arts.get(idx) {
+                let buffer = preview_clone.buffer();
+                buffer.set_text(art);
             }
         });
 
-        (vbox, corgi_list, preview)
+        (vbox, corgi_dropdown, preview)
     }
 
     /// Connect all signals
@@ -385,7 +386,7 @@ impl AsciiArtDialog {
         let current_image = self.current_image.clone();
         let preview = self.image_preview.clone();
         let width_scale = self.image_width_scale.clone();
-        let charset_combo = self.image_charset_combo.clone();
+        let charset_dropdown = self.image_charset_dropdown.clone();
         let colored_check = self.image_colored_check.clone();
         let inverted_check = self.image_inverted_check.clone();
 
@@ -394,24 +395,26 @@ impl AsciiArtDialog {
             if let Some(vbox) = notebook_page.downcast_ref::<Box>() {
                 if let Some(file_btn) = vbox.first_child() {
                     if let Some(button) = file_btn.downcast_ref::<Button>() {
-                        button.connect_clicked(move |btn| {
-                            let file_chooser = FileChooserDialog::new(
-                                Some("Choose Image"),
-                                Some(&dialog),
-                                FileChooserAction::Open,
-                                &[("Cancel", ResponseType::Cancel), ("Open", ResponseType::Accept)],
-                            );
+                        button.connect_clicked(move |_btn| {
+                            // Use modern FileDialog instead of deprecated FileChooserDialog
+                            let file_dialog = FileDialog::builder()
+                                .title("Choose Image")
+                                .modal(true)
+                                .build();
 
                             let current_image_clone = current_image.clone();
                             let preview_clone = preview.clone();
                             let width_scale_clone = width_scale.clone();
-                            let charset_combo_clone = charset_combo.clone();
+                            let charset_dropdown_clone = charset_dropdown.clone();
                             let colored_check_clone = colored_check.clone();
                             let inverted_check_clone = inverted_check.clone();
+                            let dialog_clone = dialog.clone();
 
-                            file_chooser.connect_response(move |dialog, response| {
-                                if response == ResponseType::Accept {
-                                    if let Some(file) = dialog.file() {
+                            file_dialog.open(
+                                Some(&dialog_clone),
+                                None::<&gtk4::gio::Cancellable>,
+                                move |result| {
+                                    if let Ok(file) = result {
                                         if let Some(path) = file.path() {
                                             if let Ok(img) = image::open(&path) {
                                                 *current_image_clone.borrow_mut() = Some(img.clone());
@@ -419,18 +422,15 @@ impl AsciiArtDialog {
                                                     &img,
                                                     &preview_clone,
                                                     &width_scale_clone,
-                                                    &charset_combo_clone,
+                                                    &charset_dropdown_clone,
                                                     &colored_check_clone,
                                                     &inverted_check_clone,
                                                 );
                                             }
                                         }
                                     }
-                                }
-                                dialog.close();
-                            });
-
-                            file_chooser.show();
+                                },
+                            );
                         });
                     }
                 }
@@ -443,7 +443,7 @@ impl AsciiArtDialog {
         let current_image = self.current_image.clone();
         let preview = self.image_preview.clone();
         let width_scale = self.image_width_scale.clone();
-        let charset_combo = self.image_charset_combo.clone();
+        let charset_dropdown = self.image_charset_dropdown.clone();
         let colored_check = self.image_colored_check.clone();
         let inverted_check = self.image_inverted_check.clone();
         let result = self.result.clone();
@@ -451,7 +451,7 @@ impl AsciiArtDialog {
         // Width change
         let current_image_clone = current_image.clone();
         let preview_clone = preview.clone();
-        let charset_combo_clone = charset_combo.clone();
+        let charset_dropdown_clone = charset_dropdown.clone();
         let colored_check_clone = colored_check.clone();
         let inverted_check_clone = inverted_check.clone();
         let result_clone = result.clone();
@@ -461,7 +461,7 @@ impl AsciiArtDialog {
                     img,
                     &preview_clone,
                     scale,
-                    &charset_combo_clone,
+                    &charset_dropdown_clone,
                     &colored_check_clone,
                     &inverted_check_clone,
                 );
@@ -472,20 +472,20 @@ impl AsciiArtDialog {
             }
         });
 
-        // Charset change
+        // Charset change - use connect_selected_notify for DropDown
         let current_image_clone = current_image.clone();
         let preview_clone = preview.clone();
         let width_scale_clone = width_scale.clone();
         let colored_check_clone = colored_check.clone();
         let inverted_check_clone = inverted_check.clone();
         let result_clone = result.clone();
-        charset_combo.connect_changed(move |combo| {
+        charset_dropdown.connect_selected_notify(move |dropdown| {
             if let Some(img) = current_image_clone.borrow().as_ref() {
                 Self::update_image_preview(
                     img,
                     &preview_clone,
                     &width_scale_clone,
-                    combo,
+                    dropdown,
                     &colored_check_clone,
                     &inverted_check_clone,
                 );
@@ -500,7 +500,7 @@ impl AsciiArtDialog {
         let current_image_clone = current_image.clone();
         let preview_clone = preview.clone();
         let width_scale_clone = width_scale.clone();
-        let charset_combo_clone = charset_combo.clone();
+        let charset_dropdown_clone = charset_dropdown.clone();
         let inverted_check_clone = inverted_check.clone();
         let result_clone = result.clone();
         colored_check.connect_toggled(move |check| {
@@ -509,7 +509,7 @@ impl AsciiArtDialog {
                     img,
                     &preview_clone,
                     &width_scale_clone,
-                    &charset_combo_clone,
+                    &charset_dropdown_clone,
                     check,
                     &inverted_check_clone,
                 );
@@ -524,7 +524,7 @@ impl AsciiArtDialog {
         let current_image_clone = current_image;
         let preview_clone = preview;
         let width_scale_clone = width_scale;
-        let charset_combo_clone = charset_combo;
+        let charset_dropdown_clone = charset_dropdown;
         let colored_check_clone = colored_check;
         inverted_check.connect_toggled(move |check| {
             if let Some(img) = current_image_clone.borrow().as_ref() {
@@ -532,7 +532,7 @@ impl AsciiArtDialog {
                     img,
                     &preview_clone,
                     &width_scale_clone,
-                    &charset_combo_clone,
+                    &charset_dropdown_clone,
                     &colored_check_clone,
                     check,
                 );
@@ -549,12 +549,12 @@ impl AsciiArtDialog {
         img: &image::DynamicImage,
         preview: &TextView,
         width_scale: &Scale,
-        charset_combo: &ComboBoxText,
+        charset_dropdown: &DropDown,
         colored_check: &gtk4::CheckButton,
         inverted_check: &gtk4::CheckButton,
     ) {
         let width = width_scale.value() as usize;
-        let charset_idx = charset_combo.active().unwrap_or(0) as usize;
+        let charset_idx = charset_dropdown.selected() as usize;
         let charset = CharacterSet::all()[charset_idx];
         let colored = colored_check.is_active();
         let inverted = inverted_check.is_active();
@@ -575,6 +575,7 @@ impl AsciiArtDialog {
     }
 
     /// Update result storage when preview changes
+    #[allow(dead_code)]
     fn store_preview_result(&self, text: &str) {
         *self.result.borrow_mut() = Some(text.to_string());
     }
@@ -582,17 +583,17 @@ impl AsciiArtDialog {
     /// Connect text input changes
     fn connect_text_input(&self) {
         let text_input = self.text_input.clone();
-        let font_combo = self.text_font_combo.clone();
+        let font_dropdown = self.text_font_dropdown.clone();
         let preview = self.text_preview.clone();
         let result = self.result.clone();
 
         // Text changed
-        let font_combo_clone = font_combo.clone();
+        let font_dropdown_clone = font_dropdown.clone();
         let preview_clone = preview.clone();
         let result_clone = result.clone();
         text_input.connect_changed(move |entry| {
             let text = entry.text();
-            Self::update_text_preview(&text, &font_combo_clone, &preview_clone);
+            Self::update_text_preview(&text, &font_dropdown_clone, &preview_clone);
             // Store result
             let buffer = preview_clone.buffer();
             let art = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
@@ -601,13 +602,13 @@ impl AsciiArtDialog {
             }
         });
 
-        // Font changed
+        // Font changed - use connect_selected_notify for DropDown
         let text_input_clone = text_input.clone();
         let preview_clone = preview.clone();
         let result_clone = result.clone();
-        font_combo.connect_changed(move |combo| {
+        font_dropdown.connect_selected_notify(move |dropdown| {
             let text = text_input_clone.text();
-            Self::update_text_preview(&text, combo, &preview_clone);
+            Self::update_text_preview(&text, dropdown, &preview_clone);
             // Store result
             let buffer = preview_clone.buffer();
             let art = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
@@ -618,14 +619,14 @@ impl AsciiArtDialog {
     }
 
     /// Update text preview
-    fn update_text_preview(text: &str, font_combo: &ComboBoxText, preview: &TextView) {
+    fn update_text_preview(text: &str, font_dropdown: &DropDown, preview: &TextView) {
         if text.is_empty() {
             let buffer = preview.buffer();
             buffer.set_text("Enter text to preview...");
             return;
         }
 
-        let font = match font_combo.active().unwrap_or(0) {
+        let font = match font_dropdown.selected() {
             0 => &FONT_STANDARD,
             1 => &FONT_SMALL,
             _ => &FONT_STANDARD,

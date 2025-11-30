@@ -66,12 +66,14 @@ pub fn show_snippets_dialog<W, F>(
     sort_label.add_css_class("dim-label");
     sort_box.append(&sort_label);
 
-    let sort_combo = gtk4::ComboBoxText::new();
-    sort_combo.append(Some("name"), "Name");
-    sort_combo.append(Some("usage"), "Most Used");
-    sort_combo.append(Some("recent"), "Recently Used");
-    sort_combo.set_active_id(Some("name"));
-    sort_box.append(&sort_combo);
+    // Use modern DropDown instead of deprecated ComboBoxText
+    let sort_options = ["Name", "Most Used", "Recently Used"];
+    let sort_model = gtk4::StringList::new(&sort_options);
+    let sort_dropdown = gtk4::DropDown::builder()
+        .model(&sort_model)
+        .selected(0) // "Name" by default
+        .build();
+    sort_box.append(&sort_dropdown);
 
     main_box.append(&sort_box);
 
@@ -155,11 +157,15 @@ pub fn show_snippets_dialog<W, F>(
     // Connect search
     {
         let populate = populate_list.clone();
-        let sort_combo = sort_combo.clone();
+        let sort_dropdown = sort_dropdown.clone();
         search_entry.connect_search_changed(move |entry| {
             let query = entry.text();
-            let sort_by = sort_combo.active_id().unwrap_or_else(|| "name".into());
-            populate(&query, &sort_by);
+            let sort_by = match sort_dropdown.selected() {
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            populate(&query, sort_by);
         });
     }
 
@@ -167,34 +173,40 @@ pub fn show_snippets_dialog<W, F>(
     {
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
-        sort_combo.connect_changed(move |combo| {
+        sort_dropdown.connect_selected_notify(move |dropdown| {
             let query = search_entry.text();
-            let sort_by = combo.active_id().unwrap_or_else(|| "name".into());
-            populate(&query, &sort_by);
+            let sort_by = match dropdown.selected() {
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            populate(&query, sort_by);
         });
     }
 
     // Connect add button
     {
-        let dialog_ref = dialog.clone();
+        let _dialog_ref = dialog.clone();
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
-        let sort_combo = sort_combo.clone();
+        let sort_dropdown = sort_dropdown.clone();
 
         add_button.connect_clicked(move |btn| {
             let populate_for_callback = populate.clone();
             let search_entry_for_callback = search_entry.clone();
-            let sort_combo_for_callback = sort_combo.clone();
+            let sort_dropdown_for_callback = sort_dropdown.clone();
 
             // Get the root window for the editor dialog
             if let Some(root) = btn.root() {
                 if let Ok(window) = root.downcast::<gtk4::Window>() {
                     show_snippet_editor_dialog(&window, None, move || {
                         let query = search_entry_for_callback.text();
-                        let sort_by = sort_combo_for_callback
-                            .active_id()
-                            .unwrap_or_else(|| "name".into());
-                        populate_for_callback(&query, &sort_by);
+                        let sort_by = match sort_dropdown_for_callback.selected() {
+                            1 => "usage",
+                            2 => "recent",
+                            _ => "name",
+                        };
+                        populate_for_callback(&query, sort_by);
                     });
                 }
             }
@@ -277,7 +289,7 @@ where
 
     {
         let snippet = snippet.clone();
-        let parent_dialog_for_edit = parent_dialog.clone();
+        let _parent_dialog_for_edit = parent_dialog.clone();
 
         edit_btn.connect_clicked(move |btn| {
             if let Some(root) = btn.root() {
@@ -546,8 +558,8 @@ pub fn show_quick_insert_dialog<W, F>(
     // Populate function
     let populate = {
         let list_box = list_box.clone();
-        let on_insert = on_insert.clone();
-        let dialog_ref = dialog.clone();
+        let _on_insert = on_insert.clone();
+        let _dialog_ref = dialog.clone();
 
         move |query: &str| {
             // Clear existing

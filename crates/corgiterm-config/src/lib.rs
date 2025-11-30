@@ -387,6 +387,8 @@ pub struct ShortcutsConfig {
     pub toggle_ai: Option<String>,
     pub quick_switcher: Option<String>,
     pub ssh_manager: Option<String>,
+    pub snippets: Option<String>,
+    pub ascii_art: Option<String>,
     pub open_file: Option<String>,
 
     // Application
@@ -425,6 +427,8 @@ impl Default for ShortcutsConfig {
             toggle_ai: Some("Ctrl+Shift+A".to_string()),
             quick_switcher: Some("Ctrl+K".to_string()),
             ssh_manager: Some("Ctrl+S".to_string()),
+            snippets: Some("Ctrl+Shift+S".to_string()),
+            ascii_art: Some("Ctrl+Shift+G".to_string()),
             open_file: Some("Ctrl+Shift+O".to_string()),
 
             // Application

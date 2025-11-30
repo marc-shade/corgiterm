@@ -27,7 +27,7 @@ pub struct SshManager {
 
 impl SshManager {
     /// Create a new SSH Manager
-    pub fn new(parent: &impl IsA<gtk4::Widget>) -> Self {
+    pub fn new(_parent: &impl IsA<gtk4::Widget>) -> Self {
         let dialog = Dialog::builder()
             .title("SSH Connection Manager")
             .content_width(700)
@@ -206,7 +206,7 @@ impl SshManager {
         edit_btn.connect_clicked(move |btn| {
             // Get the main SSH manager dialog - we need to traverse up to find it
             // For now, we'll create a new dialog context
-            if let Some(root) = btn.root() {
+            if btn.root().is_some() {
                 // Try to get an adw::Dialog from the widget hierarchy
                 // Since we can't downcast Root to Dialog directly, we'll use a workaround
                 // by finding the parent dialog widget
@@ -335,7 +335,7 @@ impl SshManager {
         identity_entry.add_suffix(&browse_btn);
 
         let identity_entry_for_browse = identity_entry.clone();
-        let editor_dialog_for_browse = editor_dialog.clone();
+        let _editor_dialog_for_browse = editor_dialog.clone();
         browse_btn.connect_clicked(move |btn| {
             let file_dialog = FileDialog::builder()
                 .title("Select Identity File")
@@ -479,7 +479,7 @@ impl SshManager {
     }
 
     /// Import hosts from ~/.ssh/config
-    fn import_from_ssh_config(parent: &Dialog, hosts_list: &ListBox, all_hosts: &Rc<RefCell<Vec<SshHost>>>) {
+    fn import_from_ssh_config(_parent: &Dialog, hosts_list: &ListBox, all_hosts: &Rc<RefCell<Vec<SshHost>>>) {
         let ssh_config_path = dirs::home_dir()
             .map(|h| h.join(".ssh/config"))
             .unwrap_or_else(|| PathBuf::from("~/.ssh/config"));
