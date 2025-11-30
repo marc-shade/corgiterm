@@ -18,6 +18,7 @@ pub mod natural_language;
 pub mod completions;
 pub mod mcp;
 pub mod learning;
+pub mod history;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

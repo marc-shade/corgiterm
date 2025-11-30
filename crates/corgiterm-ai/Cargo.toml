@@ -32,6 +32,9 @@ pin-project-lite = "0.2"
 # Rate limiting
 governor = "0.7"
 
+# Config directory
+dirs = "5.0"
+
 [dev-dependencies]
 wiremock = "0.6"
 tokio-test = "0.4"

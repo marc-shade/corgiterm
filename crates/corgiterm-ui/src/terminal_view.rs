@@ -1467,6 +1467,14 @@ impl TerminalView {
     /// Send a command to the terminal (appends newline)
     pub fn send_command(&self, command: &str) {
         if let Some(ref pty) = *self.pty.borrow() {
+            // Record command for AI learning
+            let directory = self.working_directory()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| std::env::current_dir()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default());
+            crate::app::record_command(command.to_string(), directory, None);
+
             // Send command with newline
             let cmd_with_newline = format!("{}\n", command);
             if let Err(e) = pty.write(cmd_with_newline.as_bytes()) {

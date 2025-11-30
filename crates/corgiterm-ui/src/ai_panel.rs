@@ -15,7 +15,7 @@ use gtk4::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::app::ai_manager;
+use crate::app::{ai_manager, get_learning_context};
 use corgiterm_ai::{Message, Role};
 
 /// Helper trait to set all margins at once (GTK4 removed set_margin_all)
@@ -63,6 +63,34 @@ pub struct GeneratedCommand {
     pub latency_ms: u64,
 }
 
+/// Build system prompt with learning context for personalized suggestions
+fn build_command_prompt_with_learning() -> String {
+    let context = get_learning_context();
+    let mut prompt = String::from(
+        "You are a shell command expert. Convert the user's request into a single shell command. \
+         Output ONLY the command, nothing else. No explanation, no markdown, just the raw command."
+    );
+
+    // Add user preferences if available
+    if !context.preferences.is_empty() {
+        prompt.push_str("\n\nUser preferences (prefer these tools):");
+        for pref in context.preferences.iter().take(5) {
+            prompt.push_str(&format!("\n- Use '{}' instead of '{}'", pref.preferred, pref.standard));
+        }
+    }
+
+    // Add frequent commands for style hints
+    if !context.frequent_commands.is_empty() {
+        let top_cmds: Vec<_> = context.frequent_commands.iter()
+            .take(5)
+            .map(|c| c.command.as_str())
+            .collect();
+        prompt.push_str(&format!("\n\nUser's most used commands: {}", top_cmds.join(", ")));
+    }
+
+    prompt
+}
+
 /// AI assistant panel widget with mode-specific interfaces
 pub struct AiPanel {
     container: Box,
@@ -75,14 +103,17 @@ pub struct AiPanel {
 
     // Command mode widgets
     command_input: Entry,
+    #[allow(dead_code)] // Used for updating command result display
     command_result_box: Box,
     generated_command: Rc<RefCell<Option<GeneratedCommand>>>,
 
     // Explain mode widgets
     explain_input: Entry,
+    #[allow(dead_code)] // Used for updating explain result text
     explain_result: TextBuffer,
 
     // Shared state
+    #[allow(dead_code)] // Used for async processing state
     is_processing: Rc<RefCell<bool>>,
 
     // Callback for executing commands (set by parent window)
@@ -299,11 +330,11 @@ impl AiPanel {
         mode_switch_callback: Rc<RefCell<Option<std::boxed::Box<dyn Fn(AiPanelMode, &str)>>>>,
     ) {
         if let Some(am) = ai_manager() {
-            let system = "You are a shell command expert. Convert the user's request into a single shell command. \
-                         Output ONLY the command, nothing else. No explanation, no markdown, just the raw command.";
+            // Use learning-enhanced prompt with user preferences
+            let system = build_command_prompt_with_learning();
 
             let messages = vec![
-                Message { role: Role::System, content: system.to_string() },
+                Message { role: Role::System, content: system },
                 Message { role: Role::User, content: prompt.to_string() },
             ];
 

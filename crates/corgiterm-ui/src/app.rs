@@ -22,6 +22,9 @@ static PLUGIN_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_plugins::PluginM
 /// Global snippets manager
 static SNIPPETS_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::SnippetsManager>>> = std::sync::OnceLock::new();
 
+/// Global command history store for AI learning
+static HISTORY_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> = std::sync::OnceLock::new();
+
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
     CONFIG_MANAGER.get().cloned()
@@ -45,6 +48,35 @@ pub fn plugin_manager() -> Option<Arc<RwLock<corgiterm_plugins::PluginManager>>>
 /// Get the global snippets manager
 pub fn snippets_manager() -> Option<Arc<RwLock<corgiterm_config::SnippetsManager>>> {
     SNIPPETS_MANAGER.get().cloned()
+}
+
+/// Get the global command history store
+pub fn history_store() -> Option<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> {
+    HISTORY_STORE.get().cloned()
+}
+
+/// Record a command execution for AI learning
+pub fn record_command(command: String, directory: String, exit_code: Option<i32>) {
+    if let Some(store) = history_store() {
+        let mut store = store.write();
+        store.record(command, directory, exit_code, None);
+        // Save periodically (every 10 commands)
+        if store.len() % 10 == 0 {
+            if let Err(e) = store.save() {
+                tracing::warn!("Failed to save command history: {}", e);
+            }
+        }
+    }
+}
+
+/// Get learning context for AI prompts
+pub fn get_learning_context() -> corgiterm_ai::learning::LearningContext {
+    if let Some(store) = history_store() {
+        let store = store.read();
+        store.extract_learning_context()
+    } else {
+        corgiterm_ai::learning::LearningContext::default()
+    }
 }
 
 /// Load custom CSS styles with optional hot-reload
@@ -267,6 +299,19 @@ fn init_snippets() {
     }
 }
 
+/// Initialize command history for AI learning
+fn init_history() {
+    let history_store = corgiterm_ai::history::CommandHistoryStore::load();
+    let stats = history_store.stats();
+    let history_arc = Arc::new(RwLock::new(history_store));
+    let _ = HISTORY_STORE.set(history_arc);
+    tracing::info!(
+        "Command history loaded: {} commands, {} unique",
+        stats.total_commands,
+        stats.unique_commands
+    );
+}
+
 /// Build the main UI
 pub fn build_ui(app: &Application) {
     // Initialize config first
@@ -283,6 +328,9 @@ pub fn build_ui(app: &Application) {
 
     // Initialize snippets library
     init_snippets();
+
+    // Initialize command history for AI learning
+    init_history();
 
     // Load custom CSS
     load_css();

@@ -86,6 +86,12 @@ corgiterm -e "npm run dev"
 | Close Tab | `Ctrl+W` |
 | Toggle AI Panel | `Ctrl+Shift+A` |
 | Quick Switcher | `Ctrl+K` |
+| SSH Manager | `Ctrl+Shift+M` |
+| Snippets Library | `Ctrl+Shift+S` |
+| ASCII Art Generator | `Ctrl+Shift+G` |
+| Split Horizontal | `Ctrl+Shift+H` |
+| Split Vertical | `Ctrl+Shift+D` |
+| Close Pane | `Ctrl+Shift+W` |
 | Copy | `Ctrl+Shift+C` |
 | Paste | `Ctrl+Shift+V` |
 | Zoom In | `Ctrl++` or `Ctrl+=` |
@@ -179,15 +185,24 @@ cargo fmt --all
 
 ## Roadmap
 
-Features planned for future releases:
+### v0.2.0 - Quality & Polish ✓
+- [x] AI Panel with Chat/Explain/Command modes
+- [x] CLI provider auto-detection (Claude CLI, Gemini CLI)
+- [x] Fix GTK4 4.10 deprecation warnings
+- [x] Wire AI Execute button to terminal
+- [x] Split Panes (Ctrl+Shift+H/D/W)
 
-- [ ] **ASCII Art Generator** - Create ASCII art from images or text
-- [ ] **Flatpak Package** - Easy installation on any Linux distro
-- [ ] **SSH Manager** - Visual connection management with saved hosts
-- [ ] **Split Panes** - Horizontal and vertical terminal splitting
-- [ ] **Snippets Library** - Save and reuse common commands
-- [ ] **AI Command History** - Learn from your usage patterns
-- [ ] **Theme Creator** - Visual theme builder with live preview
+### v0.3.0 - Cross-Platform ✓
+- [x] Windows support with ConPTY (via portable-pty)
+- [x] macOS support with native PTY (via portable-pty)
+- [x] Flatpak packaging for Linux (see `flatpak/README.md`)
+
+### v0.4.0 - Feature Complete ✓
+- [x] SSH Manager with saved hosts (Ctrl+Shift+M)
+- [x] Snippets Library (Ctrl+Shift+S)
+- [x] Theme Creator with live preview
+- [x] AI Command History learning
+- [x] ASCII Art Generator (Ctrl+Shift+G)
 
 ## Privacy Promise
 
