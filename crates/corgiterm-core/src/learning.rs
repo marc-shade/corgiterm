@@ -210,6 +210,7 @@ impl CommandLearning {
     }
 
     /// Calculate frequency score based on count and recency
+    #[allow(dead_code)]
     fn calculate_frequency_score(&self, stats: &CommandStats) -> f32 {
         let max_count = self.stats.values().map(|s| s.total_count).max().unwrap_or(1);
         Self::calculate_frequency_score_static(stats.total_count, stats.last_used, max_count)
