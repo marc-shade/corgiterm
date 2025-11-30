@@ -38,6 +38,8 @@ pub enum ShortcutAction {
     ToggleAi,
     QuickSwitcher,
     SshManager,
+    Snippets,
+    AsciiArt,
     OpenFile,
 
     // Application
@@ -213,6 +215,20 @@ impl KeyboardShortcuts {
                 shortcuts.insert(ShortcutAction::SshManager, parsed);
             } else {
                 tracing::warn!("Failed to parse shortcut 'ssh_manager': {}", s);
+            }
+        }
+        if let Some(ref s) = config.snippets {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::Snippets, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'snippets': {}", s);
+            }
+        }
+        if let Some(ref s) = config.ascii_art {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::AsciiArt, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'ascii_art': {}", s);
             }
         }
         if let Some(ref s) = config.open_file {

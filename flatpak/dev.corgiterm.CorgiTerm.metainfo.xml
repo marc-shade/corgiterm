@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.corgiterm.CorgiTerm</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT AND Apache-2.0</project_license>
+
+  <name>CorgiTerm</name>
+  <summary>AI-powered terminal emulator</summary>
+
+  <description>
+    <p>
+      CorgiTerm is a next-generation, AI-powered terminal emulator that makes the
+      command line accessible to everyone - from nervous beginners to power users
+      who demand maximum control.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>Multiple AI providers - Claude CLI, Gemini CLI, Ollama (local/remote), or API keys</li>
+      <li>Three AI modes - Chat, Explain, and Command generation</li>
+      <li>Safe Mode - Preview commands before execution with risk assessment</li>
+      <li>Natural Language Input - Type "show large files" instead of memorizing syntax</li>
+      <li>GPU Rendering - Silky smooth 144fps performance</li>
+      <li>Split Panes - Horizontal and vertical splits</li>
+      <li>SSH Manager - Visual connection management</li>
+      <li>Snippets Library - Save and reuse common commands</li>
+      <li>Theme Creator - Custom themes with live preview</li>
+    </ul>
+  </description>
+
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+    <category>Utility</category>
+  </categories>
+
+  <url type="homepage">https://github.com/corgiterm/corgiterm</url>
+  <url type="bugtracker">https://github.com/corgiterm/corgiterm/issues</url>
+
+  <launchable type="desktop-id">dev.corgiterm.CorgiTerm.desktop</launchable>
+
+  <provides>
+    <binary>corgiterm</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.3.0" date="2024-01-15">
+      <description>
+        <p>Cross-platform release:</p>
+        <ul>
+          <li>Windows support with ConPTY</li>
+          <li>macOS support with native PTY</li>
+          <li>SSH Manager with keyboard shortcut (Ctrl+Shift+M)</li>
+          <li>Snippets Library (Ctrl+Shift+S)</li>
+          <li>ASCII Art Generator (Ctrl+Shift+G)</li>
+          <li>Theme Creator with live preview</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.2.0" date="2024-01-01">
+      <description>
+        <p>Quality and polish release:</p>
+        <ul>
+          <li>AI Panel with Chat/Explain/Command modes</li>
+          <li>CLI provider auto-detection</li>
+          <li>Split Panes (Ctrl+Shift+H/D/W)</li>
+          <li>Fixed GTK4 deprecation warnings</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <developer_name>CorgiTerm Team</developer_name>
+</component>

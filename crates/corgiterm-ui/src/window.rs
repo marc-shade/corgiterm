@@ -589,6 +589,22 @@ impl MainWindow {
                 gtk4::prelude::ActionGroupExt::activate_action(&window_for_keys, "ssh_manager", None);
                 return gtk4::glib::Propagation::Stop;
             }
+            if shortcuts_for_keys.matches(ShortcutAction::Snippets, key, modifier) {
+                let win = window_for_keys.clone();
+                let tabs = tabs_for_keys.clone();
+                crate::snippets::show_snippets_dialog(&win, move |snippet| {
+                    tabs.send_command_to_current(&snippet);
+                });
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::AsciiArt, key, modifier) {
+                let win = window_for_keys.clone();
+                let tabs = tabs_for_keys.clone();
+                dialogs::show_ascii_art_dialog(&win, move |art| {
+                    tabs.send_command_to_current(&format!("echo '{}'\n", art));
+                });
+                return gtk4::glib::Propagation::Stop;
+            }
             if shortcuts_for_keys.matches(ShortcutAction::OpenFile, key, modifier) {
                 let tabs = tabs_for_keys.clone();
                 let win = window_for_keys.clone();

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=CorgiTerm
+Comment=AI-powered terminal emulator
+Exec=corgiterm
+Icon=dev.corgiterm.CorgiTerm
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Keywords=terminal;console;shell;command;prompt;AI;
+StartupNotify=true
+StartupWMClass=corgiterm

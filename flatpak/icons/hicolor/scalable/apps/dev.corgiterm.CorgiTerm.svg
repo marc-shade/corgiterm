@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background (terminal) -->
+  <rect x="8" y="24" width="112" height="88" rx="8" fill="#2D3436"/>
+
+  <!-- Terminal header bar -->
+  <rect x="8" y="24" width="112" height="20" rx="8" fill="#636E72"/>
+  <rect x="8" y="36" width="112" height="8" fill="#636E72"/>
+
+  <!-- Window buttons -->
+  <circle cx="22" cy="34" r="5" fill="#E74C3C"/>
+  <circle cx="38" cy="34" r="5" fill="#F39C12"/>
+  <circle cx="54" cy="34" r="5" fill="#2ECC71"/>
+
+  <!-- Terminal prompt lines -->
+  <rect x="16" y="52" width="48" height="4" rx="2" fill="#74B9FF"/>
+  <rect x="16" y="64" width="72" height="4" rx="2" fill="#81ECEC"/>
+  <rect x="16" y="76" width="40" height="4" rx="2" fill="#A29BFE"/>
+
+  <!-- Cursor -->
+  <rect x="60" y="76" width="8" height="12" fill="#00CEC9"/>
+
+  <!-- Corgi ears (on top of terminal) -->
+  <path d="M28 28 L16 8 L40 20 Z" fill="#E17055"/>
+  <path d="M100 28 L112 8 L88 20 Z" fill="#E17055"/>
+
+  <!-- Inner ear -->
+  <path d="M28 24 L20 12 L36 20 Z" fill="#FDCB6E"/>
+  <path d="M100 24 L108 12 L92 20 Z" fill="#FDCB6E"/>
+
+  <!-- AI sparkle -->
+  <path d="M104 68 L108 60 L112 68 L120 72 L112 76 L108 84 L104 76 L96 72 Z" fill="#FFD93D"/>
+</svg>
