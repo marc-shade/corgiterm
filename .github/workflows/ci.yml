@@ -71,14 +71,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: |
-          brew install gtk4 libadwaita
+          brew install gtk4 libadwaita lua@5.4
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --workspace
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo build --workspace
       - name: Run tests
-        run: cargo test --workspace
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo test --workspace
       - name: Build release
-        run: cargo build --release
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo build --release
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
