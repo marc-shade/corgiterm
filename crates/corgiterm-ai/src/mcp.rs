@@ -219,19 +219,39 @@ impl McpServer {
     /// Handle an MCP request
     pub async fn handle_request(&self, request: McpRequest) -> McpResponse {
         match request.method.as_str() {
-            "tools/list" => McpResponse {
-                id: request.id,
-                result: Some(serde_json::to_value(&self.tools).unwrap()),
-                error: None,
+            "tools/list" => match serde_json::to_value(&self.tools) {
+                Ok(value) => McpResponse {
+                    id: request.id,
+                    result: Some(value),
+                    error: None,
+                },
+                Err(e) => McpResponse {
+                    id: request.id,
+                    result: None,
+                    error: Some(McpError {
+                        code: -32603,
+                        message: format!("Failed to serialize tools: {}", e),
+                    }),
+                },
             },
             "tools/call" => {
                 // Handle tool execution
                 self.execute_tool(request.id, request.params).await
             }
-            "resources/list" => McpResponse {
-                id: request.id,
-                result: Some(serde_json::to_value(&self.resources).unwrap()),
-                error: None,
+            "resources/list" => match serde_json::to_value(&self.resources) {
+                Ok(value) => McpResponse {
+                    id: request.id,
+                    result: Some(value),
+                    error: None,
+                },
+                Err(e) => McpResponse {
+                    id: request.id,
+                    result: None,
+                    error: Some(McpError {
+                        code: -32603,
+                        message: format!("Failed to serialize resources: {}", e),
+                    }),
+                },
             },
             _ => McpResponse {
                 id: request.id,
@@ -315,7 +335,10 @@ impl McpServer {
     }
 
     /// Execute a shell command
-    async fn tool_execute_command(&self, args: Option<serde_json::Value>) -> Result<String, String> {
+    async fn tool_execute_command(
+        &self,
+        args: Option<serde_json::Value>,
+    ) -> Result<String, String> {
         let args = args.ok_or("Missing arguments for execute_command")?;
 
         let command = args
@@ -340,13 +363,13 @@ impl McpServer {
     }
 
     /// Get recent terminal output
-    async fn tool_get_terminal_output(&self, args: Option<serde_json::Value>) -> Result<String, String> {
+    async fn tool_get_terminal_output(
+        &self,
+        args: Option<serde_json::Value>,
+    ) -> Result<String, String> {
         let args = args.unwrap_or_else(|| serde_json::json!({}));
 
-        let lines = args
-            .get("lines")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(100);
+        let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(100);
 
         let session_id = args.get("session_id").and_then(|v| v.as_str());
 
@@ -369,7 +392,10 @@ impl McpServer {
                 .map_err(|e| format!("Failed to serialize sessions: {}", e))?;
             Ok(json)
         } else {
-            Ok("Sessions:\n1. Default session (current)\n\nNote: No backend configured.".to_string())
+            Ok(
+                "Sessions:\n1. Default session (current)\n\nNote: No backend configured."
+                    .to_string(),
+            )
         }
     }
 
@@ -425,21 +451,21 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or("Missing required parameter: query")?;
 
-        let search_type = args
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("all");
+        let search_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("all");
 
         if let Some(backend) = &self.backend {
             let results = backend.search_history(query, search_type).await?;
             let json = serde_json::to_string_pretty(&results)
                 .map_err(|e| format!("Failed to serialize results: {}", e))?;
-            Ok(format!("Search results ({} matches):\n{}", results.len(), json))
+            Ok(format!(
+                "Search results ({} matches):\n{}",
+                results.len(),
+                json
+            ))
         } else {
             Ok(format!(
                 "History search:\nQuery: {}\nType: {}\n\nNote: No backend configured.",
-                query,
-                search_type
+                query, search_type
             ))
         }
     }

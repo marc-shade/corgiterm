@@ -4,19 +4,25 @@
 //!
 //! Features:
 //! - Image to ASCII conversion with live preview
-//! - Text to ASCII art
+//! - Multiple image filters (edge detection, high contrast, posterize, dither)
+//! - Brightness and contrast adjustments
+//! - Drag-drop image support
+//! - Text to ASCII art with 6 font styles
+//! - Aspect ratio control
 //! - Built-in Corgi art collection
+//! - Template gallery
 //! - Copy to clipboard or insert into terminal
 
+use gtk4::gdk;
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, DropDown, FileDialog, StringList,
-    Label, Notebook, Orientation, Scale, ScrolledWindow, TextView, Window,
+    Align, Box, Button, DropDown, FileDialog, Label, Notebook, Orientation, Scale, ScrolledWindow,
+    SelectionMode, StringList, TextView, Window,
 };
 use libadwaita::{prelude::*, ActionRow, HeaderBar, PreferencesGroup};
 
 use corgiterm_core::ascii_art::{
-    AsciiArtConfig, AsciiArtGenerator, CharacterSet, CorgiArt, FONT_SMALL, FONT_STANDARD,
+    all_fonts, AsciiArtConfig, AsciiArtGenerator, CharacterSet, CorgiArt, ImageFilter,
 };
 
 use std::cell::RefCell;
@@ -34,6 +40,10 @@ pub struct AsciiArtDialog {
     image_preview: TextView,
     image_width_scale: Scale,
     image_charset_dropdown: DropDown,
+    image_filter_dropdown: DropDown,
+    image_brightness_scale: Scale,
+    image_contrast_scale: Scale,
+    image_aspect_scale: Scale,
     image_colored_check: gtk4::CheckButton,
     image_inverted_check: gtk4::CheckButton,
     current_image: Rc<RefCell<Option<image::DynamicImage>>>,
@@ -47,6 +57,9 @@ pub struct AsciiArtDialog {
     #[allow(dead_code)]
     corgi_dropdown: DropDown,
     corgi_preview: TextView,
+
+    // History
+    history: Rc<RefCell<Vec<String>>>,
 
     // Result
     result: Rc<RefCell<Option<String>>>,
@@ -85,8 +98,18 @@ impl AsciiArtDialog {
         notebook.set_vexpand(true);
 
         // Image tab
-        let (image_tab, image_preview, image_width_scale, image_charset_dropdown,
-             image_colored_check, image_inverted_check) = Self::create_image_tab();
+        let (
+            image_tab,
+            image_preview,
+            image_width_scale,
+            image_charset_dropdown,
+            image_filter_dropdown,
+            image_brightness_scale,
+            image_contrast_scale,
+            image_aspect_scale,
+            image_colored_check,
+            image_inverted_check,
+        ) = Self::create_image_tab();
         notebook.append_page(&image_tab, Some(&Label::new(Some("From Image"))));
 
         // Text tab
@@ -107,6 +130,7 @@ impl AsciiArtDialog {
         let current_image = Rc::new(RefCell::new(None));
         let result = Rc::new(RefCell::new(None));
         let insert_callback: Rc<RefCell<Option<InsertCallback>>> = Rc::new(RefCell::new(None));
+        let history: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
 
         let mut ascii_dialog = Self {
             dialog,
@@ -114,6 +138,10 @@ impl AsciiArtDialog {
             image_preview,
             image_width_scale,
             image_charset_dropdown,
+            image_filter_dropdown,
+            image_brightness_scale,
+            image_contrast_scale,
+            image_aspect_scale,
             image_colored_check,
             image_inverted_check,
             current_image,
@@ -122,30 +150,127 @@ impl AsciiArtDialog {
             text_preview,
             corgi_dropdown,
             corgi_preview,
+            history,
             result,
             insert_callback,
         };
 
         ascii_dialog.connect_signals(cancel_btn, copy_btn, insert_btn);
+
+        // History tab
+        let history_tab = ascii_dialog.create_history_tab();
+        ascii_dialog
+            .notebook
+            .append_page(&history_tab, Some(&Label::new(Some("History"))));
+
         ascii_dialog
     }
 
+    fn create_history_tab(&self) -> Box {
+        let vbox = Box::new(Orientation::Vertical, 8);
+        vbox.set_margin_top(12);
+        vbox.set_margin_bottom(12);
+        vbox.set_margin_start(12);
+        vbox.set_margin_end(12);
+
+        let scrolled = ScrolledWindow::new();
+        scrolled.set_vexpand(true);
+        scrolled.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+
+        let list = gtk4::ListBox::new();
+        list.set_selection_mode(SelectionMode::None);
+        scrolled.set_child(Some(&list));
+        vbox.append(&scrolled);
+
+        // Populate from history
+        let history = self.history.clone();
+        let insert_cb = self.insert_callback.clone();
+        let result_ref = self.result.clone();
+        let preview_ref = self.image_preview.clone();
+        let list_ref = list.clone();
+        gtk4::glib::idle_add_local(move || {
+            list_ref.remove_all();
+            for entry in history.borrow().iter().rev().take(20) {
+                let row = libadwaita::ActionRow::builder()
+                    .title("ASCII art")
+                    .subtitle(&format!("{} chars", entry.len()))
+                    .activatable(true)
+                    .build();
+                let copy_btn = Button::from_icon_name("edit-copy-symbolic");
+                copy_btn.add_css_class("flat");
+                copy_btn.set_tooltip_text(Some("Copy"));
+                let entry_text = entry.clone();
+                copy_btn.connect_clicked(move |_| {
+                    let _ = gtk4::gdk::Display::default()
+                        .and_then(|d| Some(d.clipboard()))
+                        .map(|cb| cb.set_text(&entry_text));
+                });
+                row.add_suffix(&copy_btn);
+
+                let insert_btn = Button::from_icon_name("insert-text-symbolic");
+                insert_btn.add_css_class("flat");
+                insert_btn.set_tooltip_text(Some("Insert"));
+                let entry_text_insert = entry.clone();
+                let insert_cb = insert_cb.clone();
+                insert_btn.connect_clicked(move |_| {
+                    if let Some(cb) = &*insert_cb.borrow() {
+                        cb(&entry_text_insert);
+                    }
+                });
+                row.add_suffix(&insert_btn);
+
+                // Preview click
+                let entry_text_preview = entry.clone();
+                let preview_ref = preview_ref.clone();
+                let result_ref = result_ref.clone();
+                row.connect_activated(move |_| {
+                    let buffer = preview_ref.buffer();
+                    buffer.set_text(&entry_text_preview);
+                    *result_ref.borrow_mut() = Some(entry_text_preview.clone());
+                });
+
+                list_ref.append(&row);
+            }
+            gtk4::glib::ControlFlow::Break
+        });
+
+        vbox
+    }
+
     /// Create the image tab
-    fn create_image_tab() -> (Box, TextView, Scale, DropDown, gtk4::CheckButton, gtk4::CheckButton) {
+    #[allow(clippy::type_complexity)]
+    fn create_image_tab() -> (
+        Box,
+        TextView,
+        Scale,
+        DropDown,
+        DropDown,
+        Scale,
+        Scale,
+        Scale,
+        gtk4::CheckButton,
+        gtk4::CheckButton,
+    ) {
         let vbox = Box::new(Orientation::Vertical, 12);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
         vbox.set_margin_start(12);
         vbox.set_margin_end(12);
 
-        // File picker button
+        // File picker button with drag-drop hint
+        let file_box = Box::new(Orientation::Horizontal, 12);
         let file_btn = Button::with_label("Choose Image...");
         file_btn.set_halign(Align::Start);
-        vbox.append(&file_btn);
+        file_box.append(&file_btn);
+
+        let drag_label = Label::new(Some("or drag & drop image here"));
+        drag_label.add_css_class("dim-label");
+        file_box.append(&drag_label);
+        vbox.append(&file_box);
 
         // Settings
         let settings_group = PreferencesGroup::new();
-        settings_group.set_title("Settings");
+        settings_group.set_title("Image Settings");
 
         // Width slider
         let width_row = ActionRow::new();
@@ -156,6 +281,17 @@ impl AsciiArtDialog {
         width_scale.set_hexpand(true);
         width_row.add_suffix(&width_scale);
         settings_group.add(&width_row);
+
+        // Aspect ratio slider
+        let aspect_row = ActionRow::new();
+        aspect_row.set_title("Aspect Ratio");
+        aspect_row.set_subtitle("Adjust for terminal font aspect");
+        let aspect_scale = Scale::with_range(Orientation::Horizontal, 0.3, 1.0, 0.05);
+        aspect_scale.set_value(0.5);
+        aspect_scale.set_draw_value(true);
+        aspect_scale.set_hexpand(true);
+        aspect_row.add_suffix(&aspect_scale);
+        settings_group.add(&aspect_row);
 
         // Character set - use modern DropDown
         let charset_row = ActionRow::new();
@@ -169,23 +305,64 @@ impl AsciiArtDialog {
         charset_row.add_suffix(&charset_dropdown);
         settings_group.add(&charset_row);
 
+        // Image Filter dropdown
+        let filter_row = ActionRow::new();
+        filter_row.set_title("Filter");
+        filter_row.set_subtitle("Apply image processing");
+        let filter_names: Vec<&str> = ImageFilter::all().iter().map(|f| f.name()).collect();
+        let filter_model = StringList::new(&filter_names);
+        let filter_dropdown = DropDown::builder()
+            .model(&filter_model)
+            .selected(0)
+            .build();
+        filter_row.add_suffix(&filter_dropdown);
+        settings_group.add(&filter_row);
+
+        vbox.append(&settings_group);
+
+        // Adjustments group
+        let adjust_group = PreferencesGroup::new();
+        adjust_group.set_title("Adjustments");
+
+        // Brightness slider
+        let brightness_row = ActionRow::new();
+        brightness_row.set_title("Brightness");
+        let brightness_scale = Scale::with_range(Orientation::Horizontal, -100.0, 100.0, 5.0);
+        brightness_scale.set_value(0.0);
+        brightness_scale.set_draw_value(true);
+        brightness_scale.set_hexpand(true);
+        brightness_row.add_suffix(&brightness_scale);
+        adjust_group.add(&brightness_row);
+
+        // Contrast slider
+        let contrast_row = ActionRow::new();
+        contrast_row.set_title("Contrast");
+        let contrast_scale = Scale::with_range(Orientation::Horizontal, -100.0, 100.0, 5.0);
+        contrast_scale.set_value(0.0);
+        contrast_scale.set_draw_value(true);
+        contrast_scale.set_hexpand(true);
+        contrast_row.add_suffix(&contrast_scale);
+        adjust_group.add(&contrast_row);
+
         // Colored checkbox
         let colored_row = ActionRow::new();
         colored_row.set_title("ANSI Colors");
+        colored_row.set_subtitle("Include terminal colors");
         let colored_check = gtk4::CheckButton::new();
         colored_row.add_suffix(&colored_check);
         colored_row.set_activatable_widget(Some(&colored_check));
-        settings_group.add(&colored_row);
+        adjust_group.add(&colored_row);
 
         // Inverted checkbox
         let inverted_row = ActionRow::new();
-        inverted_row.set_title("Invert (for white backgrounds)");
+        inverted_row.set_title("Invert");
+        inverted_row.set_subtitle("For light backgrounds");
         let inverted_check = gtk4::CheckButton::new();
         inverted_row.add_suffix(&inverted_check);
         inverted_row.set_activatable_widget(Some(&inverted_check));
-        settings_group.add(&inverted_row);
+        adjust_group.add(&inverted_row);
 
-        vbox.append(&settings_group);
+        vbox.append(&adjust_group);
 
         // Preview
         let preview_label = Label::new(Some("Preview:"));
@@ -198,11 +375,22 @@ impl AsciiArtDialog {
         preview.set_editable(false);
         preview.set_monospace(true);
         let buffer = preview.buffer();
-        buffer.set_text("Select an image to preview...");
+        buffer.set_text("Select an image or drag & drop to preview...");
         scrolled.set_child(Some(&preview));
         vbox.append(&scrolled);
 
-        (vbox, preview, width_scale, charset_dropdown, colored_check, inverted_check)
+        (
+            vbox,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+        )
     }
 
     /// Create the text tab
@@ -223,17 +411,16 @@ impl AsciiArtDialog {
         text_input.set_max_length(20); // ASCII art gets wide quickly
         vbox.append(&text_input);
 
-        // Font selection - use modern DropDown
+        // Font selection - use all 6 fonts
         let font_group = PreferencesGroup::new();
         font_group.set_title("Font");
 
         let font_row = ActionRow::new();
         font_row.set_title("Font Style");
-        let font_model = StringList::new(&["Standard", "Small"]);
-        let font_dropdown = DropDown::builder()
-            .model(&font_model)
-            .selected(0)
-            .build();
+        font_row.set_subtitle("Figlet-style ASCII fonts");
+        let font_names: Vec<&str> = all_fonts().iter().map(|f| f.name).collect();
+        let font_model = StringList::new(&font_names);
+        let font_dropdown = DropDown::builder().model(&font_model).selected(0).build();
         font_row.add_suffix(&font_dropdown);
         font_group.add(&font_row);
 
@@ -272,10 +459,7 @@ impl AsciiArtDialog {
         // Use modern DropDown instead of ComboBoxText
         let corgi_names: Vec<&str> = CorgiArt::all().iter().map(|(name, _)| *name).collect();
         let corgi_model = StringList::new(&corgi_names);
-        let corgi_dropdown = DropDown::builder()
-            .model(&corgi_model)
-            .selected(0)
-            .build();
+        let corgi_dropdown = DropDown::builder().model(&corgi_model).selected(0).build();
         vbox.append(&corgi_dropdown);
 
         let random_btn = Button::with_label("🎲 Random Corgi");
@@ -324,11 +508,13 @@ impl AsciiArtDialog {
 
         // Copy button
         let result_clone = self.result.clone();
+        let history_clone = self.history.clone();
         let dialog_clone = self.dialog.clone();
         copy_btn.connect_clicked(move |_| {
             if let Some(text) = result_clone.borrow().as_ref() {
                 let clipboard = dialog_clone.clipboard();
                 clipboard.set_text(text);
+                history_clone.borrow_mut().push(text.clone());
             }
         });
 
@@ -336,12 +522,14 @@ impl AsciiArtDialog {
         let result_clone = self.result.clone();
         let dialog_clone = self.dialog.clone();
         let insert_cb_clone = self.insert_callback.clone();
+        let history_clone = self.history.clone();
         insert_btn.connect_clicked(move |_| {
             if let Some(text) = result_clone.borrow().as_ref() {
                 // Call the callback to insert text into terminal
                 if let Some(ref callback) = *insert_cb_clone.borrow() {
                     callback(text);
                     tracing::info!("Inserted ASCII art into terminal ({} bytes)", text.len());
+                    history_clone.borrow_mut().push(text.clone());
                 } else {
                     tracing::warn!("Insert button clicked but no callback set");
                 }
@@ -380,58 +568,137 @@ impl AsciiArtDialog {
         });
     }
 
-    /// Connect image file picker
+    /// Connect image file picker and drag-drop
     fn connect_image_picker(&self) {
         let dialog = self.dialog.clone();
         let current_image = self.current_image.clone();
         let preview = self.image_preview.clone();
         let width_scale = self.image_width_scale.clone();
         let charset_dropdown = self.image_charset_dropdown.clone();
+        let filter_dropdown = self.image_filter_dropdown.clone();
+        let brightness_scale = self.image_brightness_scale.clone();
+        let contrast_scale = self.image_contrast_scale.clone();
+        let aspect_scale = self.image_aspect_scale.clone();
         let colored_check = self.image_colored_check.clone();
         let inverted_check = self.image_inverted_check.clone();
+        let result = self.result.clone();
 
         // Find the file button in image tab
         if let Some(notebook_page) = self.notebook.nth_page(Some(0)) {
             if let Some(vbox) = notebook_page.downcast_ref::<Box>() {
-                if let Some(file_btn) = vbox.first_child() {
-                    if let Some(button) = file_btn.downcast_ref::<Button>() {
-                        button.connect_clicked(move |_btn| {
-                            // Use modern FileDialog instead of deprecated FileChooserDialog
-                            let file_dialog = FileDialog::builder()
-                                .title("Choose Image")
-                                .modal(true)
-                                .build();
+                // Setup drag-drop on the vbox
+                let drop_target = gtk4::DropTarget::new(gtk4::gio::File::static_type(), gdk::DragAction::COPY);
+                let current_image_drop = current_image.clone();
+                let preview_drop = preview.clone();
+                let width_drop = width_scale.clone();
+                let charset_drop = charset_dropdown.clone();
+                let filter_drop = filter_dropdown.clone();
+                let brightness_drop = brightness_scale.clone();
+                let contrast_drop = contrast_scale.clone();
+                let aspect_drop = aspect_scale.clone();
+                let colored_drop = colored_check.clone();
+                let inverted_drop = inverted_check.clone();
+                let result_drop = result.clone();
 
-                            let current_image_clone = current_image.clone();
-                            let preview_clone = preview.clone();
-                            let width_scale_clone = width_scale.clone();
-                            let charset_dropdown_clone = charset_dropdown.clone();
-                            let colored_check_clone = colored_check.clone();
-                            let inverted_check_clone = inverted_check.clone();
-                            let dialog_clone = dialog.clone();
+                drop_target.connect_drop(move |_target, value, _x, _y| {
+                    if let Ok(file) = value.get::<gtk4::gio::File>() {
+                        if let Some(path) = file.path() {
+                            if let Ok(img) = image::open(&path) {
+                                *current_image_drop.borrow_mut() = Some(img.clone());
+                                Self::update_image_preview(
+                                    &img,
+                                    &preview_drop,
+                                    &width_drop,
+                                    &charset_drop,
+                                    &filter_drop,
+                                    &brightness_drop,
+                                    &contrast_drop,
+                                    &aspect_drop,
+                                    &colored_drop,
+                                    &inverted_drop,
+                                );
+                                // Store result
+                                let buffer = preview_drop.buffer();
+                                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                                *result_drop.borrow_mut() = Some(text.to_string());
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                });
+                vbox.add_controller(drop_target);
 
-                            file_dialog.open(
-                                Some(&dialog_clone),
-                                None::<&gtk4::gio::Cancellable>,
-                                move |result| {
-                                    if let Ok(file) = result {
-                                        if let Some(path) = file.path() {
-                                            if let Ok(img) = image::open(&path) {
-                                                *current_image_clone.borrow_mut() = Some(img.clone());
-                                                Self::update_image_preview(
-                                                    &img,
-                                                    &preview_clone,
-                                                    &width_scale_clone,
-                                                    &charset_dropdown_clone,
-                                                    &colored_check_clone,
-                                                    &inverted_check_clone,
-                                                );
+                // Connect file button
+                if let Some(file_box) = vbox.first_child() {
+                    if let Some(file_btn_box) = file_box.downcast_ref::<Box>() {
+                        if let Some(button) = file_btn_box.first_child() {
+                            if let Some(button) = button.downcast_ref::<Button>() {
+                                let current_image_btn = current_image.clone();
+                                let preview_btn = preview.clone();
+                                let width_btn = width_scale.clone();
+                                let charset_btn = charset_dropdown.clone();
+                                let filter_btn = filter_dropdown.clone();
+                                let brightness_btn = brightness_scale.clone();
+                                let contrast_btn = contrast_scale.clone();
+                                let aspect_btn = aspect_scale.clone();
+                                let colored_btn = colored_check.clone();
+                                let inverted_btn = inverted_check.clone();
+                                let dialog_btn = dialog.clone();
+                                let result_btn = result.clone();
+
+                                button.connect_clicked(move |_btn| {
+                                    let file_dialog = FileDialog::builder()
+                                        .title("Choose Image")
+                                        .modal(true)
+                                        .build();
+
+                                    let current_image_clone = current_image_btn.clone();
+                                    let preview_clone = preview_btn.clone();
+                                    let width_clone = width_btn.clone();
+                                    let charset_clone = charset_btn.clone();
+                                    let filter_clone = filter_btn.clone();
+                                    let brightness_clone = brightness_btn.clone();
+                                    let contrast_clone = contrast_btn.clone();
+                                    let aspect_clone = aspect_btn.clone();
+                                    let colored_clone = colored_btn.clone();
+                                    let inverted_clone = inverted_btn.clone();
+                                    let dialog_clone = dialog_btn.clone();
+                                    let result_clone = result_btn.clone();
+
+                                    file_dialog.open(
+                                        Some(&dialog_clone),
+                                        None::<&gtk4::gio::Cancellable>,
+                                        move |result| {
+                                            if let Ok(file) = result {
+                                                if let Some(path) = file.path() {
+                                                    if let Ok(img) = image::open(&path) {
+                                                        *current_image_clone.borrow_mut() =
+                                                            Some(img.clone());
+                                                        Self::update_image_preview(
+                                                            &img,
+                                                            &preview_clone,
+                                                            &width_clone,
+                                                            &charset_clone,
+                                                            &filter_clone,
+                                                            &brightness_clone,
+                                                            &contrast_clone,
+                                                            &aspect_clone,
+                                                            &colored_clone,
+                                                            &inverted_clone,
+                                                        );
+                                                        // Store result
+                                                        let buffer = preview_clone.buffer();
+                                                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                                                        *result_clone.borrow_mut() = Some(text.to_string());
+                                                    }
+                                                }
                                             }
-                                        }
-                                    }
-                                },
-                            );
-                        });
+                                        },
+                                    );
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -440,108 +707,103 @@ impl AsciiArtDialog {
 
     /// Connect image settings changes
     fn connect_image_settings(&self) {
-        let current_image = self.current_image.clone();
-        let preview = self.image_preview.clone();
-        let width_scale = self.image_width_scale.clone();
-        let charset_dropdown = self.image_charset_dropdown.clone();
-        let colored_check = self.image_colored_check.clone();
-        let inverted_check = self.image_inverted_check.clone();
-        let result = self.result.clone();
+        // Helper macro to reduce repetition
+        macro_rules! connect_image_control {
+            ($control:expr, $signal:ident, $current_image:expr, $preview:expr,
+             $width:expr, $charset:expr, $filter:expr, $brightness:expr,
+             $contrast:expr, $aspect:expr, $colored:expr, $inverted:expr, $result:expr) => {{
+                let current_image = $current_image.clone();
+                let preview = $preview.clone();
+                let width = $width.clone();
+                let charset = $charset.clone();
+                let filter = $filter.clone();
+                let brightness = $brightness.clone();
+                let contrast = $contrast.clone();
+                let aspect = $aspect.clone();
+                let colored = $colored.clone();
+                let inverted = $inverted.clone();
+                let result = $result.clone();
+                $control.$signal(move |_| {
+                    if let Some(img) = current_image.borrow().as_ref() {
+                        Self::update_image_preview(
+                            img, &preview, &width, &charset, &filter,
+                            &brightness, &contrast, &aspect, &colored, &inverted,
+                        );
+                        let buffer = preview.buffer();
+                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                        *result.borrow_mut() = Some(text.to_string());
+                    }
+                });
+            }};
+        }
+
+        let current_image = &self.current_image;
+        let preview = &self.image_preview;
+        let width_scale = &self.image_width_scale;
+        let charset_dropdown = &self.image_charset_dropdown;
+        let filter_dropdown = &self.image_filter_dropdown;
+        let brightness_scale = &self.image_brightness_scale;
+        let contrast_scale = &self.image_contrast_scale;
+        let aspect_scale = &self.image_aspect_scale;
+        let colored_check = &self.image_colored_check;
+        let inverted_check = &self.image_inverted_check;
+        let result = &self.result;
 
         // Width change
-        let current_image_clone = current_image.clone();
-        let preview_clone = preview.clone();
-        let charset_dropdown_clone = charset_dropdown.clone();
-        let colored_check_clone = colored_check.clone();
-        let inverted_check_clone = inverted_check.clone();
-        let result_clone = result.clone();
-        width_scale.connect_value_changed(move |scale| {
-            if let Some(img) = current_image_clone.borrow().as_ref() {
-                Self::update_image_preview(
-                    img,
-                    &preview_clone,
-                    scale,
-                    &charset_dropdown_clone,
-                    &colored_check_clone,
-                    &inverted_check_clone,
-                );
-                // Store result
-                let buffer = preview_clone.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                *result_clone.borrow_mut() = Some(text.to_string());
-            }
-        });
+        connect_image_control!(
+            width_scale, connect_value_changed, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
 
-        // Charset change - use connect_selected_notify for DropDown
-        let current_image_clone = current_image.clone();
-        let preview_clone = preview.clone();
-        let width_scale_clone = width_scale.clone();
-        let colored_check_clone = colored_check.clone();
-        let inverted_check_clone = inverted_check.clone();
-        let result_clone = result.clone();
-        charset_dropdown.connect_selected_notify(move |dropdown| {
-            if let Some(img) = current_image_clone.borrow().as_ref() {
-                Self::update_image_preview(
-                    img,
-                    &preview_clone,
-                    &width_scale_clone,
-                    dropdown,
-                    &colored_check_clone,
-                    &inverted_check_clone,
-                );
-                // Store result
-                let buffer = preview_clone.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                *result_clone.borrow_mut() = Some(text.to_string());
-            }
-        });
+        // Charset change
+        connect_image_control!(
+            charset_dropdown, connect_selected_notify, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
+
+        // Filter change
+        connect_image_control!(
+            filter_dropdown, connect_selected_notify, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
+
+        // Brightness change
+        connect_image_control!(
+            brightness_scale, connect_value_changed, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
+
+        // Contrast change
+        connect_image_control!(
+            contrast_scale, connect_value_changed, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
+
+        // Aspect change
+        connect_image_control!(
+            aspect_scale, connect_value_changed, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
 
         // Color checkbox
-        let current_image_clone = current_image.clone();
-        let preview_clone = preview.clone();
-        let width_scale_clone = width_scale.clone();
-        let charset_dropdown_clone = charset_dropdown.clone();
-        let inverted_check_clone = inverted_check.clone();
-        let result_clone = result.clone();
-        colored_check.connect_toggled(move |check| {
-            if let Some(img) = current_image_clone.borrow().as_ref() {
-                Self::update_image_preview(
-                    img,
-                    &preview_clone,
-                    &width_scale_clone,
-                    &charset_dropdown_clone,
-                    check,
-                    &inverted_check_clone,
-                );
-                // Store result
-                let buffer = preview_clone.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                *result_clone.borrow_mut() = Some(text.to_string());
-            }
-        });
+        connect_image_control!(
+            colored_check, connect_toggled, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
 
         // Inverted checkbox
-        let current_image_clone = current_image;
-        let preview_clone = preview;
-        let width_scale_clone = width_scale;
-        let charset_dropdown_clone = charset_dropdown;
-        let colored_check_clone = colored_check;
-        inverted_check.connect_toggled(move |check| {
-            if let Some(img) = current_image_clone.borrow().as_ref() {
-                Self::update_image_preview(
-                    img,
-                    &preview_clone,
-                    &width_scale_clone,
-                    &charset_dropdown_clone,
-                    &colored_check_clone,
-                    check,
-                );
-                // Store result
-                let buffer = preview_clone.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                *result.borrow_mut() = Some(text.to_string());
-            }
-        });
+        connect_image_control!(
+            inverted_check, connect_toggled, current_image, preview,
+            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
+            contrast_scale, aspect_scale, colored_check, inverted_check, result
+        );
     }
 
     /// Update image preview
@@ -550,12 +812,21 @@ impl AsciiArtDialog {
         preview: &TextView,
         width_scale: &Scale,
         charset_dropdown: &DropDown,
+        filter_dropdown: &DropDown,
+        brightness_scale: &Scale,
+        contrast_scale: &Scale,
+        aspect_scale: &Scale,
         colored_check: &gtk4::CheckButton,
         inverted_check: &gtk4::CheckButton,
     ) {
         let width = width_scale.value() as usize;
         let charset_idx = charset_dropdown.selected() as usize;
         let charset = CharacterSet::all()[charset_idx];
+        let filter_idx = filter_dropdown.selected() as usize;
+        let filter = ImageFilter::all()[filter_idx];
+        let brightness = brightness_scale.value() as i32;
+        let contrast = contrast_scale.value() as i32;
+        let aspect = aspect_scale.value() as f32;
         let colored = colored_check.is_active();
         let inverted = inverted_check.is_active();
 
@@ -564,7 +835,10 @@ impl AsciiArtDialog {
             charset,
             colored,
             inverted,
-            aspect_ratio: 0.5,
+            aspect_ratio: aspect,
+            filter,
+            brightness,
+            contrast,
         };
 
         let generator = AsciiArtGenerator::with_config(config);
@@ -626,11 +900,9 @@ impl AsciiArtDialog {
             return;
         }
 
-        let font = match font_dropdown.selected() {
-            0 => &FONT_STANDARD,
-            1 => &FONT_SMALL,
-            _ => &FONT_STANDARD,
-        };
+        let fonts = all_fonts();
+        let font_idx = font_dropdown.selected() as usize;
+        let font = fonts.get(font_idx).unwrap_or(&fonts[0]);
 
         let generator = AsciiArtGenerator::new();
         if let Ok(art) = generator.from_text(text, font) {

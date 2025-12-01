@@ -64,11 +64,14 @@ fn main() -> anyhow::Result<()> {
 
     // Print welcome message in debug mode
     if args.debug {
-        println!(r#"
+        println!(
+            r#"
    ∩＿∩
   (・ω・)  CorgiTerm v{}
   /　 つ   Debug mode enabled
-        "#, env!("CARGO_PKG_VERSION"));
+        "#,
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     // Initialize core
@@ -101,12 +104,8 @@ mod tests {
 
     #[test]
     fn test_arg_parsing_with_options() {
-        let args = Args::try_parse_from([
-            "corgiterm",
-            "--safe-mode",
-            "--no-ai",
-            "-d", "/tmp",
-        ]).unwrap();
+        let args =
+            Args::try_parse_from(["corgiterm", "--safe-mode", "--no-ai", "-d", "/tmp"]).unwrap();
         assert!(args.safe_mode);
         assert!(args.no_ai);
         assert_eq!(args.directory, Some(PathBuf::from("/tmp")));

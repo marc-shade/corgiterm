@@ -1,0 +1,45 @@
+[package]
+name = "corgiterm-terminal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "High-performance Wayland-native terminal backend for CorgiTerm"
+
+[dependencies]
+# Terminal parsing (same as Alacritty)
+vte = "0.13"
+
+# GPU rendering
+wgpu.workspace = true
+glyphon.workspace = true
+
+# Font handling
+fontdb = "0.22"
+rustybuzz = "0.20"
+ttf-parser = "0.24"
+
+# Async
+tokio.workspace = true
+async-channel.workspace = true
+futures.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+# Data structures
+parking_lot = "0.12"
+smallvec = "1.13"
+bitflags = { version = "2.6", features = ["serde"] }
+
+# Unicode
+unicode-width = "0.2"
+unicode-segmentation = "1.12"
+
+# Config
+serde.workspace = true
+
+[dev-dependencies]
+pretty_assertions = "1.4"

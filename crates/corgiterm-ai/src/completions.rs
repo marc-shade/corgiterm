@@ -18,7 +18,11 @@ impl CompletionEngine {
     }
 
     /// Get completions for partial input
-    pub async fn complete(&self, input: &str, context: &CompletionContext) -> Result<Vec<Completion>> {
+    pub async fn complete(
+        &self,
+        input: &str,
+        context: &CompletionContext,
+    ) -> Result<Vec<Completion>> {
         let prompt = format!(
             r#"Complete this shell command. Output only the completed command(s), one per line.
 
@@ -37,7 +41,8 @@ Partial input: {}"#,
         let messages = vec![
             Message {
                 role: Role::System,
-                content: "You are a shell completion engine. Output only valid shell commands.".to_string(),
+                content: "You are a shell completion engine. Output only valid shell commands."
+                    .to_string(),
             },
             Message {
                 role: Role::User,

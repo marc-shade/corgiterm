@@ -8,7 +8,9 @@
 //! This abstraction enables CorgiTerm to run on all major platforms.
 
 use crate::{CoreError, Result};
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize as PortablePtySize, Child};
+use portable_pty::{
+    native_pty_system, Child, CommandBuilder, MasterPty, PtySize as PortablePtySize,
+};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
@@ -90,7 +92,9 @@ impl Pty {
             .or_else(|| std::env::var("SHELL").ok())
             .unwrap_or_else(|| {
                 #[cfg(unix)]
-                { "/bin/bash".to_string() }
+                {
+                    "/bin/bash".to_string()
+                }
                 #[cfg(windows)]
                 {
                     // Prefer PowerShell if available, fall back to cmd
@@ -121,7 +125,9 @@ impl Pty {
 
         // Get process ID
         #[cfg(unix)]
-        let pid = child.process_id().map(|id| nix::unistd::Pid::from_raw(id as i32));
+        let pid = child
+            .process_id()
+            .map(|id| nix::unistd::Pid::from_raw(id as i32));
         #[cfg(not(unix))]
         let pid = child.process_id();
 
@@ -147,7 +153,10 @@ impl Pty {
 
     /// Resize the PTY
     pub fn resize(&mut self, size: PtySize) -> Result<()> {
-        let master = self.master.lock().map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
+        let master = self
+            .master
+            .lock()
+            .map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
         master
             .resize(size.into())
             .map_err(|e| CoreError::Pty(format!("Failed to resize PTY: {}", e)))?;
@@ -157,7 +166,10 @@ impl Pty {
 
     /// Write data to the PTY (send to shell)
     pub fn write(&self, data: &[u8]) -> Result<usize> {
-        let mut writer = self.writer.lock().map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
         writer
             .write(data)
             .map_err(|e| CoreError::Pty(format!("Write failed: {}", e)))
@@ -165,7 +177,10 @@ impl Pty {
 
     /// Read data from the PTY (output from shell)
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        let mut reader = self.reader.lock().map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
+        let mut reader = self
+            .reader
+            .lock()
+            .map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
         reader
             .read(buf)
             .map_err(|e| CoreError::Pty(format!("Read failed: {}", e)))
@@ -224,7 +239,10 @@ impl Pty {
 
     /// Kill the child process
     pub fn kill(&self) -> Result<()> {
-        let mut child = self.child.lock().map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
         child
             .kill()
             .map_err(|e| CoreError::Pty(format!("Failed to kill process: {}", e)))
@@ -232,7 +250,10 @@ impl Pty {
 
     /// Wait for the child process to exit
     pub fn wait(&self) -> Result<portable_pty::ExitStatus> {
-        let mut child = self.child.lock().map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| CoreError::Pty("Lock poisoned".to_string()))?;
         child
             .wait()
             .map_err(|e| CoreError::Pty(format!("Failed to wait for process: {}", e)))

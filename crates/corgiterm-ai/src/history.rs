@@ -87,7 +87,13 @@ impl CommandHistoryStore {
     }
 
     /// Record a command execution
-    pub fn record(&mut self, command: String, directory: String, exit_code: Option<i32>, duration_ms: Option<u64>) {
+    pub fn record(
+        &mut self,
+        command: String,
+        directory: String,
+        exit_code: Option<i32>,
+        duration_ms: Option<u64>,
+    ) {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -158,7 +164,12 @@ impl CommandHistoryStore {
 
         for entry in &self.entries {
             // Normalize command (just the base command)
-            let base_cmd = entry.command.split_whitespace().next().unwrap_or("").to_string();
+            let base_cmd = entry
+                .command
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string();
             if base_cmd.is_empty() {
                 continue;
             }
@@ -245,8 +256,18 @@ impl CommandHistoryStore {
             if window[0].directory == window[1].directory {
                 // Check time proximity (within 5 minutes)
                 if window[1].timestamp.saturating_sub(window[0].timestamp) < 300 {
-                    let cmd1 = window[0].command.split_whitespace().next().unwrap_or("").to_string();
-                    let cmd2 = window[1].command.split_whitespace().next().unwrap_or("").to_string();
+                    let cmd1 = window[0]
+                        .command
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    let cmd2 = window[1]
+                        .command
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
 
                     if !cmd1.is_empty() && !cmd2.is_empty() && cmd1 != cmd2 {
                         *sequences.entry((cmd1, cmd2)).or_insert(0) += 1;
@@ -288,7 +309,8 @@ impl CommandHistoryStore {
             .map(|(dir, cmds)| {
                 let mut sorted: Vec<_> = cmds.into_iter().collect();
                 sorted.sort_by(|a, b| b.1.cmp(&a.1));
-                let top_cmds: Vec<String> = sorted.into_iter().take(10).map(|(cmd, _)| cmd).collect();
+                let top_cmds: Vec<String> =
+                    sorted.into_iter().take(10).map(|(cmd, _)| cmd).collect();
                 (dir, top_cmds)
             })
             .filter(|(_, cmds)| !cmds.is_empty())
@@ -309,15 +331,25 @@ impl CommandHistoryStore {
     /// Get statistics
     pub fn stats(&self) -> HistoryStats {
         let total = self.entries.len();
-        let successful = self.entries.iter().filter(|e| e.exit_code == Some(0)).count();
-        let failed = self.entries.iter().filter(|e| matches!(e.exit_code, Some(c) if c != 0)).count();
+        let successful = self
+            .entries
+            .iter()
+            .filter(|e| e.exit_code == Some(0))
+            .count();
+        let failed = self
+            .entries
+            .iter()
+            .filter(|e| matches!(e.exit_code, Some(c) if c != 0))
+            .count();
 
-        let unique_commands: std::collections::HashSet<_> = self.entries
+        let unique_commands: std::collections::HashSet<_> = self
+            .entries
             .iter()
             .filter_map(|e| e.command.split_whitespace().next())
             .collect();
 
-        let unique_dirs: std::collections::HashSet<_> = self.entries.iter().map(|e| &e.directory).collect();
+        let unique_dirs: std::collections::HashSet<_> =
+            self.entries.iter().map(|e| &e.directory).collect();
 
         HistoryStats {
             total_commands: total,
@@ -346,7 +378,12 @@ mod tests {
     #[test]
     fn test_record_command() {
         let mut store = CommandHistoryStore::new();
-        store.record("ls -la".to_string(), "/home/user".to_string(), Some(0), Some(100));
+        store.record(
+            "ls -la".to_string(),
+            "/home/user".to_string(),
+            Some(0),
+            Some(100),
+        );
         assert_eq!(store.len(), 1);
     }
 
@@ -354,7 +391,12 @@ mod tests {
     fn test_frequent_commands() {
         let mut store = CommandHistoryStore::new();
         for _ in 0..10 {
-            store.record("git status".to_string(), "/home/user".to_string(), Some(0), None);
+            store.record(
+                "git status".to_string(),
+                "/home/user".to_string(),
+                Some(0),
+                None,
+            );
         }
         for _ in 0..5 {
             store.record("ls".to_string(), "/home/user".to_string(), Some(0), None);

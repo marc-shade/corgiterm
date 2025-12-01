@@ -1,11 +1,20 @@
 //! Snippets library UI for saving and reusing common commands
+//!
+//! Features:
+//! - Variable placeholders: {{var}}, {{var:default}}, {{var|hint}}
+//! - Hierarchical categories: Git/Commit, Docker/Build
+//! - Search, tags, pinned favorites
+//! - Import/export to JSON
 
-use gtk4::prelude::*;
-use gtk4::{Orientation, SelectionMode};
-use libadwaita::prelude::*;
 use corgiterm_config::{Snippet, SnippetsManager};
-use std::sync::Arc;
+use gtk4::prelude::*;
+use gtk4::{Orientation, SelectionMode, ToggleButton};
+use libadwaita::prelude::*;
 use parking_lot::RwLock;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
 
 /// Global snippets manager (initialized by app)
 static SNIPPETS: std::sync::OnceLock<Arc<RwLock<SnippetsManager>>> = std::sync::OnceLock::new();
@@ -49,6 +58,13 @@ pub fn show_snippets_dialog<W, F>(
         .build();
     toolbar_box.append(&search_entry);
 
+    let pinned_toggle = ToggleButton::builder()
+        .icon_name("starred-symbolic")
+        .tooltip_text("Show pinned only")
+        .css_classes(vec!["flat", "circular"])
+        .build();
+    toolbar_box.append(&pinned_toggle);
+
     let add_button = gtk4::Button::builder()
         .icon_name("list-add-symbolic")
         .tooltip_text("Add new snippet")
@@ -58,24 +74,63 @@ pub fn show_snippets_dialog<W, F>(
 
     main_box.append(&toolbar_box);
 
-    // Sort options
-    let sort_box = gtk4::Box::new(Orientation::Horizontal, 8);
-    sort_box.set_margin_bottom(8);
+    // Sort and filter options
+    let filter_box = gtk4::Box::new(Orientation::Horizontal, 8);
+    filter_box.set_margin_bottom(8);
 
-    let sort_label = gtk4::Label::new(Some("Sort by:"));
+    let sort_label = gtk4::Label::new(Some("Sort:"));
     sort_label.add_css_class("dim-label");
-    sort_box.append(&sort_label);
+    filter_box.append(&sort_label);
 
-    // Use modern DropDown instead of deprecated ComboBoxText
     let sort_options = ["Name", "Most Used", "Recently Used"];
     let sort_model = gtk4::StringList::new(&sort_options);
     let sort_dropdown = gtk4::DropDown::builder()
         .model(&sort_model)
-        .selected(0) // "Name" by default
+        .selected(0)
         .build();
-    sort_box.append(&sort_dropdown);
+    filter_box.append(&sort_dropdown);
 
-    main_box.append(&sort_box);
+    // Category filter
+    let cat_label = gtk4::Label::new(Some("Category:"));
+    cat_label.add_css_class("dim-label");
+    cat_label.set_margin_start(12);
+    filter_box.append(&cat_label);
+
+    // Build category list from snippets
+    let mut categories: Vec<String> = vec!["All".to_string(), "Uncategorized".to_string()];
+    if let Some(snippets_mgr) = get_snippets() {
+        let snippets = snippets_mgr.read();
+        let cats = snippets.snippets().top_categories();
+        categories.extend(cats);
+    }
+    let cat_strings: Vec<&str> = categories.iter().map(|s| s.as_str()).collect();
+    let cat_model = gtk4::StringList::new(&cat_strings);
+    let cat_dropdown = gtk4::DropDown::builder()
+        .model(&cat_model)
+        .selected(0)
+        .build();
+    filter_box.append(&cat_dropdown);
+
+    // Tag filter
+    let tag_label = gtk4::Label::new(Some("Tag:"));
+    tag_label.add_css_class("dim-label");
+    tag_label.set_margin_start(12);
+    filter_box.append(&tag_label);
+
+    let mut tags: Vec<String> = vec!["All".to_string()];
+    if let Some(snippets_mgr) = get_snippets() {
+        let snippets = snippets_mgr.read();
+        tags.extend(snippets.tags());
+    }
+    let tag_strings: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+    let tag_model = gtk4::StringList::new(&tag_strings);
+    let tag_dropdown = gtk4::DropDown::builder()
+        .model(&tag_model)
+        .selected(0)
+        .build();
+    filter_box.append(&tag_dropdown);
+
+    main_box.append(&filter_box);
 
     // Scrolled window with snippets list
     let scrolled = gtk4::ScrolledWindow::builder()
@@ -97,7 +152,11 @@ pub fn show_snippets_dialog<W, F>(
         let on_insert = on_insert.clone();
         let dialog_ref = dialog.clone();
 
-        move |query: &str, sort_by: &str| {
+        move |query: &str,
+              sort_by: &str,
+              pinned_only: bool,
+              cat_filter: Option<String>,
+              tag_filter: Option<String>| {
             // Clear existing rows
             while let Some(child) = list_box.first_child() {
                 list_box.remove(&child);
@@ -105,6 +164,7 @@ pub fn show_snippets_dialog<W, F>(
 
             if let Some(snippets_mgr) = get_snippets() {
                 let snippets = snippets_mgr.read();
+                let snippets_config = snippets.snippets();
 
                 // Get snippets based on search and sort
                 let snippet_list: Vec<Snippet> = if query.is_empty() {
@@ -112,7 +172,7 @@ pub fn show_snippets_dialog<W, F>(
                         "usage" => snippets.by_usage(),
                         "recent" => snippets.by_recency(),
                         _ => {
-                            let mut all = snippets.snippets().snippets;
+                            let mut all = snippets_config.snippets.clone();
                             all.sort_by(|a, b| a.name.cmp(&b.name));
                             all
                         }
@@ -122,6 +182,39 @@ pub fn show_snippets_dialog<W, F>(
                     results.sort_by(|a, b| a.name.cmp(&b.name));
                     results
                 };
+
+                // Apply filters
+                let snippet_list: Vec<Snippet> = snippet_list
+                    .into_iter()
+                    .filter(|s| !pinned_only || s.pinned)
+                    .filter(|s| {
+                        if let Some(ref cat) = cat_filter {
+                            match cat.as_str() {
+                                "All" => true,
+                                "Uncategorized" => s.category.is_empty(),
+                                _ => {
+                                    s.category.eq_ignore_ascii_case(cat)
+                                        || s.category
+                                            .to_lowercase()
+                                            .starts_with(&format!("{}/", cat.to_lowercase()))
+                                }
+                            }
+                        } else {
+                            true
+                        }
+                    })
+                    .filter(|s| {
+                        if let Some(ref tag) = tag_filter {
+                            if tag == "All" {
+                                true
+                            } else {
+                                s.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+                            }
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
 
                 // Show empty state if no snippets
                 if snippet_list.is_empty() {
@@ -134,7 +227,7 @@ pub fn show_snippets_dialog<W, F>(
                         .subtitle(if query.is_empty() {
                             "Click the + button to add your first snippet"
                         } else {
-                            "Try a different search term"
+                            "Try a different search term or filter"
                         })
                         .build();
                     empty_row.set_activatable(false);
@@ -151,13 +244,24 @@ pub fn show_snippets_dialog<W, F>(
         }
     };
 
+    // Helper to get current filter state
+    let get_dropdown_text = |dropdown: &gtk4::DropDown| -> Option<String> {
+        dropdown
+            .selected_item()
+            .and_then(|obj| obj.downcast::<gtk4::StringObject>().ok())
+            .map(|o| o.string().to_string())
+    };
+
     // Initial population
-    populate_list("", "name");
+    populate_list("", "name", false, Some("All".to_string()), Some("All".to_string()));
 
     // Connect search
     {
         let populate = populate_list.clone();
         let sort_dropdown = sort_dropdown.clone();
+        let pinned_toggle = pinned_toggle.clone();
+        let cat_dropdown = cat_dropdown.clone();
+        let tag_dropdown = tag_dropdown.clone();
         search_entry.connect_search_changed(move |entry| {
             let query = entry.text();
             let sort_by = match sort_dropdown.selected() {
@@ -165,7 +269,10 @@ pub fn show_snippets_dialog<W, F>(
                 2 => "recent",
                 _ => "name",
             };
-            populate(&query, sort_by);
+            let pinned_only = pinned_toggle.is_active();
+            let cat = get_dropdown_text(&cat_dropdown);
+            let tag = get_dropdown_text(&tag_dropdown);
+            populate(&query, sort_by, pinned_only, cat, tag);
         });
     }
 
@@ -173,6 +280,9 @@ pub fn show_snippets_dialog<W, F>(
     {
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
+        let pinned_toggle = pinned_toggle.clone();
+        let cat_dropdown = cat_dropdown.clone();
+        let tag_dropdown = tag_dropdown.clone();
         sort_dropdown.connect_selected_notify(move |dropdown| {
             let query = search_entry.text();
             let sort_by = match dropdown.selected() {
@@ -180,7 +290,72 @@ pub fn show_snippets_dialog<W, F>(
                 2 => "recent",
                 _ => "name",
             };
-            populate(&query, sort_by);
+            let pinned_only = pinned_toggle.is_active();
+            let cat = get_dropdown_text(&cat_dropdown);
+            let tag = get_dropdown_text(&tag_dropdown);
+            populate(&query, sort_by, pinned_only, cat, tag);
+        });
+    }
+
+    // Connect pinned toggle
+    {
+        let populate = populate_list.clone();
+        let search_entry = search_entry.clone();
+        let sort_dropdown = sort_dropdown.clone();
+        let cat_dropdown = cat_dropdown.clone();
+        let tag_dropdown = tag_dropdown.clone();
+        pinned_toggle.connect_toggled(move |btn| {
+            let query = search_entry.text();
+            let sort_by = match sort_dropdown.selected() {
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            let cat = get_dropdown_text(&cat_dropdown);
+            let tag = get_dropdown_text(&tag_dropdown);
+            populate(&query, sort_by, btn.is_active(), cat, tag);
+        });
+    }
+
+    // Connect category filter
+    {
+        let populate = populate_list.clone();
+        let search_entry = search_entry.clone();
+        let sort_dropdown = sort_dropdown.clone();
+        let pinned_toggle = pinned_toggle.clone();
+        let tag_dropdown = tag_dropdown.clone();
+        cat_dropdown.connect_selected_notify(move |dropdown| {
+            let query = search_entry.text();
+            let sort_by = match sort_dropdown.selected() {
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            let pinned_only = pinned_toggle.is_active();
+            let cat = get_dropdown_text(dropdown);
+            let tag = get_dropdown_text(&tag_dropdown);
+            populate(&query, sort_by, pinned_only, cat, tag);
+        });
+    }
+
+    // Connect tag filter
+    {
+        let populate = populate_list.clone();
+        let search_entry = search_entry.clone();
+        let sort_dropdown = sort_dropdown.clone();
+        let pinned_toggle = pinned_toggle.clone();
+        let cat_dropdown = cat_dropdown.clone();
+        tag_dropdown.connect_selected_notify(move |dropdown| {
+            let query = search_entry.text();
+            let sort_by = match sort_dropdown.selected() {
+                1 => "usage",
+                2 => "recent",
+                _ => "name",
+            };
+            let pinned_only = pinned_toggle.is_active();
+            let cat = get_dropdown_text(&cat_dropdown);
+            let tag = get_dropdown_text(dropdown);
+            populate(&query, sort_by, pinned_only, cat, tag);
         });
     }
 
@@ -190,11 +365,17 @@ pub fn show_snippets_dialog<W, F>(
         let populate = populate_list.clone();
         let search_entry = search_entry.clone();
         let sort_dropdown = sort_dropdown.clone();
+        let pinned_toggle = pinned_toggle.clone();
+        let cat_dropdown = cat_dropdown.clone();
+        let tag_dropdown = tag_dropdown.clone();
 
         add_button.connect_clicked(move |btn| {
             let populate_for_callback = populate.clone();
             let search_entry_for_callback = search_entry.clone();
             let sort_dropdown_for_callback = sort_dropdown.clone();
+            let pinned_toggle_for_callback = pinned_toggle.clone();
+            let cat_dropdown_for_callback = cat_dropdown.clone();
+            let tag_dropdown_for_callback = tag_dropdown.clone();
 
             // Get the root window for the editor dialog
             if let Some(root) = btn.root() {
@@ -206,7 +387,16 @@ pub fn show_snippets_dialog<W, F>(
                             2 => "recent",
                             _ => "name",
                         };
-                        populate_for_callback(&query, sort_by);
+                        let pinned_only = pinned_toggle_for_callback.is_active();
+                        let cat = cat_dropdown_for_callback
+                            .selected_item()
+                            .and_then(|o| o.downcast::<gtk4::StringObject>().ok())
+                            .map(|o| o.string().to_string());
+                        let tag = tag_dropdown_for_callback
+                            .selected_item()
+                            .and_then(|o| o.downcast::<gtk4::StringObject>().ok())
+                            .map(|o| o.string().to_string());
+                        populate_for_callback(&query, sort_by, pinned_only, cat, tag);
                     });
                 }
             }
@@ -260,21 +450,40 @@ where
 
     {
         let snippet_id = snippet.id.clone();
-        let command = snippet.command.clone();
         let on_insert = on_insert.clone();
         let parent_dialog = parent_dialog.clone();
 
-        insert_btn.connect_clicked(move |_| {
-            // Record usage
+        insert_btn.connect_clicked(move |btn| {
             if let Some(snippets_mgr) = get_snippets() {
-                let _ = snippets_mgr.read().record_use(&snippet_id);
+                let snippets = snippets_mgr.read();
+                let _ = snippets.record_use(&snippet_id);
+
+                if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
+                    let variables = snippet.extract_variables();
+                    let command = snippet.command.clone();
+                    let on_insert = on_insert.clone();
+                    let parent_dialog = parent_dialog.clone();
+
+                    if variables.is_empty() {
+                        // No variables - insert directly
+                        on_insert(command);
+                        parent_dialog.close();
+                    } else {
+                        // Has variables - show prompt dialog
+                        let snippet_clone = snippet.clone();
+                        if let Some(root) = btn.root() {
+                            show_variable_prompt_dialog(
+                                &root,
+                                &snippet_clone,
+                                move |final_cmd| {
+                                    on_insert(final_cmd);
+                                    parent_dialog.close();
+                                },
+                            );
+                        }
+                    }
+                }
             }
-
-            // Insert command
-            on_insert(command.clone());
-
-            // Close dialog
-            parent_dialog.close();
         });
     }
     row.add_suffix(&insert_btn);
@@ -364,17 +573,20 @@ fn show_snippet_editor_dialog<W, F>(
         .title("Description")
         .build();
 
+    let category_row = libadwaita::EntryRow::builder()
+        .title("Category")
+        .build();
+
     let tags_row = libadwaita::EntryRow::builder()
         .title("Tags")
         .build();
-    // Note: set_subtitle is not available for EntryRow, use a label instead
-    // tags_row.set_subtitle("Comma-separated tags for organization");
 
     // Populate if editing
     if let Some(ref snippet) = existing_snippet {
         name_row.set_text(&snippet.name);
         command_row.set_text(&snippet.command);
         desc_row.set_text(&snippet.description);
+        category_row.set_text(&snippet.category);
         tags_row.set_text(&snippet.tags.join(", "));
     }
 
@@ -382,6 +594,7 @@ fn show_snippet_editor_dialog<W, F>(
     form_group.add(&name_row);
     form_group.add(&command_row);
     form_group.add(&desc_row);
+    form_group.add(&category_row);
     form_group.add(&tags_row);
 
     main_box.append(&form_group);
@@ -408,12 +621,14 @@ fn show_snippet_editor_dialog<W, F>(
         let name_row = name_row.clone();
         let command_row = command_row.clone();
         let desc_row = desc_row.clone();
+        let category_row = category_row.clone();
         let tags_row = tags_row.clone();
 
         save_btn.connect_clicked(move |_| {
             let name = name_row.text().to_string();
             let command = command_row.text().to_string();
             let description = desc_row.text().to_string();
+            let category = category_row.text().to_string();
             let tags_text = tags_row.text().to_string();
 
             // Validation
@@ -437,11 +652,13 @@ fn show_snippet_editor_dialog<W, F>(
                     updated.name = name;
                     updated.command = command;
                     updated.description = description;
+                    updated.category = category;
                     updated.tags = tags;
                     snippets_mgr.read().update(updated)
                 } else {
                     // Create new
-                    let snippet = Snippet::new(name, command, description, tags);
+                    let mut snippet = Snippet::new(name, command, description, tags);
+                    snippet.category = category;
                     snippets_mgr.read().add(snippet).map(|_| true)
                 };
 
@@ -636,7 +853,7 @@ pub fn show_quick_insert_dialog<W, F>(
         });
     }
 
-    // Handle activation
+    // Handle activation (double-click or Enter on row)
     {
         let on_insert = on_insert.clone();
         let dialog_ref = dialog.clone();
@@ -645,14 +862,30 @@ pub fn show_quick_insert_dialog<W, F>(
             let snippet_id = row.widget_name();
             if let Some(snippets_mgr) = get_snippets() {
                 let snippets = snippets_mgr.read();
-                let all_snippets = snippets.snippets().snippets;
-                if let Some(snippet) = all_snippets.iter().find(|s| s.id == snippet_id) {
-                    // Record usage
+                if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
                     let _ = snippets.record_use(&snippet.id);
 
-                    // Insert
-                    on_insert(snippet.command.clone());
-                    dialog_ref.close();
+                    let variables = snippet.extract_variables();
+                    let command = snippet.command.clone();
+                    let on_insert = on_insert.clone();
+                    let dialog_ref = dialog_ref.clone();
+
+                    if variables.is_empty() {
+                        on_insert(command);
+                        dialog_ref.close();
+                    } else {
+                        let snippet_clone = snippet.clone();
+                        if let Some(root) = row.root() {
+                            show_variable_prompt_dialog(
+                                &root,
+                                &snippet_clone,
+                                move |final_cmd| {
+                                    on_insert(final_cmd);
+                                    dialog_ref.close();
+                                },
+                            );
+                        }
+                    }
                 }
             }
         });
@@ -664,16 +897,35 @@ pub fn show_quick_insert_dialog<W, F>(
         let on_insert = on_insert.clone();
         let dialog_ref = dialog.clone();
 
-        search_entry.connect_activate(move |_| {
+        search_entry.connect_activate(move |entry| {
             if let Some(selected) = list_box.selected_row() {
                 let snippet_id = selected.widget_name();
                 if let Some(snippets_mgr) = get_snippets() {
                     let snippets = snippets_mgr.read();
-                    let all_snippets = snippets.snippets().snippets;
-                    if let Some(snippet) = all_snippets.iter().find(|s| s.id == snippet_id) {
+                    if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
                         let _ = snippets.record_use(&snippet.id);
-                        on_insert(snippet.command.clone());
-                        dialog_ref.close();
+
+                        let variables = snippet.extract_variables();
+                        let command = snippet.command.clone();
+                        let on_insert = on_insert.clone();
+                        let dialog_ref = dialog_ref.clone();
+
+                        if variables.is_empty() {
+                            on_insert(command);
+                            dialog_ref.close();
+                        } else {
+                            let snippet_clone = snippet.clone();
+                            if let Some(root) = entry.root() {
+                                show_variable_prompt_dialog(
+                                    &root,
+                                    &snippet_clone,
+                                    move |final_cmd| {
+                                        on_insert(final_cmd);
+                                        dialog_ref.close();
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -699,4 +951,127 @@ pub fn show_quick_insert_dialog<W, F>(
 
     // Focus search
     search_entry.grab_focus();
+}
+
+/// Show variable prompt dialog when inserting a snippet with variables
+fn show_variable_prompt_dialog<W, F>(
+    parent: &W,
+    snippet: &Snippet,
+    on_complete: F,
+) where
+    W: IsA<gtk4::Widget>,
+    F: Fn(String) + 'static,
+{
+    let variables = snippet.extract_variables();
+    if variables.is_empty() {
+        // No variables, use command as-is
+        on_complete(snippet.command.clone());
+        return;
+    }
+
+    let dialog = libadwaita::Dialog::builder()
+        .title("Fill in Variables")
+        .content_width(400)
+        .build();
+
+    let main_box = gtk4::Box::new(Orientation::Vertical, 12);
+    main_box.set_margin_top(16);
+    main_box.set_margin_bottom(16);
+    main_box.set_margin_start(16);
+    main_box.set_margin_end(16);
+
+    // Instruction label
+    let info_label = gtk4::Label::new(Some(&format!(
+        "This snippet has {} variable{}. Fill them in below:",
+        variables.len(),
+        if variables.len() == 1 { "" } else { "s" }
+    )));
+    info_label.add_css_class("dim-label");
+    info_label.set_halign(gtk4::Align::Start);
+    main_box.append(&info_label);
+
+    // Create entries for each variable
+    let entries: Rc<RefCell<HashMap<String, libadwaita::EntryRow>>> =
+        Rc::new(RefCell::new(HashMap::new()));
+
+    let form_group = libadwaita::PreferencesGroup::new();
+
+    for var in &variables {
+        let title = if let Some(ref hint) = var.hint {
+            format!("{} ({})", var.name, hint)
+        } else {
+            var.name.clone()
+        };
+
+        let entry = libadwaita::EntryRow::builder().title(&title).build();
+
+        // Set default value if present
+        if let Some(ref default) = var.default {
+            entry.set_text(default);
+        }
+
+        form_group.add(&entry);
+        entries.borrow_mut().insert(var.name.clone(), entry);
+    }
+
+    main_box.append(&form_group);
+
+    // Buttons
+    let button_box = gtk4::Box::new(Orientation::Horizontal, 8);
+    button_box.set_halign(gtk4::Align::End);
+    button_box.set_margin_top(12);
+
+    let cancel_btn = gtk4::Button::with_label("Cancel");
+    cancel_btn.add_css_class("pill");
+    let dialog_for_cancel = dialog.clone();
+    cancel_btn.connect_clicked(move |_| {
+        dialog_for_cancel.close();
+    });
+    button_box.append(&cancel_btn);
+
+    let insert_btn = gtk4::Button::with_label("Insert");
+    insert_btn.add_css_class("pill");
+    insert_btn.add_css_class("suggested-action");
+
+    {
+        let dialog_for_insert = dialog.clone();
+        let command_template = snippet.command.clone();
+        let entries = entries.clone();
+
+        insert_btn.connect_clicked(move |_| {
+            // Substitute variables
+            let mut final_command = command_template.clone();
+            let entries_map = entries.borrow();
+
+            for (name, entry) in entries_map.iter() {
+                let value = entry.text().to_string();
+                // Replace all variable patterns for this name
+                let patterns = [
+                    format!("{{{{{}}}}}", name),                    // {{var}}
+                    format!("{{{{{}:[^|}}]*}}}}", name),            // {{var:default}}
+                    format!("{{{{{}|[^}}]*}}}}", name),             // {{var|hint}}
+                    format!("{{{{{}:[^|]*\\|[^}}]*}}}}", name),     // {{var:default|hint}}
+                ];
+                for pattern in &patterns {
+                    if let Ok(re) = regex::Regex::new(pattern) {
+                        final_command = re.replace_all(&final_command, &value).to_string();
+                    }
+                }
+            }
+
+            on_complete(final_command);
+            dialog_for_insert.close();
+        });
+    }
+    button_box.append(&insert_btn);
+
+    main_box.append(&button_box);
+
+    dialog.set_child(Some(&main_box));
+    dialog.present(Some(parent));
+
+    // Focus first entry
+    if let Some((_, first_entry)) = entries.borrow().iter().next() {
+        first_entry.grab_focus();
+    };
 }

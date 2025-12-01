@@ -5,6 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+/// Static fallback theme for safety - ensures we never panic if themes are empty
+static DEFAULT_THEME: LazyLock<Theme> = LazyLock::new(Theme::corgi_dark);
 
 /// A complete color theme
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -449,9 +453,10 @@ impl ThemeManager {
 
     /// Get current theme
     pub fn current(&self) -> &Theme {
-        self.themes.get(&self.current).unwrap_or_else(|| {
-            self.themes.values().next().expect("No themes available")
-        })
+        self.themes
+            .get(&self.current)
+            .or_else(|| self.themes.values().next())
+            .unwrap_or(&DEFAULT_THEME)
     }
 
     /// Set current theme by name

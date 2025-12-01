@@ -47,7 +47,12 @@ impl HistoryLearningManager {
     /// Complete a command (update exit code and duration)
     pub fn complete_command(&mut self, command: &str, exit_code: i32, duration_ms: u64) {
         // Find the most recent matching command in history
-        if let Some(recent) = self.history.recent(10).into_iter().find(|e| e.command == command) {
+        if let Some(recent) = self
+            .history
+            .recent(10)
+            .into_iter()
+            .find(|e| e.command == command)
+        {
             let mut updated = recent.clone();
             updated.complete(exit_code, duration_ms);
 
@@ -123,22 +128,31 @@ impl HistoryLearningManager {
         let preferences = self.learning.preferences();
 
         LearningContextData {
-            frequent_commands: frequent.iter().map(|s| FrequentCommandData {
-                command: s.command.clone(),
-                count: s.total_count,
-                success_rate: s.success_rate(),
-                avg_duration_ms: s.avg_duration_ms,
-            }).collect(),
-            patterns: patterns.iter().map(|p| PatternData {
-                sequence: p.sequence.clone(),
-                frequency: p.frequency,
-                confidence: p.confidence,
-            }).collect(),
-            preferences: preferences.iter().map(|p| PreferenceData {
-                standard: p.standard.clone(),
-                preferred: p.preferred.clone(),
-                ratio: p.preference_ratio,
-            }).collect(),
+            frequent_commands: frequent
+                .iter()
+                .map(|s| FrequentCommandData {
+                    command: s.command.clone(),
+                    count: s.total_count,
+                    success_rate: s.success_rate(),
+                    avg_duration_ms: s.avg_duration_ms,
+                })
+                .collect(),
+            patterns: patterns
+                .iter()
+                .map(|p| PatternData {
+                    sequence: p.sequence.clone(),
+                    frequency: p.frequency,
+                    confidence: p.confidence,
+                })
+                .collect(),
+            preferences: preferences
+                .iter()
+                .map(|p| PreferenceData {
+                    standard: p.standard.clone(),
+                    preferred: p.preferred.clone(),
+                    ratio: p.preference_ratio,
+                })
+                .collect(),
         }
     }
 

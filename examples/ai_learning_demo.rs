@@ -5,9 +5,11 @@
 //! - Detecting user preferences
 //! - Providing context-aware suggestions
 
-use corgiterm_core::{HistoryLearningManager};
+use corgiterm_ai::learning::{
+    CommandPatternInfo, CommandPreference, FrequentCommand, LearningContext,
+};
 use corgiterm_core::history::CommandEntry;
-use corgiterm_ai::learning::{LearningContext, FrequentCommand, CommandPreference, CommandPatternInfo};
+use corgiterm_core::HistoryLearningManager;
 use std::path::PathBuf;
 
 fn main() {
@@ -15,9 +17,9 @@ fn main() {
 
     // Create a history manager with learning enabled
     let mut manager = HistoryLearningManager::new(
-        10000,  // max history
-        100,    // learning window size
-        true,   // learning enabled
+        10000, // max history
+        100,   // learning window size
+        true,  // learning enabled
     );
 
     // Simulate a typical development session
@@ -26,19 +28,23 @@ fn main() {
     let project_dir = PathBuf::from("/home/user/my-project");
 
     // Simulate Git workflow pattern
-    simulate_commands(&mut manager, &project_dir, vec![
-        "git status",
-        "git add .",
-        "git commit -m 'Update'",
-        "git push",
-    ]);
+    simulate_commands(
+        &mut manager,
+        &project_dir,
+        vec![
+            "git status",
+            "git add .",
+            "git commit -m 'Update'",
+            "git push",
+        ],
+    );
 
     // Simulate Rust development pattern
-    simulate_commands(&mut manager, &project_dir, vec![
-        "cargo build",
-        "cargo test",
-        "cargo run",
-    ]);
+    simulate_commands(
+        &mut manager,
+        &project_dir,
+        vec!["cargo build", "cargo test", "cargo run"],
+    );
 
     // Simulate user prefers modern alternatives
     for _ in 0..5 {
@@ -104,26 +110,41 @@ fn main() {
 
     // Create learning context for AI
     let ai_context = LearningContext {
-        frequent_commands: context.frequent_commands.iter().map(|c| FrequentCommand {
-            command: c.command.clone(),
-            count: c.count,
-            success_rate: c.success_rate,
-        }).collect(),
-        preferences: context.preferences.iter().map(|p| CommandPreference {
-            standard: p.standard.clone(),
-            preferred: p.preferred.clone(),
-            ratio: p.ratio,
-        }).collect(),
-        patterns: context.patterns.iter().map(|p| CommandPatternInfo {
-            sequence: p.sequence.clone(),
-            frequency: p.frequency,
-            confidence: p.confidence,
-        }).collect(),
+        frequent_commands: context
+            .frequent_commands
+            .iter()
+            .map(|c| FrequentCommand {
+                command: c.command.clone(),
+                count: c.count,
+                success_rate: c.success_rate,
+            })
+            .collect(),
+        preferences: context
+            .preferences
+            .iter()
+            .map(|p| CommandPreference {
+                standard: p.standard.clone(),
+                preferred: p.preferred.clone(),
+                ratio: p.ratio,
+            })
+            .collect(),
+        patterns: context
+            .patterns
+            .iter()
+            .map(|p| CommandPatternInfo {
+                sequence: p.sequence.clone(),
+                frequency: p.frequency,
+                confidence: p.confidence,
+            })
+            .collect(),
         directory_commands: std::collections::HashMap::new(),
     };
 
     println!("AI now has context about:");
-    println!("  • {} frequent commands", ai_context.frequent_commands.len());
+    println!(
+        "  • {} frequent commands",
+        ai_context.frequent_commands.len()
+    );
     println!("  • {} user preferences", ai_context.preferences.len());
     println!("  • {} learned patterns", ai_context.patterns.len());
 

@@ -25,7 +25,7 @@
 //! └────────────┴────────────────────────────────────────────────────┘
 //! ```
 
-use crate::{CoreError, Result, Terminal, TerminalSize, Pty};
+use crate::{CoreError, Pty, Result, Terminal, TerminalSize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

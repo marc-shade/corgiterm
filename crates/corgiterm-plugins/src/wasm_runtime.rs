@@ -31,13 +31,21 @@ impl WasmRuntime {
         let mut linker = Linker::new(&self.engine);
 
         // Register host functions
-        linker.func_wrap("corgiterm", "terminal_write", |_caller: Caller<'_, WasmState>, ptr: i32, len: i32| {
-            tracing::info!("WASM writing to terminal: ptr={}, len={}", ptr, len);
-        })?;
+        linker.func_wrap(
+            "corgiterm",
+            "terminal_write",
+            |_caller: Caller<'_, WasmState>, ptr: i32, len: i32| {
+                tracing::info!("WASM writing to terminal: ptr={}, len={}", ptr, len);
+            },
+        )?;
 
-        linker.func_wrap("corgiterm", "terminal_execute", |_caller: Caller<'_, WasmState>, ptr: i32, len: i32| {
-            tracing::info!("WASM executing command: ptr={}, len={}", ptr, len);
-        })?;
+        linker.func_wrap(
+            "corgiterm",
+            "terminal_execute",
+            |_caller: Caller<'_, WasmState>, ptr: i32, len: i32| {
+                tracing::info!("WASM executing command: ptr={}, len={}", ptr, len);
+            },
+        )?;
 
         // Instantiate and run
         let instance = linker.instantiate(&mut self.store, &module)?;

@@ -2,7 +2,7 @@
 //!
 //! Enhances AI suggestions with learned command patterns and user preferences
 
-use crate::{AiProvider, Message, Role, Result, CommandContext, CommandSuggestion};
+use crate::{AiProvider, CommandContext, CommandSuggestion, Message, Result, Role};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -103,7 +103,8 @@ impl LearningAi {
             command: response.content.trim().to_string(),
             explanation: Some("Generated with learned patterns".to_string()),
             confidence: 0.85,
-            is_dangerous: response.content.contains("rm ") || response.content.contains("# WARNING"),
+            is_dangerous: response.content.contains("rm ")
+                || response.content.contains("# WARNING"),
         })
     }
 
@@ -149,7 +150,8 @@ impl LearningAi {
         let messages = vec![
             Message {
                 role: Role::System,
-                content: "You are a shell command expert. Suggest logical next commands.".to_string(),
+                content: "You are a shell command expert. Suggest logical next commands."
+                    .to_string(),
             },
             Message {
                 role: Role::User,
@@ -218,7 +220,8 @@ OS: {}
         if !self.learning_context.frequent_commands.is_empty() {
             prompt.push_str("USER'S MOST COMMON COMMANDS:\n");
             for cmd in self.learning_context.frequent_commands.iter().take(10) {
-                prompt.push_str(&format!("- {} (used {} times, {}% success rate)\n",
+                prompt.push_str(&format!(
+                    "- {} (used {} times, {}% success rate)\n",
                     cmd.command,
                     cmd.count,
                     (cmd.success_rate * 100.0) as u32
@@ -228,7 +231,11 @@ OS: {}
         }
 
         // Add directory-specific commands
-        if let Some(dir_cmds) = self.learning_context.directory_commands.get(&cmd_context.cwd.display().to_string()) {
+        if let Some(dir_cmds) = self
+            .learning_context
+            .directory_commands
+            .get(&cmd_context.cwd.display().to_string())
+        {
             if !dir_cmds.is_empty() {
                 prompt.push_str("COMMANDS COMMONLY USED IN THIS DIRECTORY:\n");
                 for cmd in dir_cmds.iter().take(5) {
@@ -245,8 +252,7 @@ OS: {}
                 let sequence_str = pattern.sequence.join(" → ");
                 prompt.push_str(&format!(
                     "- {} (seen {} times)\n",
-                    sequence_str,
-                    pattern.frequency
+                    sequence_str, pattern.frequency
                 ));
             }
             prompt.push('\n');
@@ -315,11 +321,16 @@ Examples:
 
         // Analyze preferences
         if !self.learning_context.preferences.is_empty() {
-            let pref_list: Vec<String> = self.learning_context.preferences
+            let pref_list: Vec<String> = self
+                .learning_context
+                .preferences
                 .iter()
                 .map(|p| format!("{} (instead of {})", p.preferred, p.standard))
                 .collect();
-            insights.push(format!("You prefer modern alternatives: {}", pref_list.join(", ")));
+            insights.push(format!(
+                "You prefer modern alternatives: {}",
+                pref_list.join(", ")
+            ));
         }
 
         // Analyze most used commands
@@ -340,7 +351,8 @@ Examples:
         }
 
         if insights.is_empty() {
-            insights.push("Not enough data yet to generate insights. Keep using commands!".to_string());
+            insights
+                .push("Not enough data yet to generate insights. Keep using commands!".to_string());
         }
 
         Ok(insights.join("\n• "))

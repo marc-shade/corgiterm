@@ -16,34 +16,35 @@
 //!   /　 つ   Making terminals friendly!
 //! ```
 
-pub mod error;
-pub mod pty;
-pub mod terminal;
-pub mod session;
-pub mod history;
-pub mod safe_mode;
 pub mod ascii_art;
-pub mod learning;
+pub mod error;
+pub mod hints;
+pub mod history;
 pub mod history_learning;
+pub mod learning;
+pub mod pty;
+pub mod safe_mode;
+pub mod session;
+pub mod terminal;
 
-pub use error::{CoreError, Result};
-pub use pty::{Pty, PtySize};
-pub use terminal::{Terminal, TerminalEvent, TerminalSize};
-pub use session::{Session, SessionId, SessionManager};
-pub use history::{CommandHistory, OutputHistory, SearchableHistory};
-pub use safe_mode::{SafeMode, CommandPreview, RiskLevel};
 pub use ascii_art::{
-    AsciiArtGenerator, AsciiArtConfig, CharacterSet, AsciiFont,
-    FONT_STANDARD, FONT_SMALL, CorgiArt,
+    all_fonts, AsciiArtConfig, AsciiArtGenerator, AsciiFont, CharacterSet, CorgiArt, ImageFilter,
+    FONT_BANNER, FONT_BLOCK, FONT_MINI, FONT_SHADOW, FONT_SMALL, FONT_STANDARD,
+};
+pub use error::{CoreError, Result};
+pub use history::{CommandHistory, OutputHistory, SearchableHistory};
+pub use history_learning::{
+    FrequentCommandData, HistoryLearningManager, LearningContextData, PatternData, PreferenceData,
 };
 pub use learning::{
-    CommandLearning, CommandPattern, CommandStats, UserPreference,
-    CommandSuggestion, SuggestionSource,
+    CommandLearning, CommandPattern, CommandStats, CommandSuggestion, SuggestionSource,
+    UserPreference,
 };
-pub use history_learning::{
-    HistoryLearningManager, LearningContextData,
-    FrequentCommandData, PatternData, PreferenceData,
-};
+pub use hints::{Hint, HintDetector, HintModeState, HintType};
+pub use pty::{Pty, PtySize};
+pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
+pub use session::{Session, SessionId, SessionManager};
+pub use terminal::{Terminal, TerminalEvent, TerminalHealth, TerminalSize};
 
 /// Core version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

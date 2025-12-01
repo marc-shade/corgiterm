@@ -1,5 +1,6 @@
 //! Tab management using libadwaita TabView
 
+use gtk4::gio;
 use gtk4::prelude::*;
 use libadwaita::{TabBar, TabPage, TabView};
 use std::cell::RefCell;
@@ -7,7 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::document_view::DocumentView;
-use crate::split_pane::{SplitPane, SplitDirection};
+use crate::split_pane::{SplitDirection, SplitPane};
 
 /// Type of tab content
 pub enum TabContent {
@@ -41,6 +42,16 @@ impl TabContent {
         }
     }
 
+    /// Send text (bytes) to terminal without newline
+    pub fn send_text(&self, text: &str) -> bool {
+        if let TabContent::Terminal(sp) = self {
+            sp.send_bytes(text.as_bytes());
+            true
+        } else {
+            false
+        }
+    }
+
     /// Split the current pane horizontally
     pub fn split_horizontal(&self) {
         if let TabContent::Terminal(sp) = self {
@@ -61,6 +72,16 @@ pub struct TerminalTabs {
     tab_view: TabView,
     tab_bar: TabBar,
     contents: Rc<RefCell<Vec<TabContent>>>,
+}
+
+impl Clone for TerminalTabs {
+    fn clone(&self) -> Self {
+        Self {
+            tab_view: self.tab_view.clone(),
+            tab_bar: self.tab_bar.clone(),
+            contents: self.contents.clone(),
+        }
+    }
 }
 
 impl TerminalTabs {
@@ -85,12 +106,35 @@ impl TerminalTabs {
         // Add initial terminal tab
         tabs.add_terminal_tab("Terminal", None);
 
-        // Connect drag-out handler (disabled for now)
-        tabs.tab_view.connect_create_window(move |_| {
-            None
+        // Broadcast mode action (toggle via TabView action)
+        let tabs_clone = tabs.clone();
+        let action = gio::SimpleAction::new("broadcast-toggle", None);
+        action.connect_activate(move |_, _| {
+            tabs_clone.toggle_broadcast_on_active();
         });
+        if let Some(app) = gtk4::gio::Application::default() {
+            app.add_action(&action);
+        }
 
         tabs
+    }
+
+    pub fn toggle_broadcast_on_active(&self) {
+        if let Some(page) = self.tab_view.selected_page() {
+            if let Some(idx) = Some(self.tab_view.page_position(&page) as usize) {
+                if let Some(TabContent::Terminal(sp)) = self.contents.borrow().get(idx) {
+                    let enabled = sp.toggle_broadcast();
+                    if enabled {
+                        page.set_title(&format!("{} (broadcast)", page.title()));
+                    } else {
+                        // Strip suffix if present
+                        let title = page.title();
+                        let cleaned = title.replace(" (broadcast)", "");
+                        page.set_title(&cleaned);
+                    }
+                }
+            }
+        }
     }
 
     /// Add a new terminal tab
@@ -103,12 +147,16 @@ impl TerminalTabs {
         let widget = split_pane.widget().clone();
 
         // Store content (SplitPane wraps TerminalView internally)
-        self.contents.borrow_mut().push(TabContent::Terminal(split_pane));
+        self.contents
+            .borrow_mut()
+            .push(TabContent::Terminal(split_pane));
 
         // Add to tab view
         let page = self.tab_view.append(&widget);
         page.set_title(title);
-        page.set_icon(Some(&gtk4::gio::ThemedIcon::new("utilities-terminal-symbolic")));
+        page.set_icon(Some(&gtk4::gio::ThemedIcon::new(
+            "utilities-terminal-symbolic",
+        )));
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
@@ -130,7 +178,9 @@ impl TerminalTabs {
         let widget = document.widget().clone();
 
         // Store content
-        self.contents.borrow_mut().push(TabContent::Document(document));
+        self.contents
+            .borrow_mut()
+            .push(TabContent::Document(document));
 
         // Add to tab view
         let page = self.tab_view.append(&widget);
@@ -177,9 +227,9 @@ impl TerminalTabs {
 
     /// Get the content at the current tab position
     pub fn current_content(&self) -> Option<usize> {
-        self.tab_view.selected_page().map(|page| {
-            self.tab_view.page_position(&page) as usize
-        })
+        self.tab_view
+            .selected_page()
+            .map(|page| self.tab_view.page_position(&page) as usize)
     }
 
     /// Switch to the next tab (wraps around to first tab)
@@ -235,6 +285,17 @@ impl TerminalTabs {
             let contents = self.contents.borrow();
             if let Some(content) = contents.get(idx) {
                 return content.send_command(command);
+            }
+        }
+        false
+    }
+
+    /// Send text to the currently selected terminal tab without newline
+    pub fn send_text_to_current(&self, text: &str) -> bool {
+        if let Some(idx) = self.current_content() {
+            let contents = self.contents.borrow();
+            if let Some(content) = contents.get(idx) {
+                return content.send_text(text);
             }
         }
         false

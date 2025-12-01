@@ -1,11 +1,11 @@
 //! Dialog windows (settings, about, etc.)
 
+use corgiterm_config::ConfigManager;
 use gtk4::prelude::*;
 use gtk4::Window;
 use libadwaita::prelude::*;
-use corgiterm_config::ConfigManager;
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Global config manager (initialized by app)
 static CONFIG: std::sync::OnceLock<Arc<RwLock<ConfigManager>>> = std::sync::OnceLock::new();
@@ -44,7 +44,10 @@ pub type ThemeChangeCallback = Box<dyn Fn() + 'static>;
 
 /// Show the preferences dialog
 /// on_theme_change: Optional callback called when theme is changed
-pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme_change: Option<ThemeChangeCallback>) {
+pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
+    parent: &W,
+    on_theme_change: Option<ThemeChangeCallback>,
+) {
     let dialog = libadwaita::PreferencesDialog::builder()
         .title("Preferences")
         .build();
@@ -60,18 +63,19 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current startup settings from config
-    let (restore_sessions, show_welcome, confirm_close, check_updates, telemetry) = if let Some(config_manager) = get_config() {
-        let config = config_manager.read().config();
-        (
-            config.general.restore_sessions,
-            config.general.show_welcome,
-            config.general.confirm_close,
-            config.general.check_updates,
-            config.general.telemetry,
-        )
-    } else {
-        (true, true, true, true, false)
-    };
+    let (restore_sessions, show_welcome, confirm_close, check_updates, telemetry) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.general.restore_sessions,
+                config.general.show_welcome,
+                config.general.confirm_close,
+                config.general.check_updates,
+                config.general.telemetry,
+            )
+        } else {
+            (true, true, true, true, false)
+        };
 
     let restore_switch = libadwaita::SwitchRow::builder()
         .title("Restore Previous Session")
@@ -88,7 +92,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
                 config.general.restore_sessions = active;
             });
             let _ = config_manager.read().save();
-            tracing::info!("Restore sessions {}", if active { "enabled" } else { "disabled" });
+            tracing::info!(
+                "Restore sessions {}",
+                if active { "enabled" } else { "disabled" }
+            );
         }
     });
 
@@ -107,7 +114,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
                 config.general.show_welcome = active;
             });
             let _ = config_manager.read().save();
-            tracing::info!("Welcome screen {}", if active { "enabled" } else { "disabled" });
+            tracing::info!(
+                "Welcome screen {}",
+                if active { "enabled" } else { "disabled" }
+            );
         }
     });
 
@@ -194,7 +204,13 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .title("Color Theme")
         .subtitle("Choose your preferred color scheme")
         .build();
-    let themes = ["Corgi Dark", "Corgi Light", "Corgi Sunset", "Pembroke", "Cyberpunk"];
+    let themes = [
+        "Corgi Dark",
+        "Corgi Light",
+        "Corgi Sunset",
+        "Pembroke",
+        "Cyberpunk",
+    ];
     theme_row.set_model(Some(&gtk4::StringList::new(&themes)));
 
     // Set current theme selection
@@ -205,7 +221,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
 
     // Connect theme change
     // Wrap callback in Rc for sharing with closure
-    let theme_callback: std::rc::Rc<Option<ThemeChangeCallback>> = std::rc::Rc::new(on_theme_change);
+    let theme_callback: std::rc::Rc<Option<ThemeChangeCallback>> =
+        std::rc::Rc::new(on_theme_change);
     let callback_for_theme = theme_callback.clone();
     theme_row.connect_selected_notify(move |row| {
         let selected = row.selected() as usize;
@@ -262,24 +279,31 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current config values
-    let (current_font, current_size, line_height, cursor_blink_rate) = if let Some(config_manager) = get_config() {
-        let config = config_manager.read().config();
-        (
-            config.appearance.font_family.clone(),
-            config.appearance.font_size,
-            config.appearance.line_height,
-            config.appearance.cursor_blink_rate,
-        )
-    } else {
-        ("Source Code Pro".to_string(), 11.0, 1.2, 530)
-    };
+    let (current_font, current_size, line_height, cursor_blink_rate) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.appearance.font_family.clone(),
+                config.appearance.font_size,
+                config.appearance.line_height,
+                config.appearance.cursor_blink_rate,
+            )
+        } else {
+            ("Source Code Pro".to_string(), 11.0, 1.2, 530)
+        };
 
     // Font family dropdown
     let font_row = libadwaita::ComboRow::builder()
         .title("Font Family")
         .subtitle("Monospace font for terminal text")
         .build();
-    let fonts = ["Source Code Pro", "DejaVu Sans Mono", "Liberation Mono", "Adwaita Mono", "Monospace"];
+    let fonts = [
+        "Source Code Pro",
+        "DejaVu Sans Mono",
+        "Liberation Mono",
+        "Adwaita Mono",
+        "Monospace",
+    ];
     font_row.set_model(Some(&gtk4::StringList::new(&fonts)));
     // Set current font
     if let Some(pos) = fonts.iter().position(|&f| f == current_font) {
@@ -449,7 +473,13 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .title("TERM Variable")
         .subtitle("Terminal type for compatibility")
         .build();
-    let term_types = ["xterm-256color", "xterm", "vt100", "screen-256color", "tmux-256color"];
+    let term_types = [
+        "xterm-256color",
+        "xterm",
+        "vt100",
+        "screen-256color",
+        "tmux-256color",
+    ];
     term_row.set_model(Some(&gtk4::StringList::new(&term_types)));
     if let Some(pos) = term_types.iter().position(|&t| t == current_term) {
         term_row.set_selected(pos as u32);
@@ -478,8 +508,16 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current terminal settings
-    let (scrollback, copy_on_select, scroll_on_output, scroll_on_keystroke, mouse_reporting,
-         paste_middle_click, hyperlinks, close_on_exit_idx) = if let Some(config_manager) = get_config() {
+    let (
+        scrollback,
+        copy_on_select,
+        scroll_on_output,
+        scroll_on_keystroke,
+        mouse_reporting,
+        paste_middle_click,
+        hyperlinks,
+        close_on_exit_idx,
+    ) = if let Some(config_manager) = get_config() {
         let config = config_manager.read().config();
         let close_idx = match config.terminal.close_on_exit {
             corgiterm_config::CloseOnExit::Always => 0,
@@ -501,7 +539,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
     };
 
     // Scrollback lines
-    let scrollback_adj = gtk4::Adjustment::new(scrollback as f64, 100.0, 100000.0, 100.0, 1000.0, 0.0);
+    let scrollback_adj =
+        gtk4::Adjustment::new(scrollback as f64, 100.0, 100000.0, 100.0, 1000.0, 0.0);
     let scrollback_row = libadwaita::SpinRow::builder()
         .title("Scrollback Lines")
         .subtitle("Number of lines to keep in history")
@@ -759,7 +798,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
     });
 
     // Cursor blink rate
-    let blink_rate_adj = gtk4::Adjustment::new(cursor_blink_rate as f64, 200.0, 1500.0, 50.0, 100.0, 0.0);
+    let blink_rate_adj =
+        gtk4::Adjustment::new(cursor_blink_rate as f64, 200.0, 1500.0, 50.0, 100.0, 0.0);
     let blink_rate_row = libadwaita::SpinRow::builder()
         .title("Blink Rate")
         .subtitle("Milliseconds between blink cycles")
@@ -814,7 +854,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
                 config.ai.enabled = active;
             });
             let _ = config_manager.read().save();
-            tracing::info!("AI features {}", if active { "enabled" } else { "disabled" });
+            tracing::info!(
+                "AI features {}",
+                if active { "enabled" } else { "disabled" }
+            );
         }
     });
 
@@ -833,7 +876,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
                 config.ai.natural_language = active;
             });
             let _ = config_manager.read().save();
-            tracing::info!("Natural language input {}", if active { "enabled" } else { "disabled" });
+            tracing::info!(
+                "Natural language input {}",
+                if active { "enabled" } else { "disabled" }
+            );
         }
     });
 
@@ -846,28 +892,48 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current provider settings
-    let (default_provider, claude_key, claude_model, openai_key, openai_model,
-         gemini_key, gemini_model, local_enabled, local_endpoint, local_model, auto_suggest) =
-        if let Some(config_manager) = get_config() {
-            let config = config_manager.read().config();
-            (
-                config.ai.default_provider.clone(),
-                config.ai.claude.api_key.clone().unwrap_or_default(),
-                config.ai.claude.model.clone(),
-                config.ai.openai.api_key.clone().unwrap_or_default(),
-                config.ai.openai.model.clone(),
-                config.ai.gemini.api_key.clone().unwrap_or_default(),
-                config.ai.gemini.model.clone(),
-                config.ai.local.enabled,
-                config.ai.local.endpoint.clone(),
-                config.ai.local.model.clone(),
-                config.ai.auto_suggest,
-            )
-        } else {
-            ("claude".to_string(), String::new(), "claude-sonnet-4-20250514".to_string(),
-             String::new(), "gpt-4o".to_string(), String::new(), "gemini-1.5-pro".to_string(),
-             false, "http://localhost:11434".to_string(), "llama3".to_string(), true)
-        };
+    let (
+        default_provider,
+        claude_key,
+        claude_model,
+        openai_key,
+        openai_model,
+        gemini_key,
+        gemini_model,
+        local_enabled,
+        local_endpoint,
+        local_model,
+        auto_suggest,
+    ) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.ai.default_provider.clone(),
+            config.ai.claude.api_key.clone().unwrap_or_default(),
+            config.ai.claude.model.clone(),
+            config.ai.openai.api_key.clone().unwrap_or_default(),
+            config.ai.openai.model.clone(),
+            config.ai.gemini.api_key.clone().unwrap_or_default(),
+            config.ai.gemini.model.clone(),
+            config.ai.local.enabled,
+            config.ai.local.endpoint.clone(),
+            config.ai.local.model.clone(),
+            config.ai.auto_suggest,
+        )
+    } else {
+        (
+            "claude".to_string(),
+            String::new(),
+            "claude-sonnet-4-20250514".to_string(),
+            String::new(),
+            "gpt-4o".to_string(),
+            String::new(),
+            "gemini-1.5-pro".to_string(),
+            false,
+            "http://localhost:11434".to_string(),
+            "llama3".to_string(),
+            true,
+        )
+    };
 
     // Provider selection
     let provider_row = libadwaita::ComboRow::builder()
@@ -1111,17 +1177,18 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current safe mode settings
-    let (safe_is_enabled, preview_all, preview_dangerous, ai_explanations) = if let Some(config_manager) = get_config() {
-        let config = config_manager.read().config();
-        (
-            config.safe_mode.enabled,
-            config.safe_mode.preview_all,
-            config.safe_mode.preview_dangerous_only,
-            config.safe_mode.ai_explanations,
-        )
-    } else {
-        (false, false, true, true)
-    };
+    let (safe_is_enabled, preview_all, preview_dangerous, ai_explanations) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.safe_mode.enabled,
+                config.safe_mode.preview_all,
+                config.safe_mode.preview_dangerous_only,
+                config.safe_mode.ai_explanations,
+            )
+        } else {
+            (false, false, true, true)
+        };
 
     let safe_enabled = libadwaita::SwitchRow::builder()
         .title("Enable Safe Mode")
@@ -1206,18 +1273,19 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get session settings
-    let (default_name, auto_rename, show_process, show_cwd, warn_close) = if let Some(config_manager) = get_config() {
-        let config = config_manager.read().config();
-        (
-            config.sessions.default_name.clone(),
-            config.sessions.auto_rename,
-            config.sessions.show_process,
-            config.sessions.show_cwd,
-            config.sessions.warn_multiple_close,
-        )
-    } else {
-        ("Terminal".to_string(), true, true, true, true)
-    };
+    let (default_name, auto_rename, show_process, show_cwd, warn_close) =
+        if let Some(config_manager) = get_config() {
+            let config = config_manager.read().config();
+            (
+                config.sessions.default_name.clone(),
+                config.sessions.auto_rename,
+                config.sessions.show_process,
+                config.sessions.show_cwd,
+                config.sessions.warn_multiple_close,
+            )
+        } else {
+            ("Terminal".to_string(), true, true, true, true)
+        };
 
     let name_row = libadwaita::EntryRow::builder()
         .title("Default Tab Name")
@@ -1398,20 +1466,26 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
         .build();
 
     // Get current accessibility settings
-    let (reduce_motion, high_contrast, focus_indicators, screen_reader, min_font_size, announce_notifications) =
-        if let Some(config_manager) = get_config() {
-            let config = config_manager.read().config();
-            (
-                config.accessibility.reduce_motion,
-                config.accessibility.high_contrast,
-                config.accessibility.focus_indicators,
-                config.accessibility.screen_reader,
-                config.accessibility.min_font_size,
-                config.accessibility.announce_notifications,
-            )
-        } else {
-            (false, false, true, false, 10.0, true)
-        };
+    let (
+        reduce_motion,
+        high_contrast,
+        focus_indicators,
+        screen_reader,
+        min_font_size,
+        announce_notifications,
+    ) = if let Some(config_manager) = get_config() {
+        let config = config_manager.read().config();
+        (
+            config.accessibility.reduce_motion,
+            config.accessibility.high_contrast,
+            config.accessibility.focus_indicators,
+            config.accessibility.screen_reader,
+            config.accessibility.min_font_size,
+            config.accessibility.announce_notifications,
+        )
+    } else {
+        (false, false, true, false, 10.0, true)
+    };
 
     // Reduce motion
     let motion_row = libadwaita::SwitchRow::builder()
@@ -1595,7 +1669,9 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
     // Custom keybindings note
     let custom_note = libadwaita::PreferencesGroup::builder()
         .title("Custom Keybindings")
-        .description("Custom keybindings can be set in ~/.config/corgiterm/config.toml under [keybindings]")
+        .description(
+            "Custom keybindings can be set in ~/.config/corgiterm/config.toml under [keybindings]",
+        )
         .build();
 
     keybindings_page.add(&keybindings_group);
@@ -1629,12 +1705,19 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme
             for plugin in plugins {
                 let row = libadwaita::SwitchRow::builder()
                     .title(&plugin.manifest.name)
-                    .subtitle(plugin.manifest.description.as_deref().unwrap_or("No description"))
+                    .subtitle(
+                        plugin
+                            .manifest
+                            .description
+                            .as_deref()
+                            .unwrap_or("No description"),
+                    )
                     .active(plugin.enabled)
                     .build();
 
                 // Add version as suffix
-                let version_label = gtk4::Label::new(Some(&format!("v{}", plugin.manifest.version)));
+                let version_label =
+                    gtk4::Label::new(Some(&format!("v{}", plugin.manifest.version)));
                 version_label.add_css_class("dim-label");
                 row.add_suffix(&version_label);
 
@@ -1787,9 +1870,7 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .build();
 
     // Tab management group
-    let tab_group = gtk4::ShortcutsGroup::builder()
-        .title("Tabs")
-        .build();
+    let tab_group = gtk4::ShortcutsGroup::builder().title("Tabs").build();
 
     let shortcuts = [
         ("New Tab", "<Ctrl>t"),
@@ -1809,9 +1890,7 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     terminal_section.append(&tab_group);
 
     // Window group
-    let window_group = gtk4::ShortcutsGroup::builder()
-        .title("Window")
-        .build();
+    let window_group = gtk4::ShortcutsGroup::builder().title("Window").build();
 
     let window_shortcuts = [
         ("Quick Switcher", "<Ctrl>k"),
@@ -1829,9 +1908,7 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     terminal_section.append(&window_group);
 
     // Terminal group
-    let term_group = gtk4::ShortcutsGroup::builder()
-        .title("Terminal")
-        .build();
+    let term_group = gtk4::ShortcutsGroup::builder().title("Terminal").build();
 
     let term_shortcuts = [
         ("Copy", "<Ctrl><Shift>c"),
@@ -1853,14 +1930,9 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     terminal_section.append(&term_group);
 
     // Documents group
-    let doc_group = gtk4::ShortcutsGroup::builder()
-        .title("Documents")
-        .build();
+    let doc_group = gtk4::ShortcutsGroup::builder().title("Documents").build();
 
-    let doc_shortcuts = [
-        ("New Document", "<Ctrl>o"),
-        ("Open File", "<Ctrl><Shift>o"),
-    ];
+    let doc_shortcuts = [("New Document", "<Ctrl>o"), ("Open File", "<Ctrl><Shift>o")];
 
     for (title, accel) in doc_shortcuts {
         let shortcut = gtk4::ShortcutsShortcut::builder()
@@ -1880,7 +1952,7 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
     parent: &W,
     tab_view: &libadwaita::TabView,
 ) {
-    use gtk4::{Label, ListBox, ListBoxRow, Orientation, SelectionMode, ScrolledWindow};
+    use gtk4::{Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, SelectionMode};
 
     // Create modal dialog
     let dialog = libadwaita::Dialog::builder()
@@ -1921,7 +1993,8 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
     for i in 0..n_pages {
         let page = tab_view.nth_page(i);
         let title = page.title().to_string();
-        let icon_name = page.icon()
+        let icon_name = page
+            .icon()
             .and_then(|icon| icon.downcast::<gtk4::gio::ThemedIcon>().ok())
             .and_then(|themed| themed.names().first().map(|s| s.to_string()))
             .unwrap_or_else(|| "utilities-terminal-symbolic".to_string());
@@ -1987,7 +2060,9 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
                 // Get the title from the row's box child
                 let visible = if query.is_empty() {
                     true
-                } else if let Some(row_box) = row.child().and_then(|c| c.downcast::<gtk4::Box>().ok()) {
+                } else if let Some(row_box) =
+                    row.child().and_then(|c| c.downcast::<gtk4::Box>().ok())
+                {
                     let mut found = false;
                     let mut child = row_box.first_child();
                     while let Some(widget) = child {
@@ -2077,7 +2152,7 @@ pub fn show_quick_switcher<W: IsA<Window> + IsA<gtk4::Widget>>(
                 }
                 gtk4::glib::Propagation::Stop
             }
-            _ => gtk4::glib::Propagation::Proceed
+            _ => gtk4::glib::Propagation::Proceed,
         }
     });
     search_entry.add_controller(key_controller);
@@ -2175,14 +2250,25 @@ pub fn show_safe_mode_preview<F>(
 
     // Affected files
     if let Some(count) = preview.affected_count {
-        let size_str = preview.affected_size.map(|s| {
-            if s > 1_000_000_000 { format!(" ({:.1} GB)", s as f64 / 1_000_000_000.0) }
-            else if s > 1_000_000 { format!(" ({:.1} MB)", s as f64 / 1_000_000.0) }
-            else if s > 1_000 { format!(" ({:.1} KB)", s as f64 / 1_000.0) }
-            else { format!(" ({} bytes)", s) }
-        }).unwrap_or_default();
+        let size_str = preview
+            .affected_size
+            .map(|s| {
+                if s > 1_000_000_000 {
+                    format!(" ({:.1} GB)", s as f64 / 1_000_000_000.0)
+                } else if s > 1_000_000 {
+                    format!(" ({:.1} MB)", s as f64 / 1_000_000.0)
+                } else if s > 1_000 {
+                    format!(" ({:.1} KB)", s as f64 / 1_000.0)
+                } else {
+                    format!(" ({} bytes)", s)
+                }
+            })
+            .unwrap_or_default();
 
-        let affected = gtk4::Label::new(Some(&format!("• Will affect {} file(s){}", count, size_str)));
+        let affected = gtk4::Label::new(Some(&format!(
+            "• Will affect {} file(s){}",
+            count, size_str
+        )));
         affected.set_xalign(0.0);
         main_box.append(&affected);
     }

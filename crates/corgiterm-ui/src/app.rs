@@ -1,29 +1,35 @@
 //! Main application setup
 
 use gtk4::Application;
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
-use crate::window::MainWindow;
 use crate::dialogs;
+use crate::window::MainWindow;
 
 /// Global config manager
-static CONFIG_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::ConfigManager>>> = std::sync::OnceLock::new();
+static CONFIG_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::ConfigManager>>> =
+    std::sync::OnceLock::new();
 
 /// Global session manager for project persistence
-static SESSION_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_core::SessionManager>>> = std::sync::OnceLock::new();
+static SESSION_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_core::SessionManager>>> =
+    std::sync::OnceLock::new();
 
 /// Global AI manager
-static AI_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::AiManager>>> = std::sync::OnceLock::new();
+static AI_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::AiManager>>> =
+    std::sync::OnceLock::new();
 
 /// Global plugin manager
-static PLUGIN_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_plugins::PluginManager>>> = std::sync::OnceLock::new();
+static PLUGIN_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_plugins::PluginManager>>> =
+    std::sync::OnceLock::new();
 
 /// Global snippets manager
-static SNIPPETS_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::SnippetsManager>>> = std::sync::OnceLock::new();
+static SNIPPETS_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::SnippetsManager>>> =
+    std::sync::OnceLock::new();
 
 /// Global command history store for AI learning
-static HISTORY_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> = std::sync::OnceLock::new();
+static HISTORY_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> =
+    std::sync::OnceLock::new();
 
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
@@ -84,7 +90,10 @@ fn load_css() {
     // Check config for hot-reload setting
     let hot_reload = if let Some(cm) = config_manager() {
         let config = cm.read().config();
-        config.appearance.hot_reload_css.unwrap_or(cfg!(debug_assertions))
+        config
+            .appearance
+            .hot_reload_css
+            .unwrap_or(cfg!(debug_assertions))
     } else {
         cfg!(debug_assertions) // Default to hot-reload in debug builds
     };
@@ -141,10 +150,12 @@ fn init_ai() {
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            let provider = corgiterm_ai::providers::ClaudeCliProvider::new(
-                Some(config.ai.claude.model.clone()),
-            );
-            if first_provider.is_none() { first_provider = Some("claude-cli".to_string()); }
+            let provider = corgiterm_ai::providers::ClaudeCliProvider::new(Some(
+                config.ai.claude.model.clone(),
+            ));
+            if first_provider.is_none() {
+                first_provider = Some("claude-cli".to_string());
+            }
             ai_manager.add_provider(Box::new(provider));
             tracing::info!("Claude CLI provider available");
         }
@@ -156,10 +167,12 @@ fn init_ai() {
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            let provider = corgiterm_ai::providers::GeminiCliProvider::new(
-                Some(config.ai.gemini.model.clone()),
-            );
-            if first_provider.is_none() { first_provider = Some("gemini-cli".to_string()); }
+            let provider = corgiterm_ai::providers::GeminiCliProvider::new(Some(
+                config.ai.gemini.model.clone(),
+            ));
+            if first_provider.is_none() {
+                first_provider = Some("gemini-cli".to_string());
+            }
             ai_manager.add_provider(Box::new(provider));
             tracing::info!("Gemini CLI provider available");
         }
@@ -179,7 +192,9 @@ fn init_ai() {
                     endpoint,
                     config.ai.local.model.clone(),
                 );
-                if first_provider.is_none() { first_provider = Some("ollama".to_string()); }
+                if first_provider.is_none() {
+                    first_provider = Some("ollama".to_string());
+                }
                 ai_manager.add_provider(Box::new(provider));
                 tracing::info!("Ollama provider available at {}", config.ai.local.endpoint);
             } else {
@@ -194,7 +209,9 @@ fn init_ai() {
                     api_key.clone(),
                     Some(config.ai.claude.model.clone()),
                 );
-                if first_provider.is_none() { first_provider = Some("claude".to_string()); }
+                if first_provider.is_none() {
+                    first_provider = Some("claude".to_string());
+                }
                 ai_manager.add_provider(Box::new(provider));
                 tracing::info!("Claude API provider configured");
             }
@@ -206,7 +223,9 @@ fn init_ai() {
                     api_key.clone(),
                     Some(config.ai.openai.model.clone()),
                 );
-                if first_provider.is_none() { first_provider = Some("openai".to_string()); }
+                if first_provider.is_none() {
+                    first_provider = Some("openai".to_string());
+                }
                 ai_manager.add_provider(Box::new(provider));
                 tracing::info!("OpenAI API provider configured");
             }
@@ -218,7 +237,9 @@ fn init_ai() {
                     api_key.clone(),
                     Some(config.ai.gemini.model.clone()),
                 );
-                if first_provider.is_none() { first_provider = Some("gemini".to_string()); }
+                if first_provider.is_none() {
+                    first_provider = Some("gemini".to_string());
+                }
                 ai_manager.add_provider(Box::new(provider));
                 tracing::info!("Gemini API provider configured");
             }
@@ -259,9 +280,7 @@ fn init_plugins() {
         None
     };
 
-    let plugin_dir = plugin_dir.unwrap_or_else(|| {
-        corgiterm_config::config_dir().join("plugins")
-    });
+    let plugin_dir = plugin_dir.unwrap_or_else(|| corgiterm_config::config_dir().join("plugins"));
 
     let mut plugin_manager = corgiterm_plugins::PluginManager::new(plugin_dir.clone());
 

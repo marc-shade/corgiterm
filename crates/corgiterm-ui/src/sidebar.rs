@@ -4,9 +4,9 @@
 //! across restarts using the SessionManager. Clicking a project folder
 //! opens a terminal in that directory.
 
+use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{Button, FileDialog, Label, ListBox, Orientation, ScrolledWindow};
-use gtk4::gio;
 use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -79,7 +79,10 @@ impl Sidebar {
                 sidebar.add_project_folder(&project.path);
             }
             drop(session_mgr);
-            tracing::info!("Loaded {} projects from session manager", sidebar.projects.borrow().len());
+            tracing::info!(
+                "Loaded {} projects from session manager",
+                sidebar.projects.borrow().len()
+            );
         }
 
         // If no saved projects, add default folders
@@ -116,7 +119,8 @@ impl Sidebar {
                         if let Ok(file) = result {
                             if let Some(path) = file.path() {
                                 // Add to projects list
-                                let name = path.file_name()
+                                let name = path
+                                    .file_name()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("Project")
                                     .to_string();
@@ -168,7 +172,8 @@ impl Sidebar {
 
     /// Add a project folder to the sidebar
     fn add_project_folder(&self, path: &PathBuf) {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Folder")
             .to_string();

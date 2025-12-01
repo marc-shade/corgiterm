@@ -1,23 +1,26 @@
 //! Terminal rendering view with PTY integration
 
-use gtk4::prelude::*;
-use gtk4::glib;
-use gtk4::{Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion, EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label, Orientation, PopoverMenu, Revealer, RevealerTransitionType, Scrollbar};
 use gtk4::gio::{Menu, SimpleAction};
-use std::cell::RefCell;
-use std::rc::Rc;
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::{
+    Adjustment, Box, DrawingArea, Entry, EventControllerKey, EventControllerMotion,
+    EventControllerScroll, EventControllerScrollFlags, GestureClick, GestureDrag, Label,
+    Orientation, PopoverMenu, Revealer, RevealerTransitionType, Scrollbar,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use corgiterm_core::{Pty, PtySize, Terminal, TerminalSize, terminal::Cell};
-use std::path::Path;
 use crate::app::config_manager;
 use corgiterm_config::themes::ThemeManager;
+use corgiterm_core::{terminal::Cell, HintDetector, HintModeState, Pty, PtySize, Terminal, TerminalSize};
+use std::path::Path;
 
 /// URL regex pattern
-static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap()
-});
+static URL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap());
 
 /// Detected URL with position info
 #[derive(Debug, Clone)]
@@ -55,23 +58,23 @@ struct Selection {
 /// Default ANSI colors (fallback if theme not loaded)
 const DEFAULT_COLORS: [(f64, f64, f64); 16] = [
     // Standard colors 0-7
-    (0.118, 0.106, 0.086),  // 0: Black (background)
-    (0.800, 0.341, 0.322),  // 1: Red
-    (0.573, 0.706, 0.447),  // 2: Green
-    (0.898, 0.659, 0.294),  // 3: Yellow
-    (0.467, 0.573, 0.702),  // 4: Blue
-    (0.694, 0.494, 0.627),  // 5: Magenta
-    (0.529, 0.675, 0.686),  // 6: Cyan
-    (0.910, 0.859, 0.769),  // 7: White (foreground)
+    (0.118, 0.106, 0.086), // 0: Black (background)
+    (0.800, 0.341, 0.322), // 1: Red
+    (0.573, 0.706, 0.447), // 2: Green
+    (0.898, 0.659, 0.294), // 3: Yellow
+    (0.467, 0.573, 0.702), // 4: Blue
+    (0.694, 0.494, 0.627), // 5: Magenta
+    (0.529, 0.675, 0.686), // 6: Cyan
+    (0.910, 0.859, 0.769), // 7: White (foreground)
     // Bright colors 8-15
-    (0.392, 0.373, 0.345),  // 8: Bright Black
-    (0.898, 0.498, 0.467),  // 9: Bright Red
-    (0.714, 0.820, 0.596),  // 10: Bright Green
-    (0.949, 0.792, 0.478),  // 11: Bright Yellow
-    (0.627, 0.718, 0.831),  // 12: Bright Blue
-    (0.824, 0.651, 0.776),  // 13: Bright Magenta
-    (0.671, 0.808, 0.816),  // 14: Bright Cyan
-    (0.969, 0.945, 0.910),  // 15: Bright White
+    (0.392, 0.373, 0.345), // 8: Bright Black
+    (0.898, 0.498, 0.467), // 9: Bright Red
+    (0.714, 0.820, 0.596), // 10: Bright Green
+    (0.949, 0.792, 0.478), // 11: Bright Yellow
+    (0.627, 0.718, 0.831), // 12: Bright Blue
+    (0.824, 0.651, 0.776), // 13: Bright Magenta
+    (0.671, 0.808, 0.816), // 14: Bright Cyan
+    (0.969, 0.945, 0.910), // 15: Bright White
 ];
 
 /// Convert hex color string to RGB tuple
@@ -96,22 +99,22 @@ fn load_theme_colors() -> [(f64, f64, f64); 16] {
             // Index 0 = background, Index 7 = foreground (used for default colors)
             // Other indices = ANSI colors
             return [
-                hex_to_rgb(&colors.background),    // 0: Background
-                hex_to_rgb(&colors.red),           // 1: Red
-                hex_to_rgb(&colors.green),         // 2: Green
-                hex_to_rgb(&colors.yellow),        // 3: Yellow
-                hex_to_rgb(&colors.blue),          // 4: Blue
-                hex_to_rgb(&colors.magenta),       // 5: Magenta
-                hex_to_rgb(&colors.cyan),          // 6: Cyan
-                hex_to_rgb(&colors.foreground),    // 7: Foreground
-                hex_to_rgb(&colors.bright_black),  // 8: Bright Black
-                hex_to_rgb(&colors.bright_red),    // 9: Bright Red
-                hex_to_rgb(&colors.bright_green),  // 10: Bright Green
-                hex_to_rgb(&colors.bright_yellow), // 11: Bright Yellow
-                hex_to_rgb(&colors.bright_blue),   // 12: Bright Blue
-                hex_to_rgb(&colors.bright_magenta),// 13: Bright Magenta
-                hex_to_rgb(&colors.bright_cyan),   // 14: Bright Cyan
-                hex_to_rgb(&colors.bright_white),  // 15: Bright White
+                hex_to_rgb(&colors.background),     // 0: Background
+                hex_to_rgb(&colors.red),            // 1: Red
+                hex_to_rgb(&colors.green),          // 2: Green
+                hex_to_rgb(&colors.yellow),         // 3: Yellow
+                hex_to_rgb(&colors.blue),           // 4: Blue
+                hex_to_rgb(&colors.magenta),        // 5: Magenta
+                hex_to_rgb(&colors.cyan),           // 6: Cyan
+                hex_to_rgb(&colors.foreground),     // 7: Foreground
+                hex_to_rgb(&colors.bright_black),   // 8: Bright Black
+                hex_to_rgb(&colors.bright_red),     // 9: Bright Red
+                hex_to_rgb(&colors.bright_green),   // 10: Bright Green
+                hex_to_rgb(&colors.bright_yellow),  // 11: Bright Yellow
+                hex_to_rgb(&colors.bright_blue),    // 12: Bright Blue
+                hex_to_rgb(&colors.bright_magenta), // 13: Bright Magenta
+                hex_to_rgb(&colors.bright_cyan),    // 14: Bright Cyan
+                hex_to_rgb(&colors.bright_white),   // 15: Bright White
             ];
         }
     }
@@ -153,6 +156,10 @@ pub struct TerminalView {
     /// PTY size - used to clip rendering during resize to prevent ghost lines
     /// When grid size != PTY size, we're in a resize transition
     pty_cols: Rc<RefCell<usize>>,
+    /// Hint mode state for URL/path hints (foot-style keyboard navigation)
+    hint_mode: Rc<RefCell<HintModeState>>,
+    /// Hint detector for scanning terminal buffer
+    hint_detector: Rc<HintDetector>,
 }
 
 impl TerminalView {
@@ -192,7 +199,12 @@ impl TerminalView {
                 let config = cm.read().config();
                 (config.general.shell.clone(), config.terminal.term.clone())
             })
-            .unwrap_or_else(|| (std::env::var("SHELL").unwrap_or("/bin/bash".to_string()), "xterm-256color".to_string()));
+            .unwrap_or_else(|| {
+                (
+                    std::env::var("SHELL").unwrap_or("/bin/bash".to_string()),
+                    "xterm-256color".to_string(),
+                )
+            });
         let pty = Rc::new(RefCell::new(None));
         {
             match Pty::spawn(Some(&shell), PtySize::default(), working_dir, Some(&term)) {
@@ -238,6 +250,10 @@ impl TerminalView {
         // Initialize to default PTY size (80 columns)
         let pty_cols: Rc<RefCell<usize>> = Rc::new(RefCell::new(80));
 
+        // Hint mode state for URL/path keyboard navigation (foot-style)
+        let hint_mode: Rc<RefCell<HintModeState>> = Rc::new(RefCell::new(HintModeState::new()));
+        let hint_detector: Rc<HintDetector> = Rc::new(HintDetector::new());
+
         // Set up drawing callback with Pango for text rendering
         let term_for_draw = terminal.clone();
         let cell_width_for_draw = cell_width.clone();
@@ -251,6 +267,7 @@ impl TerminalView {
         let bell_flash_for_draw = bell_flash.clone();
         let pty_cols_for_draw = pty_cols.clone();
         let _colors_for_draw = colors.clone(); // Kept for future per-terminal color customization
+        let hint_mode_for_draw = hint_mode.clone();
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
             // Reload theme colors on each draw (allows live theme switching)
             let current_colors = load_theme_colors();
@@ -264,19 +281,24 @@ impl TerminalView {
             let pango_context = area.pango_context();
 
             // Configure font from config or use default
-            let (font_family, font_size) = if let Some(config_manager) = crate::app::config_manager() {
-                let config = config_manager.read().config();
-                (config.appearance.font_family.clone(), config.appearance.font_size)
-            } else {
-                ("Source Code Pro".to_string(), 11.0)
-            };
+            let (font_family, font_size) =
+                if let Some(config_manager) = crate::app::config_manager() {
+                    let config = config_manager.read().config();
+                    (
+                        config.appearance.font_family.clone(),
+                        config.appearance.font_size,
+                    )
+                } else {
+                    ("Source Code Pro".to_string(), 11.0)
+                };
             let font_string = format!("{} {}", font_family, font_size as u32);
             let font_desc = pango::FontDescription::from_string(&font_string);
 
             // Get font metrics for cell sizing
             let metrics = pango_context.metrics(Some(&font_desc), None);
             let cell_w = (metrics.approximate_char_width() as f64 / pango::SCALE as f64).ceil();
-            let cell_h = ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64).ceil();
+            let cell_h =
+                ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64).ceil();
             let ascent = metrics.ascent() as f64 / pango::SCALE as f64;
 
             // Store cell dimensions for resize calculations
@@ -300,7 +322,12 @@ impl TerminalView {
             cr.set_source_rgb(fg_r, fg_g, fg_b);
 
             // Helper to draw a cell
-            let draw_cell = |cr: &cairo::Context, layout: &pango::Layout, cell: &Cell, x: f64, y: f64, font_desc: &pango::FontDescription| {
+            let draw_cell = |cr: &cairo::Context,
+                             layout: &pango::Layout,
+                             cell: &Cell,
+                             x: f64,
+                             y: f64,
+                             font_desc: &pango::FontDescription| {
                 // Handle inverse and hidden attributes
                 let cell_fg = if cell.attrs.inverse {
                     cell.bg // Swap fg/bg for inverse
@@ -334,7 +361,11 @@ impl TerminalView {
 
                     // Apply color modifiers
                     if cell.attrs.bold {
-                        cr.set_source_rgb((r * 1.2).min(1.0), (g * 1.2).min(1.0), (b * 1.2).min(1.0));
+                        cr.set_source_rgb(
+                            (r * 1.2).min(1.0),
+                            (g * 1.2).min(1.0),
+                            (b * 1.2).min(1.0),
+                        );
                     } else if cell.attrs.dim {
                         cr.set_source_rgb(r * 0.6, g * 0.6, b * 0.6);
                     } else {
@@ -391,9 +422,16 @@ impl TerminalView {
             let mut urls = Vec::new();
             for (row_idx, row) in grid.iter().enumerate() {
                 // Build line text
-                let line_text: String = row.iter().map(|c| {
-                    if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
-                }).collect();
+                let line_text: String = row
+                    .iter()
+                    .map(|c| {
+                        if c.content.is_empty() {
+                            ' '
+                        } else {
+                            c.content.chars().next().unwrap_or(' ')
+                        }
+                    })
+                    .collect();
 
                 // Find URLs in this line
                 for mat in URL_REGEX.find_iter(&line_text) {
@@ -476,8 +514,13 @@ impl TerminalView {
 
                         // Check if this cell is part of a search match
                         if source == "grid" && search.active {
-                            for (match_idx, (match_row, match_start, match_end)) in search.matches.iter().enumerate() {
-                                if actual_row == *match_row && col_idx >= *match_start && col_idx < *match_end {
+                            for (match_idx, (match_row, match_start, match_end)) in
+                                search.matches.iter().enumerate()
+                            {
+                                if actual_row == *match_row
+                                    && col_idx >= *match_start
+                                    && col_idx < *match_end
+                                {
                                     // Different color for current match vs other matches
                                     if match_idx == search.current_match {
                                         // Current match: bright orange/yellow
@@ -497,12 +540,12 @@ impl TerminalView {
                         let is_url_hovered = if source == "grid" {
                             if let Some((hover_row, hover_col)) = hover {
                                 urls.iter().any(|url| {
-                                    url.row == actual_row &&
-                                    col_idx >= url.start_col &&
-                                    col_idx <= url.end_col &&
-                                    hover_row == url.row &&
-                                    hover_col >= url.start_col &&
-                                    hover_col <= url.end_col
+                                    url.row == actual_row
+                                        && col_idx >= url.start_col
+                                        && col_idx <= url.end_col
+                                        && hover_row == url.row
+                                        && hover_col >= url.start_col
+                                        && hover_col <= url.end_col
                                 })
                             } else {
                                 false
@@ -531,7 +574,10 @@ impl TerminalView {
             let (cursor_blink_enabled, _blink_rate) = crate::app::config_manager()
                 .map(|cm| {
                     let config = cm.read().config();
-                    (config.appearance.cursor_blink, config.appearance.cursor_blink_rate)
+                    (
+                        config.appearance.cursor_blink,
+                        config.appearance.cursor_blink_rate,
+                    )
                 })
                 .unwrap_or((true, 530));
 
@@ -565,7 +611,12 @@ impl TerminalView {
                     }
                     corgiterm_config::CursorStyle::Underline => {
                         let line_height = 2.0;
-                        cr.rectangle(cursor_x, cursor_y + cell_h - line_height, cell_w, line_height);
+                        cr.rectangle(
+                            cursor_x,
+                            cursor_y + cell_h - line_height,
+                            cell_w,
+                            line_height,
+                        );
                         cr.fill().ok();
                     }
                     corgiterm_config::CursorStyle::Bar => {
@@ -580,6 +631,77 @@ impl TerminalView {
                     }
                 }
             }
+
+            // Draw hint mode overlay (foot-style URL hints)
+            let hint_state = hint_mode_for_draw.borrow();
+            if hint_state.active {
+                // Dim the background slightly to highlight hints
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.4);
+                cr.paint().ok();
+
+                // Draw each hint with its label
+                for hint in &hint_state.hints {
+                    // Calculate hint position
+                    let hint_x = padding + (hint.col_start as f64 * cell_w);
+                    let hint_y = padding + (hint.row as f64 * cell_h);
+                    let hint_width = ((hint.col_end - hint.col_start) as f64 * cell_w).max(cell_w);
+
+                    // Draw highlight box behind the hinted text
+                    cr.set_source_rgba(0.467, 0.573, 0.702, 0.3); // Blue tint
+                    cr.rectangle(hint_x, hint_y, hint_width, cell_h);
+                    cr.fill().ok();
+
+                    // Draw underline
+                    cr.set_source_rgba(0.467, 0.573, 0.702, 0.9);
+                    cr.set_line_width(2.0);
+                    cr.move_to(hint_x, hint_y + cell_h - 1.0);
+                    cr.line_to(hint_x + hint_width, hint_y + cell_h - 1.0);
+                    cr.stroke().ok();
+
+                    // Draw label badge (like "a", "b", "aa", etc.)
+                    let label = &hint.label;
+
+                    // Label background (rounded rectangle)
+                    let badge_width = (label.len() as f64 * cell_w * 0.7).max(cell_w);
+                    let badge_height = cell_h * 0.9;
+                    let badge_x = hint_x - 2.0;
+                    let badge_y = hint_y + (cell_h - badge_height) / 2.0;
+
+                    // Orange/yellow badge background
+                    cr.set_source_rgba(0.898, 0.659, 0.294, 0.95);
+                    cr.rectangle(badge_x, badge_y, badge_width, badge_height);
+                    cr.fill().ok();
+
+                    // Badge border
+                    cr.set_source_rgba(0.7, 0.5, 0.2, 1.0);
+                    cr.set_line_width(1.0);
+                    cr.rectangle(badge_x, badge_y, badge_width, badge_height);
+                    cr.stroke().ok();
+
+                    // Label text (dark on light badge)
+                    cr.set_source_rgb(0.1, 0.1, 0.1);
+                    layout.set_text(label);
+                    let text_x = badge_x + (badge_width - cell_w * label.len() as f64 * 0.6) / 2.0;
+                    let text_y = badge_y + (badge_height - ascent) / 2.0;
+                    cr.move_to(text_x, text_y);
+                    pangocairo::functions::show_layout(cr, &layout);
+                }
+
+                // Show input buffer if partially typed
+                if !hint_state.input_buffer.is_empty() {
+                    // Draw status bar at bottom showing current input
+                    let status_y = padding + (visible_rows as f64 * cell_h) + 4.0;
+                    cr.set_source_rgba(0.2, 0.2, 0.2, 0.9);
+                    cr.rectangle(padding, status_y, cell_w * 20.0, cell_h);
+                    cr.fill().ok();
+
+                    cr.set_source_rgb(0.9, 0.9, 0.9);
+                    layout.set_text(&format!("Hint: {}", hint_state.input_buffer));
+                    cr.move_to(padding + 4.0, status_y + (cell_h - ascent) / 2.0);
+                    pangocairo::functions::show_layout(cr, &layout);
+                }
+            }
+            drop(hint_state);
 
             // Draw visual bell flash overlay
             if *bell_flash_for_draw.borrow() {
@@ -596,14 +718,16 @@ impl TerminalView {
         let pty_for_resize = pty.clone();
         let cell_width_for_resize = cell_width.clone();
         let cell_height_for_resize = cell_height.clone();
-        let drawing_area_for_resize = drawing_area.clone();
+        let _drawing_area_for_resize = drawing_area.clone(); // Kept for potential future use
         let pty_cols_for_resize = pty_cols.clone();
 
         // Track pending PTY resize (grid resizes immediately, PTY is debounced)
-        let pending_pty_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> = Rc::new(RefCell::new(None));
-        let pty_resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+        let pending_pty_resize: Rc<RefCell<Option<(usize, usize, i32, i32)>>> =
+            Rc::new(RefCell::new(None));
+        let pty_resize_timeout_id: Rc<RefCell<Option<glib::SourceId>>> =
+            Rc::new(RefCell::new(None));
 
-        drawing_area.connect_resize(move |_area, width, height| {
+        drawing_area.connect_resize(move |area, width, height| {
             let cell_w = *cell_width_for_resize.borrow();
             let cell_h = *cell_height_for_resize.borrow();
 
@@ -630,7 +754,21 @@ impl TerminalView {
                 return;
             }
 
-            // Store pending resize dimensions
+            // IMMEDIATELY resize terminal grid for stable display
+            // This ensures the grid matches the drawing area at all times
+            let new_terminal_size = TerminalSize {
+                rows: new_rows,
+                cols: new_cols,
+            };
+            term_for_resize.borrow_mut().resize(new_terminal_size);
+
+            // Update pty_cols immediately for rendering clipping
+            *pty_cols_for_resize.borrow_mut() = new_cols;
+
+            // Queue redraw immediately after grid resize
+            area.queue_draw();
+
+            // Store pending PTY resize dimensions (PTY resize is debounced to avoid SIGWINCH spam)
             *pending_pty_resize.borrow_mut() = Some((new_rows, new_cols, width, height));
 
             // Cancel any existing resize timeout
@@ -639,32 +777,23 @@ impl TerminalView {
             }
 
             // Clone references for the timeout closure
-            let term_for_timeout = term_for_resize.clone();
             let pty_for_timeout = pty_for_resize.clone();
             let pending_for_timeout = pending_pty_resize.clone();
             let timeout_id_ref = pty_resize_timeout_id.clone();
-            let drawing_area_for_timeout = drawing_area_for_resize.clone();
-            let pty_cols_for_timeout = pty_cols_for_resize.clone();
 
-            // 100ms debounce - fast enough for responsiveness but slow enough to batch events
-            let source_id = glib::timeout_add_local_once(
-                std::time::Duration::from_millis(100),
-                move || {
+            // 100ms debounce for PTY resize only - prevents SIGWINCH storm to shell
+            let source_id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
                     // Clear the timeout ID
                     *timeout_id_ref.borrow_mut() = None;
 
-                    // Get the final pending dimensions
-                    if let Some((rows, cols, px_width, px_height)) = pending_for_timeout.borrow_mut().take() {
-                        tracing::info!("Applying resize to {}x{} (debounced)", rows, cols);
+                    // Get the final pending dimensions for PTY
+                    if let Some((rows, cols, px_width, px_height)) =
+                        pending_for_timeout.borrow_mut().take()
+                    {
+                        tracing::debug!("Applying PTY resize to {}x{} (debounced)", rows, cols);
 
-                        // Resize terminal grid
-                        let new_terminal_size = TerminalSize {
-                            rows,
-                            cols,
-                        };
-                        term_for_timeout.borrow_mut().resize(new_terminal_size);
-
-                        // Resize PTY
+                        // Resize PTY (sends SIGWINCH to shell)
                         if let Some(ref mut pty) = *pty_for_timeout.borrow_mut() {
                             let new_pty_size = PtySize {
                                 rows: rows as u16,
@@ -674,17 +803,10 @@ impl TerminalView {
                             };
                             if let Err(e) = pty.resize(new_pty_size) {
                                 tracing::error!("Failed to resize PTY: {}", e);
-                            } else {
-                                // PTY resize succeeded - update pty_cols for rendering clipping
-                                *pty_cols_for_timeout.borrow_mut() = cols;
                             }
                         }
-
-                        // Queue redraw after resize
-                        drawing_area_for_timeout.queue_draw();
                     }
-                },
-            );
+                });
 
             *pty_resize_timeout_id.borrow_mut() = Some(source_id);
         });
@@ -694,12 +816,106 @@ impl TerminalView {
         let pty_for_input = pty.clone();
         let drawing_area_for_clipboard = drawing_area.clone();
         let terminal_for_copy = terminal.clone();
+        let terminal_for_key = terminal.clone();
         let scroll_offset_for_key = scroll_offset.clone();
+        let hint_mode_for_key = hint_mode.clone();
+        let hint_detector_for_key = hint_detector.clone();
+        let drawing_area_for_hint = drawing_area.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::{Key, ModifierType};
 
             let ctrl = modifier.contains(ModifierType::CONTROL_MASK);
             let shift = modifier.contains(ModifierType::SHIFT_MASK);
+
+            // Handle hint mode keyboard interaction
+            {
+                let mut hint_state = hint_mode_for_key.borrow_mut();
+
+                // If hint mode is active, handle hint input
+                if hint_state.active {
+                    // Escape exits hint mode
+                    if matches!(key, Key::Escape) {
+                        hint_state.deactivate();
+                        drawing_area_for_hint.queue_draw();
+                        return glib::Propagation::Stop;
+                    }
+
+                    // Letter keys for hint selection
+                    if let Some(c) = key.to_unicode() {
+                        if c.is_ascii_lowercase() {
+                            if let Some(hint) = hint_state.handle_key(c) {
+                                // Hint selected! Execute the action
+                                let text = hint.text.clone();
+                                let hint_type = hint.hint_type.clone();
+
+                                // Drop borrow before action
+                                drop(hint_state);
+
+                                // Execute action based on hint type
+                                match hint_type {
+                                    corgiterm_core::HintType::Url => {
+                                        // Open URL in browser
+                                        if let Err(e) = open::that(&text) {
+                                            tracing::warn!("Failed to open URL {}: {}", text, e);
+                                        } else {
+                                            tracing::info!("Opened URL: {}", text);
+                                        }
+                                    }
+                                    corgiterm_core::HintType::FilePath => {
+                                        // Copy path to clipboard (user can paste or cd)
+                                        let clipboard = drawing_area_for_hint.clipboard();
+                                        clipboard.set_text(&text);
+                                        tracing::info!("Copied path to clipboard: {}", text);
+                                    }
+                                    corgiterm_core::HintType::Email
+                                    | corgiterm_core::HintType::IpAddress
+                                    | corgiterm_core::HintType::GitHash
+                                    | corgiterm_core::HintType::Port => {
+                                        // Copy to clipboard
+                                        let clipboard = drawing_area_for_hint.clipboard();
+                                        clipboard.set_text(&text);
+                                        tracing::info!("Copied to clipboard: {}", text);
+                                    }
+                                }
+
+                                drawing_area_for_hint.queue_draw();
+                                return glib::Propagation::Stop;
+                            }
+                            drawing_area_for_hint.queue_draw();
+                            return glib::Propagation::Stop;
+                        }
+                    }
+
+                    // Any other key exits hint mode
+                    hint_state.deactivate();
+                    drawing_area_for_hint.queue_draw();
+                    // Don't return - let the key pass through to normal handling
+                }
+            }
+
+            // Ctrl+Shift+U activates hint mode (foot-style URL hints)
+            if ctrl && shift && matches!(key, Key::U | Key::u) {
+                let term = terminal_for_key.borrow();
+                let grid = term.grid();
+
+                // Collect visible lines as strings
+                let lines: Vec<String> = grid.iter().map(|row| {
+                    row.iter().map(|cell| cell.content.as_str()).collect()
+                }).collect();
+
+                // Scan for hints
+                let hints = hint_detector_for_key.scan(&lines);
+
+                if !hints.is_empty() {
+                    tracing::info!("Hint mode activated: {} hints found", hints.len());
+                    hint_mode_for_key.borrow_mut().activate(hints);
+                    drawing_area_for_hint.queue_draw();
+                } else {
+                    tracing::debug!("No hints found in terminal buffer");
+                }
+
+                return glib::Propagation::Stop;
+            }
 
             // Check for Ctrl+Shift+C (copy)
             if ctrl && shift && matches!(key, Key::C | Key::c) {
@@ -899,16 +1115,15 @@ impl TerminalView {
 
                     // Find URL at this position
                     let urls = detected_urls_for_click.borrow();
-                    if let Some(url) = urls.iter().find(|u| {
-                        u.row == row && col >= u.start_col && col <= u.end_col
-                    }) {
+                    if let Some(url) = urls
+                        .iter()
+                        .find(|u| u.row == row && col >= u.start_col && col <= u.end_col)
+                    {
                         // Open URL in default browser using xdg-open
                         tracing::info!("Opening URL: {}", url.url);
                         let url_str = url.url.clone();
                         std::thread::spawn(move || {
-                            let _ = std::process::Command::new("xdg-open")
-                                .arg(&url_str)
-                                .spawn();
+                            let _ = std::process::Command::new("xdg-open").arg(&url_str).spawn();
                         });
                     }
                 }
@@ -1018,7 +1233,11 @@ impl TerminalView {
                 while let Some(widget) = child {
                     if let Some(revealer) = widget.downcast_ref::<Revealer>() {
                         revealer.set_reveal_child(true);
-                        if let Some(entry) = revealer.child().and_then(|c| c.first_child()).and_then(|c| c.first_child()) {
+                        if let Some(entry) = revealer
+                            .child()
+                            .and_then(|c| c.first_child())
+                            .and_then(|c| c.first_child())
+                        {
                             if let Some(entry) = entry.downcast_ref::<Entry>() {
                                 entry.grab_focus();
                             }
@@ -1078,7 +1297,23 @@ impl TerminalView {
                 }
                 match pty.read(&mut buf) {
                     Ok(n) if n > 0 => {
-                        term_for_read.borrow_mut().process(&buf[..n]);
+                        // Use safe_process for automatic crash recovery
+                        let health = term_for_read.borrow_mut().safe_process(&buf[..n]);
+
+                        // Log health status changes for debugging
+                        match health {
+                            corgiterm_core::TerminalHealth::Degraded => {
+                                tracing::warn!("Terminal entered degraded mode - attempting recovery");
+                            }
+                            corgiterm_core::TerminalHealth::Recovered => {
+                                tracing::info!("Terminal recovered from error state");
+                            }
+                            corgiterm_core::TerminalHealth::NeedsReset => {
+                                tracing::error!("Terminal needs manual reset");
+                            }
+                            _ => {}
+                        }
+
                         // Check scroll_on_output setting - if enabled, scroll to bottom
                         let scroll_on_output = crate::app::config_manager()
                             .map(|cm| cm.read().config().terminal.scroll_on_output)
@@ -1102,7 +1337,10 @@ impl TerminalView {
             let (blink_enabled, reduce_motion) = crate::app::config_manager()
                 .map(|cm| {
                     let config = cm.read().config();
-                    (config.appearance.cursor_blink, config.accessibility.reduce_motion)
+                    (
+                        config.appearance.cursor_blink,
+                        config.accessibility.reduce_motion,
+                    )
                 })
                 .unwrap_or((true, false));
 
@@ -1183,9 +1421,16 @@ impl TerminalView {
 
                 for (row_idx, row) in grid.iter().enumerate() {
                     // Build line text
-                    let line_text: String = row.iter().map(|c| {
-                        if c.content.is_empty() { ' ' } else { c.content.chars().next().unwrap_or(' ') }
-                    }).collect();
+                    let line_text: String = row
+                        .iter()
+                        .map(|c| {
+                            if c.content.is_empty() {
+                                ' '
+                            } else {
+                                c.content.chars().next().unwrap_or(' ')
+                            }
+                        })
+                        .collect();
 
                     // Find all matches in this line (case-insensitive)
                     let lower_line = line_text.to_lowercase();
@@ -1193,7 +1438,9 @@ impl TerminalView {
                     let mut start = 0;
                     while let Some(pos) = lower_line[start..].find(&lower_query) {
                         let actual_pos = start + pos;
-                        state.matches.push((row_idx, actual_pos, actual_pos + query.len()));
+                        state
+                            .matches
+                            .push((row_idx, actual_pos, actual_pos + query.len()));
                         start = actual_pos + 1;
                     }
                 }
@@ -1217,7 +1464,11 @@ impl TerminalView {
             let mut state = search_state_for_nav.borrow_mut();
             if !state.matches.is_empty() {
                 state.current_match = (state.current_match + 1) % state.matches.len();
-                match_label_for_nav.set_text(&format!("{}/{}", state.current_match + 1, state.matches.len()));
+                match_label_for_nav.set_text(&format!(
+                    "{}/{}",
+                    state.current_match + 1,
+                    state.matches.len()
+                ));
             }
             drop(state);
             drawing_area_for_nav.queue_draw();
@@ -1348,16 +1599,21 @@ impl TerminalView {
                 let term = terminal_for_copy_sel.borrow();
                 let grid = term.grid();
 
-                let (start_row, start_col, end_row, end_col) = normalize_selection(
-                    sel.start.0, sel.start.1, sel.end.0, sel.end.1
-                );
+                let (start_row, start_col, end_row, end_col) =
+                    normalize_selection(sel.start.0, sel.start.1, sel.end.0, sel.end.1);
 
                 let mut text = String::new();
                 for row in start_row..=end_row {
-                    if row >= grid.len() { break; }
+                    if row >= grid.len() {
+                        break;
+                    }
 
                     let col_start = if row == start_row { start_col } else { 0 };
-                    let col_end = if row == end_row { end_col + 1 } else { grid[row].len() };
+                    let col_end = if row == end_row {
+                        end_col + 1
+                    } else {
+                        grid[row].len()
+                    };
 
                     for col in col_start..col_end.min(grid[row].len()) {
                         text.push_str(&grid[row][col].content);
@@ -1398,6 +1654,8 @@ impl TerminalView {
             bell_flash,
             colors,
             pty_cols,
+            hint_mode,
+            hint_detector,
         }
     }
 
@@ -1411,7 +1669,9 @@ impl TerminalView {
     }
 
     /// Get the terminal event receiver for listening to title changes, bells, etc.
-    pub fn event_receiver(&self) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
+    pub fn event_receiver(
+        &self,
+    ) -> Rc<crossbeam_channel::Receiver<corgiterm_core::terminal::TerminalEvent>> {
         self.event_rx.clone()
     }
 
@@ -1445,11 +1705,14 @@ impl TerminalView {
     pub fn send_command(&self, command: &str) {
         if let Some(ref pty) = *self.pty.borrow() {
             // Record command for AI learning
-            let directory = self.working_directory()
+            let directory = self
+                .working_directory()
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|| std::env::current_dir()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_default());
+                .unwrap_or_else(|| {
+                    std::env::current_dir()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default()
+                });
             crate::app::record_command(command.to_string(), directory, None);
 
             // Send command with newline
@@ -1511,7 +1774,11 @@ impl TerminalView {
         let grid = terminal.grid();
 
         let mut lines = Vec::new();
-        let start = if grid.len() > max_lines { grid.len() - max_lines } else { 0 };
+        let start = if grid.len() > max_lines {
+            grid.len() - max_lines
+        } else {
+            0
+        };
 
         for row in grid.iter().skip(start).take(max_lines) {
             let mut line = String::new();
@@ -1542,7 +1809,12 @@ impl Default for TerminalView {
 }
 
 /// Normalize selection to ensure start is before end
-fn normalize_selection(start_row: usize, start_col: usize, end_row: usize, end_col: usize) -> (usize, usize, usize, usize) {
+fn normalize_selection(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> (usize, usize, usize, usize) {
     if start_row < end_row || (start_row == end_row && start_col <= end_col) {
         (start_row, start_col, end_row, end_col)
     } else {
@@ -1556,9 +1828,8 @@ fn is_cell_selected(row: usize, col: usize, sel: &Selection) -> bool {
         return false;
     }
 
-    let (start_row, start_col, end_row, end_col) = normalize_selection(
-        sel.start.0, sel.start.1, sel.end.0, sel.end.1
-    );
+    let (start_row, start_col, end_row, end_col) =
+        normalize_selection(sel.start.0, sel.start.1, sel.end.0, sel.end.1);
 
     if row < start_row || row > end_row {
         return false;

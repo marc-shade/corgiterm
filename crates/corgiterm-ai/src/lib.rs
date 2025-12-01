@@ -13,12 +13,12 @@
 //! - Safe Mode AI explanations
 //! - MCP (Model Context Protocol) support
 
-pub mod providers;
-pub mod natural_language;
 pub mod completions;
-pub mod mcp;
-pub mod learning;
 pub mod history;
+pub mod learning;
+pub mod mcp;
+pub mod natural_language;
+pub mod providers;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -119,7 +119,11 @@ impl NaturalLanguage {
     }
 
     /// Translate natural language to shell command
-    pub async fn to_command(&self, input: &str, context: &CommandContext) -> Result<CommandSuggestion> {
+    pub async fn to_command(
+        &self,
+        input: &str,
+        context: &CommandContext,
+    ) -> Result<CommandSuggestion> {
         let system_prompt = format!(
             r##"You are a shell command expert. Convert natural language requests into shell commands.
 
@@ -255,12 +259,17 @@ impl AiManager {
 
     /// Get default provider
     pub fn default_provider(&self) -> Option<&dyn AiProvider> {
-        self.providers.get(self.default_provider).map(|p| p.as_ref())
+        self.providers
+            .get(self.default_provider)
+            .map(|p| p.as_ref())
     }
 
     /// Get provider by name
     pub fn get_provider(&self, name: &str) -> Option<&dyn AiProvider> {
-        self.providers.iter().find(|p| p.name() == name).map(|p| p.as_ref())
+        self.providers
+            .iter()
+            .find(|p| p.name() == name)
+            .map(|p| p.as_ref())
     }
 
     /// List available providers

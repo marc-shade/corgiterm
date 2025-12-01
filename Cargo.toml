@@ -6,6 +6,7 @@ members = [
     "crates/corgiterm-ai",
     "crates/corgiterm-config",
     "crates/corgiterm-plugins",
+    "crates/corgiterm-terminal",
 ]
 
 [package]

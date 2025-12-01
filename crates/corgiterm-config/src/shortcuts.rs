@@ -150,11 +150,7 @@ fn parse_key(key_str: &str) -> Result<Key, String> {
 }
 
 /// Check if a key event matches a parsed shortcut
-pub fn matches_shortcut(
-    parsed: &ParsedShortcut,
-    key: Key,
-    modifiers: ModifierType,
-) -> bool {
+pub fn matches_shortcut(parsed: &ParsedShortcut, key: Key, modifiers: ModifierType) -> bool {
     // For letter keys, we need to match both uppercase and lowercase
     let key_matches = if parsed.key == key {
         true

@@ -11,12 +11,15 @@
 //! 5. System defaults
 
 pub mod schema;
-pub mod themes;
 pub mod shortcuts;
+pub mod themes;
 
 use directories::ProjectDirs;
-use figment::{Figment, providers::{Format, Toml, Env}};
-use notify::{Watcher, RecursiveMode, Event, recommended_watcher};
+use figment::{
+    providers::{Env, Format, Toml},
+    Figment,
+};
+use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -469,7 +472,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            default_provider: "auto".to_string(),  // Auto-detect best available provider
+            default_provider: "auto".to_string(), // Auto-detect best available provider
             claude: ClaudeConfig::default(),
             openai: OpenAiConfig::default(),
             gemini: GeminiConfig::default(),
@@ -585,9 +588,9 @@ pub struct LocalLlmConfig {
 impl Default for LocalLlmConfig {
     fn default() -> Self {
         Self {
-            enabled: true,  // Enable by default - auto-detects if Ollama is running
-            endpoint: "http://localhost:11434".to_string(),  // Standard Ollama port
-            model: "codellama".to_string(),  // Common model for command generation
+            enabled: true, // Enable by default - auto-detects if Ollama is running
+            endpoint: "http://localhost:11434".to_string(), // Standard Ollama port
+            model: "codellama".to_string(), // Common model for command generation
         }
     }
 }
@@ -766,12 +769,18 @@ pub struct Snippet {
     pub id: String,
     /// Display name
     pub name: String,
-    /// The command to execute
+    /// The command to execute (supports {{var_name}} placeholders)
     pub command: String,
     /// Optional description
     pub description: String,
     /// Tags for organization and searching
     pub tags: Vec<String>,
+    /// Hierarchical category (e.g., "Git/Commit", "Docker/Build")
+    #[serde(default)]
+    pub category: String,
+    /// Pinned/favorite snippet
+    #[serde(default)]
+    pub pinned: bool,
     /// Creation timestamp
     pub created_at: i64,
     /// Last used timestamp
@@ -780,9 +789,31 @@ pub struct Snippet {
     pub use_count: u32,
 }
 
+/// A variable placeholder extracted from a snippet command
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnippetVariable {
+    /// Variable name (without braces)
+    pub name: String,
+    /// Default value if specified (e.g., {{var:default}})
+    pub default: Option<String>,
+    /// Description/hint if specified (e.g., {{var|hint}})
+    pub hint: Option<String>,
+}
+
 impl Snippet {
     /// Create a new snippet
     pub fn new(name: String, command: String, description: String, tags: Vec<String>) -> Self {
+        Self::with_category(name, command, description, tags, String::new())
+    }
+
+    /// Create a new snippet with category
+    pub fn with_category(
+        name: String,
+        command: String,
+        description: String,
+        tags: Vec<String>,
+        category: String,
+    ) -> Self {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let timestamp = SystemTime::now()
@@ -796,6 +827,8 @@ impl Snippet {
             command,
             description,
             tags,
+            category,
+            pinned: false,
             created_at: timestamp,
             last_used: None,
             use_count: 0,
@@ -811,8 +844,103 @@ impl Snippet {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs() as i64
+                .as_secs() as i64,
         );
+    }
+
+    /// Extract variable placeholders from the command
+    /// Supports formats:
+    /// - {{var}} - simple variable
+    /// - {{var:default}} - with default value
+    /// - {{var|hint}} - with input hint
+    /// - {{var:default|hint}} - with both
+    pub fn extract_variables(&self) -> Vec<SnippetVariable> {
+        use std::collections::HashSet;
+
+        let re = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
+        let mut seen = HashSet::new();
+        let mut vars = Vec::new();
+
+        for cap in re.captures_iter(&self.command) {
+            let inner = cap.get(1).unwrap().as_str();
+
+            // Parse: name[:default][|hint]
+            let (name_part, hint) = if let Some(idx) = inner.find('|') {
+                (&inner[..idx], Some(inner[idx + 1..].to_string()))
+            } else {
+                (inner, None)
+            };
+
+            let (name, default) = if let Some(idx) = name_part.find(':') {
+                (
+                    name_part[..idx].trim().to_string(),
+                    Some(name_part[idx + 1..].trim().to_string()),
+                )
+            } else {
+                (name_part.trim().to_string(), None)
+            };
+
+            // Skip duplicates
+            if seen.insert(name.clone()) {
+                vars.push(SnippetVariable {
+                    name,
+                    default,
+                    hint,
+                });
+            }
+        }
+
+        vars
+    }
+
+    /// Check if this snippet has variable placeholders
+    pub fn has_variables(&self) -> bool {
+        self.command.contains("{{") && self.command.contains("}}")
+    }
+
+    /// Substitute variables in the command with provided values
+    /// Returns the command with all {{var}} replaced
+    pub fn substitute_variables(
+        &self,
+        values: &std::collections::HashMap<String, String>,
+    ) -> String {
+        let re = regex::Regex::new(r"\{\{([^}]+)\}\}").unwrap();
+
+        re.replace_all(&self.command, |caps: &regex::Captures| {
+            let inner = caps.get(1).unwrap().as_str();
+
+            // Parse name (strip default/hint)
+            let name_part = inner.split('|').next().unwrap_or(inner);
+            let name = name_part.split(':').next().unwrap_or(name_part).trim();
+
+            // Look up value, fall back to default, or keep original
+            if let Some(val) = values.get(name) {
+                val.clone()
+            } else {
+                // Try default
+                if let Some(idx) = name_part.find(':') {
+                    let default = name_part[idx + 1..].trim();
+                    default.to_string()
+                } else {
+                    format!("{{{{{}}}}}", name) // Keep placeholder if no value
+                }
+            }
+        })
+        .to_string()
+    }
+
+    /// Get the category parts as a vector (split by "/")
+    pub fn category_parts(&self) -> Vec<&str> {
+        if self.category.is_empty() {
+            vec![]
+        } else {
+            self.category.split('/').collect()
+        }
+    }
+
+    /// Get the top-level category
+    pub fn top_category(&self) -> Option<&str> {
+        self.category_parts().first().copied()
     }
 }
 
@@ -870,7 +998,9 @@ impl SnippetsConfig {
                 s.name.to_lowercase().contains(&query_lower)
                     || s.description.to_lowercase().contains(&query_lower)
                     || s.command.to_lowercase().contains(&query_lower)
-                    || s.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                    || s.tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .collect()
     }
@@ -885,15 +1015,125 @@ impl SnippetsConfig {
     /// Get snippets sorted by recency (most recently used first)
     pub fn by_recency(&self) -> Vec<&Snippet> {
         let mut sorted: Vec<&Snippet> = self.snippets.iter().collect();
-        sorted.sort_by(|a, b| {
-            match (b.last_used, a.last_used) {
-                (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => b.created_at.cmp(&a.created_at),
-            }
+        sorted.sort_by(|a, b| match (b.last_used, a.last_used) {
+            (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.created_at.cmp(&a.created_at),
         });
         sorted
+    }
+
+    /// Get pinned snippets (order by name)
+    pub fn pinned(&self) -> Vec<&Snippet> {
+        let mut pinned: Vec<&Snippet> = self.snippets.iter().filter(|s| s.pinned).collect();
+        pinned.sort_by(|a, b| a.name.cmp(&b.name));
+        pinned
+    }
+
+    /// List unique tags sorted alphabetically
+    pub fn tags(&self) -> Vec<String> {
+        let mut tags: Vec<String> = self.snippets.iter().flat_map(|s| s.tags.clone()).collect();
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    /// Filter snippets by tag
+    pub fn with_tag(&self, tag: &str) -> Vec<&Snippet> {
+        let tag_lower = tag.to_lowercase();
+        let mut filtered: Vec<&Snippet> = self
+            .snippets
+            .iter()
+            .filter(|s| s.tags.iter().any(|t| t.to_lowercase() == tag_lower))
+            .collect();
+        filtered.sort_by(|a, b| a.name.cmp(&b.name));
+        filtered
+    }
+
+    /// List unique categories sorted alphabetically
+    pub fn categories(&self) -> Vec<String> {
+        let mut cats: Vec<String> = self
+            .snippets
+            .iter()
+            .filter(|s| !s.category.is_empty())
+            .map(|s| s.category.clone())
+            .collect();
+        cats.sort();
+        cats.dedup();
+        cats
+    }
+
+    /// List unique top-level categories
+    pub fn top_categories(&self) -> Vec<String> {
+        let mut cats: Vec<String> = self
+            .snippets
+            .iter()
+            .filter_map(|s| s.top_category().map(|c| c.to_string()))
+            .collect();
+        cats.sort();
+        cats.dedup();
+        cats
+    }
+
+    /// Filter snippets by category (exact match or prefix)
+    pub fn with_category(&self, category: &str) -> Vec<&Snippet> {
+        let cat_lower = category.to_lowercase();
+        let mut filtered: Vec<&Snippet> = self
+            .snippets
+            .iter()
+            .filter(|s| {
+                let s_cat = s.category.to_lowercase();
+                s_cat == cat_lower || s_cat.starts_with(&format!("{}/", cat_lower))
+            })
+            .collect();
+        filtered.sort_by(|a, b| a.name.cmp(&b.name));
+        filtered
+    }
+
+    /// Get snippets without a category (uncategorized)
+    pub fn uncategorized(&self) -> Vec<&Snippet> {
+        let mut filtered: Vec<&Snippet> = self
+            .snippets
+            .iter()
+            .filter(|s| s.category.is_empty())
+            .collect();
+        filtered.sort_by(|a, b| a.name.cmp(&b.name));
+        filtered
+    }
+
+    /// Build a category tree structure for UI display
+    /// Returns Vec of (category_path, depth, snippet_count)
+    pub fn category_tree(&self) -> Vec<(String, usize, usize)> {
+        use std::collections::BTreeMap;
+
+        let mut tree: BTreeMap<String, usize> = BTreeMap::new();
+
+        for snippet in &self.snippets {
+            if snippet.category.is_empty() {
+                continue;
+            }
+
+            // Add all parent categories too
+            let parts: Vec<&str> = snippet.category.split('/').collect();
+            let mut path = String::new();
+            for (i, part) in parts.iter().enumerate() {
+                if i > 0 {
+                    path.push('/');
+                }
+                path.push_str(part);
+                *tree.entry(path.clone()).or_insert(0) += 0;
+            }
+            // Increment count for the full path
+            *tree.entry(snippet.category.clone()).or_insert(0) += 1;
+        }
+
+        tree.into_iter()
+            .map(|(path, count)| {
+                let depth = path.matches('/').count();
+                (path, depth, count)
+            })
+            .collect()
     }
 }
 
@@ -981,6 +1221,76 @@ impl ConfigManager {
     }
 }
 
+/// Parse a basic subset of ~/.ssh/config entries into SshHost definitions.
+/// This is intentionally conservative: Host/HostName/User/Port/IdentityFile are mapped; other options go to `options`.
+pub fn parse_ssh_config(contents: &str, default_port: u16) -> Vec<SshHost> {
+    use std::path::PathBuf;
+    let mut hosts = Vec::new();
+    let mut current: Option<SshHost> = None;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let mut parts = trimmed.split_whitespace();
+        let key = parts.next().unwrap_or_default();
+        let value = parts.collect::<Vec<&str>>().join(" ");
+
+        match key.to_lowercase().as_str() {
+            "host" => {
+                if let Some(host) = current.take() {
+                    hosts.push(host);
+                }
+                let name = value.trim().to_string();
+                current = Some(SshHost {
+                    name: name.clone(),
+                    hostname: name,
+                    port: default_port,
+                    username: None,
+                    identity_file: None,
+                    options: Vec::new(),
+                    tags: Vec::new(),
+                    favorite: false,
+                });
+            }
+            "hostname" => {
+                if let Some(ref mut host) = current {
+                    host.hostname = value.trim().to_string();
+                }
+            }
+            "user" => {
+                if let Some(ref mut host) = current {
+                    host.username = Some(value.trim().to_string());
+                }
+            }
+            "port" => {
+                if let Some(ref mut host) = current {
+                    if let Ok(port) = value.trim().parse::<u16>() {
+                        host.port = port;
+                    }
+                }
+            }
+            "identityfile" => {
+                if let Some(ref mut host) = current {
+                    host.identity_file = Some(PathBuf::from(value.trim()));
+                }
+            }
+            _ => {
+                if let Some(ref mut host) = current {
+                    host.options.push(format!("{} {}", key, value));
+                }
+            }
+        }
+    }
+
+    if let Some(host) = current {
+        hosts.push(host);
+    }
+
+    hosts
+}
 /// Snippets manager with file storage
 pub struct SnippetsManager {
     snippets: Arc<RwLock<SnippetsConfig>>,
@@ -1079,6 +1389,35 @@ impl SnippetsManager {
             .collect()
     }
 
+    /// Get pinned snippets
+    pub fn pinned(&self) -> Vec<Snippet> {
+        self.snippets.read().pinned().into_iter().cloned().collect()
+    }
+
+    /// Toggle pinned flag for a snippet
+    pub fn set_pinned(&self, id: &str, pinned: bool) -> anyhow::Result<()> {
+        if let Some(snippet) = self.snippets.write().find_mut(id) {
+            snippet.pinned = pinned;
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Get snippets filtered by tag (case-insensitive)
+    pub fn with_tag(&self, tag: &str) -> Vec<Snippet> {
+        self.snippets
+            .read()
+            .with_tag(tag)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// List all unique tags
+    pub fn tags(&self) -> Vec<String> {
+        self.snippets.read().tags()
+    }
+
     /// Save snippets to file
     pub fn save(&self) -> anyhow::Result<()> {
         let snippets = self.snippets.read();
@@ -1090,6 +1429,36 @@ impl SnippetsManager {
 
         std::fs::write(&self.snippets_path, content)?;
         Ok(())
+    }
+
+    /// Export snippets to a specific path
+    pub fn export_to_path(&self, path: &PathBuf) -> anyhow::Result<()> {
+        let snippets = self.snippets.read();
+        let content = serde_json::to_string_pretty(&*snippets)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// Import snippets from a path. If replace is false, merges new snippets by ID.
+    pub fn import_from_path(&self, path: &PathBuf, replace: bool) -> anyhow::Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        let incoming: SnippetsConfig = serde_json::from_str(&content)?;
+
+        if replace {
+            *self.snippets.write() = incoming;
+        } else {
+            let mut guard = self.snippets.write();
+            for snippet in incoming.snippets {
+                if guard.find(&snippet.id).is_none() {
+                    guard.add(snippet);
+                }
+            }
+        }
+
+        self.save()
     }
 }
 
@@ -1103,6 +1472,8 @@ pub struct SshConfig {
     pub auto_import: bool,
     /// Default port
     pub default_port: u16,
+    /// Auto-merge tags and known_hosts aliases on import
+    pub merge_imports: bool,
 }
 
 impl Default for SshConfig {
@@ -1111,6 +1482,7 @@ impl Default for SshConfig {
             hosts: Vec::new(),
             auto_import: true,
             default_port: 22,
+            merge_imports: true,
         }
     }
 }
@@ -1135,6 +1507,9 @@ pub struct SshHost {
     /// Tags for organization
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Favorite host
+    #[serde(default)]
+    pub favorite: bool,
 }
 
 fn default_ssh_port() -> u16 {
@@ -1182,6 +1557,28 @@ impl SshHost {
             format!("{}:{}", self.hostname, self.port)
         }
     }
+
+    /// Merge tags and options from another host with same hostname/username/port
+    pub fn merge_from(&mut self, other: &SshHost) {
+        // Merge tags
+        for tag in &other.tags {
+            if !self.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+                self.tags.push(tag.clone());
+            }
+        }
+        // Merge options
+        for opt in &other.options {
+            if !self.options.contains(opt) {
+                self.options.push(opt.clone());
+            }
+        }
+        // Favor identity file if missing
+        if self.identity_file.is_none() {
+            self.identity_file = other.identity_file.clone();
+        }
+        // Favorite flag: keep true if either is true
+        self.favorite = self.favorite || other.favorite;
+    }
 }
 
 #[cfg(test)]
@@ -1214,6 +1611,7 @@ mod tests {
             identity_file: Some(PathBuf::from("/home/user/.ssh/id_rsa")),
             options: vec!["-o".to_string(), "StrictHostKeyChecking=no".to_string()],
             tags: vec!["production".to_string()],
+            favorite: false,
         };
 
         let cmd = host.build_command();
@@ -1234,8 +1632,66 @@ mod tests {
             identity_file: None,
             options: Vec::new(),
             tags: Vec::new(),
+            favorite: false,
         };
 
         assert_eq!(host.display_string(), "user@example.com:22");
+    }
+
+    #[test]
+    fn test_merge_host() {
+        let mut base = SshHost {
+            name: "Base".to_string(),
+            hostname: "example.com".to_string(),
+            port: 22,
+            username: Some("user".to_string()),
+            identity_file: None,
+            options: vec!["-o StrictHostKeyChecking=no".to_string()],
+            tags: vec!["prod".to_string()],
+            favorite: false,
+        };
+
+        let other = SshHost {
+            name: "Other".to_string(),
+            hostname: "example.com".to_string(),
+            port: 22,
+            username: Some("user".to_string()),
+            identity_file: Some(PathBuf::from("/id_ed25519")),
+            options: vec!["-o LogLevel=ERROR".to_string()],
+            tags: vec!["db".to_string()],
+            favorite: true,
+        };
+
+        base.merge_from(&other);
+        assert_eq!(base.identity_file, other.identity_file);
+        assert!(base.tags.contains(&"prod".to_string()));
+        assert!(base.tags.contains(&"db".to_string()));
+        assert!(base
+            .options
+            .contains(&"-o StrictHostKeyChecking=no".to_string()));
+        assert!(base.options.contains(&"-o LogLevel=ERROR".to_string()));
+        assert!(base.favorite);
+    }
+
+    #[test]
+    fn test_parse_basic_ssh_config() {
+        let cfg = r#"
+Host mybox
+  HostName example.com
+  User alice
+  Port 2200
+  IdentityFile ~/.ssh/id_ed25519
+  ForwardAgent yes
+        "#;
+
+        let hosts = parse_ssh_config(cfg, 22);
+        assert_eq!(hosts.len(), 1);
+        let h = &hosts[0];
+        assert_eq!(h.name, "mybox");
+        assert_eq!(h.hostname, "example.com");
+        assert_eq!(h.username.as_deref(), Some("alice"));
+        assert_eq!(h.port, 2200);
+        assert!(h.identity_file.is_some());
+        assert!(h.options.iter().any(|o| o.contains("ForwardAgent")));
     }
 }

@@ -1,8 +1,22 @@
 //! Terminal emulation using VTE
 //!
 //! Provides VT100/xterm compatible terminal emulation with modern features.
+//! Includes health monitoring and crash recovery for maximum stability.
 
 use vte::{Params, Parser, Perform};
+
+/// Health status of the terminal - inspired by foot terminal's stability focus
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalHealth {
+    /// Terminal is functioning normally
+    Healthy,
+    /// Terminal recovered from an error
+    Recovered,
+    /// Terminal is in degraded mode (some features may be limited)
+    Degraded,
+    /// Terminal needs manual reset to recover
+    NeedsReset,
+}
 
 /// Terminal dimensions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,22 +99,22 @@ pub struct CellAttributes {
 
 /// ANSI 16-color palette (Corgi Dark theme)
 const ANSI_COLORS: [[u8; 4]; 16] = [
-    [30, 27, 22, 255],      // 0: Black (background)
-    [204, 87, 82, 255],     // 1: Red
-    [146, 180, 114, 255],   // 2: Green
-    [229, 168, 75, 255],    // 3: Yellow
-    [119, 146, 179, 255],   // 4: Blue
-    [177, 126, 160, 255],   // 5: Magenta
-    [135, 172, 175, 255],   // 6: Cyan
-    [232, 219, 196, 255],   // 7: White (foreground)
-    [100, 95, 88, 255],     // 8: Bright Black
-    [229, 127, 119, 255],   // 9: Bright Red
-    [182, 209, 152, 255],   // 10: Bright Green
-    [242, 202, 122, 255],   // 11: Bright Yellow
-    [160, 183, 212, 255],   // 12: Bright Blue
-    [210, 166, 198, 255],   // 13: Bright Magenta
-    [171, 206, 208, 255],   // 14: Bright Cyan
-    [247, 241, 232, 255],   // 15: Bright White
+    [30, 27, 22, 255],    // 0: Black (background)
+    [204, 87, 82, 255],   // 1: Red
+    [146, 180, 114, 255], // 2: Green
+    [229, 168, 75, 255],  // 3: Yellow
+    [119, 146, 179, 255], // 4: Blue
+    [177, 126, 160, 255], // 5: Magenta
+    [135, 172, 175, 255], // 6: Cyan
+    [232, 219, 196, 255], // 7: White (foreground)
+    [100, 95, 88, 255],   // 8: Bright Black
+    [229, 127, 119, 255], // 9: Bright Red
+    [182, 209, 152, 255], // 10: Bright Green
+    [242, 202, 122, 255], // 11: Bright Yellow
+    [160, 183, 212, 255], // 12: Bright Blue
+    [210, 166, 198, 255], // 13: Bright Magenta
+    [171, 206, 208, 255], // 14: Bright Cyan
+    [247, 241, 232, 255], // 15: Bright White
 ];
 
 /// Terminal state (separate from parser to avoid borrow issues)
@@ -125,6 +139,12 @@ struct TerminalState {
     current_fg: [u8; 4],
     /// Current background color
     current_bg: [u8; 4],
+    /// Health status for stability monitoring
+    health: TerminalHealth,
+    /// Error count for recovery decisions
+    error_count: u32,
+    /// Maximum errors before forced reset
+    max_errors: u32,
 }
 
 impl TerminalState {
@@ -141,7 +161,56 @@ impl TerminalState {
             current_attrs: CellAttributes::default(),
             current_fg: DEFAULT_FG,
             current_bg: DEFAULT_BG,
+            health: TerminalHealth::Healthy,
+            error_count: 0,
+            max_errors: 10, // Reset after 10 consecutive errors
         }
+    }
+
+    /// Validate terminal state is consistent
+    fn validate_state(&self) -> bool {
+        // Check cursor is within bounds
+        if self.cursor.0 >= self.size.rows || self.cursor.1 >= self.size.cols {
+            return false;
+        }
+
+        // Check grid dimensions
+        if self.grid.len() != self.size.rows {
+            return false;
+        }
+
+        for row in &self.grid {
+            if row.len() != self.size.cols {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Soft reset - reset graphics state but preserve content
+    /// Similar to DECSTR (Soft Terminal Reset)
+    fn soft_reset(&mut self) {
+        self.current_attrs = CellAttributes::default();
+        self.current_fg = DEFAULT_FG;
+        self.current_bg = DEFAULT_BG;
+
+        // Clamp cursor to valid bounds
+        self.cursor.0 = self.cursor.0.min(self.size.rows.saturating_sub(1));
+        self.cursor.1 = self.cursor.1.min(self.size.cols.saturating_sub(1));
+    }
+
+    /// Hard reset - clear everything and start fresh
+    /// Similar to RIS (Reset to Initial State)
+    fn hard_reset(&mut self) {
+        self.grid = vec![vec![Cell::default(); self.size.cols]; self.size.rows];
+        self.cursor = (0, 0);
+        self.current_attrs = CellAttributes::default();
+        self.current_fg = DEFAULT_FG;
+        self.current_bg = DEFAULT_BG;
+        self.pending_events.clear();
+        self.error_count = 0;
+        self.health = TerminalHealth::Healthy;
     }
 
     fn put_char(&mut self, c: char) {
@@ -329,7 +398,8 @@ impl Perform for TerminalState {
                 b"0" | b"2" => {
                     if let Ok(title) = std::str::from_utf8(params[1]) {
                         self.title = title.to_string();
-                        self.pending_events.push(TerminalEvent::TitleChanged(title.to_string()));
+                        self.pending_events
+                            .push(TerminalEvent::TitleChanged(title.to_string()));
                     }
                 }
                 _ => {}
@@ -360,10 +430,7 @@ impl Perform for TerminalState {
             'H' | 'f' => {
                 let row = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
                 let col = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                self.cursor = (
-                    row.min(self.size.rows - 1),
-                    col.min(self.size.cols - 1),
-                );
+                self.cursor = (row.min(self.size.rows - 1), col.min(self.size.cols - 1));
             }
             'J' => {
                 let mode = params.first().copied().unwrap_or(0);
@@ -514,13 +581,17 @@ impl Terminal {
                     // 2. It has non-empty content
                     // 3. The cursor is inside it
                     let is_base_line = chunk_start == 0;
-                    let has_content = chunk.iter().any(|c| !c.content.is_empty() && c.content != " ");
-                    let cursor_in_chunk = r == old_cursor.0 && old_cursor.1 >= chunk_start && old_cursor.1 < chunk_end;
+                    let has_content = chunk
+                        .iter()
+                        .any(|c| !c.content.is_empty() && c.content != " ");
+                    let cursor_in_chunk = r == old_cursor.0
+                        && old_cursor.1 >= chunk_start
+                        && old_cursor.1 < chunk_end;
 
                     if is_base_line || has_content || cursor_in_chunk {
                         // Pad chunk to new width if necessary
                         chunk.resize(new_cols, Cell::default());
-                        
+
                         // Update cursor if it's in this chunk
                         if cursor_in_chunk {
                             new_cursor.0 = new_grid.len();
@@ -531,12 +602,14 @@ impl Terminal {
                     }
 
                     chunk_start += chunk_len;
-                    
+
                     // Optimization: if remaining row is empty and no cursor, stop processing this row
                     // (This prevents generating tons of empty wrapped lines)
-                    let remaining_has_content = row.iter().any(|c| !c.content.is_empty() && c.content != " ");
+                    let remaining_has_content = row
+                        .iter()
+                        .any(|c| !c.content.is_empty() && c.content != " ");
                     let cursor_in_remaining = r == old_cursor.0 && old_cursor.1 >= chunk_start;
-                    
+
                     if !remaining_has_content && !cursor_in_remaining {
                         break;
                     }
@@ -573,7 +646,6 @@ impl Terminal {
 
             // Adjust cursor: It effectively moved up 'excess' times relative to viewport
             self.state.cursor.0 = self.state.cursor.0.saturating_sub(excess);
-
         } else if current_rows < new_rows {
             // Too few rows. Pull from scrollback.
             let needed = new_rows - current_rows;
@@ -589,7 +661,7 @@ impl Terminal {
                     self.state.grid.insert(0, line);
                 }
             }
-            
+
             // If we pulled lines, the cursor (which tracks grid content) moves DOWN
             self.state.cursor.0 += to_pull;
 
@@ -651,6 +723,84 @@ impl Terminal {
             self.state.scrollback.remove(0);
         }
     }
+
+    // ==================== Health Monitoring & Crash Recovery ====================
+    // Inspired by foot terminal's stability focus
+
+    /// Process bytes with automatic recovery on errors
+    /// Returns the health status after processing
+    pub fn safe_process(&mut self, bytes: &[u8]) -> TerminalHealth {
+        // First validate state
+        if !self.state.validate_state() {
+            self.state.error_count += 1;
+
+            if self.state.error_count >= self.state.max_errors {
+                // Too many errors, perform hard reset
+                self.hard_reset();
+                self.state.health = TerminalHealth::Recovered;
+            } else {
+                // Try soft reset first
+                self.soft_reset();
+                self.state.health = TerminalHealth::Degraded;
+            }
+        }
+
+        // Process bytes (VTE parser handles invalid sequences gracefully)
+        self.process(bytes);
+
+        // Clear error count on successful processing
+        if self.state.error_count > 0 {
+            self.state.error_count = 0;
+            if self.state.health == TerminalHealth::Degraded {
+                self.state.health = TerminalHealth::Recovered;
+            }
+        }
+
+        self.state.health
+    }
+
+    /// Get current health status
+    pub fn health(&self) -> TerminalHealth {
+        self.state.health
+    }
+
+    /// Check if terminal needs user intervention
+    pub fn needs_reset(&self) -> bool {
+        self.state.health == TerminalHealth::NeedsReset
+    }
+
+    /// Get error count (for diagnostics)
+    pub fn error_count(&self) -> u32 {
+        self.state.error_count
+    }
+
+    /// Soft reset - reset graphics state but preserve content
+    /// Similar to DECSTR (Soft Terminal Reset)
+    pub fn soft_reset(&mut self) {
+        self.state.soft_reset();
+    }
+
+    /// Hard reset - clear everything and start fresh
+    /// Similar to RIS (Reset to Initial State)
+    pub fn hard_reset(&mut self) {
+        self.state.hard_reset();
+        self.parser = Parser::new();
+    }
+
+    /// Validate terminal state is consistent
+    pub fn validate_state(&self) -> bool {
+        self.state.validate_state()
+    }
+
+    /// Mark terminal as needing attention (e.g., after repeated PTY errors)
+    pub fn set_degraded(&mut self) {
+        self.state.health = TerminalHealth::Degraded;
+    }
+
+    /// Force mark terminal as needing reset (severe error)
+    pub fn set_needs_reset(&mut self) {
+        self.state.health = TerminalHealth::NeedsReset;
+    }
 }
 
 #[cfg(test)]
@@ -672,5 +822,76 @@ mod tests {
         term.process(b"Hello");
         assert_eq!(term.state.grid[0][0].content, "H");
         assert_eq!(term.state.grid[0][4].content, "o");
+    }
+
+    #[test]
+    fn test_health_monitoring() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let term = Terminal::new(TerminalSize::default(), tx);
+        assert_eq!(term.health(), TerminalHealth::Healthy);
+        assert!(!term.needs_reset());
+        assert_eq!(term.error_count(), 0);
+    }
+
+    #[test]
+    fn test_safe_process() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut term = Terminal::new(TerminalSize::default(), tx);
+
+        // Safe process should return Healthy on normal input
+        let health = term.safe_process(b"Normal text");
+        assert!(health == TerminalHealth::Healthy || health == TerminalHealth::Recovered);
+    }
+
+    #[test]
+    fn test_soft_reset() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut term = Terminal::new(TerminalSize::default(), tx);
+
+        // Write some text with colors
+        term.process(b"\x1b[31mRed text");
+
+        // Soft reset should preserve content but reset graphics
+        term.soft_reset();
+
+        // Text should still be there
+        assert_eq!(term.state.grid[0][0].content, "R");
+    }
+
+    #[test]
+    fn test_hard_reset() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut term = Terminal::new(TerminalSize::default(), tx);
+
+        // Write some text
+        term.process(b"Hello, World!");
+
+        // Hard reset should clear everything
+        term.hard_reset();
+
+        // Grid should be empty
+        assert_eq!(term.state.grid[0][0].content, "");
+        assert_eq!(term.cursor(), (0, 0));
+        assert_eq!(term.health(), TerminalHealth::Healthy);
+    }
+
+    #[test]
+    fn test_validate_state() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let term = Terminal::new(TerminalSize::default(), tx);
+        assert!(term.validate_state());
+    }
+
+    #[test]
+    fn test_degraded_mode() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut term = Terminal::new(TerminalSize::default(), tx);
+
+        term.set_degraded();
+        assert_eq!(term.health(), TerminalHealth::Degraded);
+
+        term.set_needs_reset();
+        assert_eq!(term.health(), TerminalHealth::NeedsReset);
+        assert!(term.needs_reset());
     }
 }

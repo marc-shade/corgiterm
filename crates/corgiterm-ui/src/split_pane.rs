@@ -1,12 +1,21 @@
 //! Split pane container for terminal views
 //!
 //! Allows horizontal and vertical splitting of terminal panes.
+//!
+//! Features:
+//! - Horizontal and vertical splitting
+//! - Broadcast mode to send input to multiple panes
+//! - Selective broadcasting with per-pane enable/disable
+//! - Visual indicators for broadcast state
+//! - Configurable broadcast settings
 
+use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Orientation, Paned, Widget};
+use gtk4::{Box as GtkBox, EventControllerKey, Orientation, Overlay, Paned, Widget};
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::HashSet;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::terminal_view::TerminalView;
 
@@ -15,6 +24,30 @@ use crate::terminal_view::TerminalView;
 pub enum SplitDirection {
     Horizontal,
     Vertical,
+}
+
+/// Broadcast mode settings
+#[derive(Debug, Clone)]
+pub struct BroadcastSettings {
+    /// Include regular text input
+    pub broadcast_text: bool,
+    /// Include arrow keys
+    pub broadcast_arrows: bool,
+    /// Include special keys (Enter, Tab, Escape, etc.)
+    pub broadcast_special: bool,
+    /// Include control sequences (Ctrl+C, etc.)
+    pub broadcast_control: bool,
+}
+
+impl Default for BroadcastSettings {
+    fn default() -> Self {
+        Self {
+            broadcast_text: true,
+            broadcast_arrows: true,
+            broadcast_special: true,
+            broadcast_control: true,
+        }
+    }
 }
 
 /// Content of a split pane node
@@ -64,7 +97,7 @@ impl PaneNode {
 /// Split pane container widget
 pub struct SplitPane {
     /// Container box
-    container: GtkBox,
+    container: gtk4::Overlay,
     /// Root node of the pane tree
     root: Rc<RefCell<PaneNode>>,
     /// Currently focused pane (for keyboard navigation)
@@ -73,6 +106,16 @@ pub struct SplitPane {
     working_dir: Rc<RefCell<Option<std::path::PathBuf>>>,
     /// Cached list of all terminal panes (for focus cycling)
     all_panes: Rc<RefCell<Vec<Rc<RefCell<PaneNode>>>>>,
+    /// Broadcast input to all panes
+    broadcast_enabled: Rc<RefCell<bool>>,
+    /// Broadcast indicator label
+    broadcast_label: gtk4::Label,
+    /// Broadcast status label (shows which panes receive input)
+    broadcast_status: gtk4::Label,
+    /// Broadcast settings
+    broadcast_settings: Rc<RefCell<BroadcastSettings>>,
+    /// Set of pane indices that receive broadcast (empty = all panes)
+    broadcast_targets: Rc<RefCell<HashSet<usize>>>,
 }
 
 impl SplitPane {
@@ -81,33 +124,258 @@ impl SplitPane {
     }
 
     pub fn with_working_dir(working_dir: Option<&Path>) -> Self {
-        let container = GtkBox::new(Orientation::Vertical, 0);
-        container.set_vexpand(true);
-        container.set_hexpand(true);
-        container.add_css_class("split-pane");
+        let inner = GtkBox::new(Orientation::Vertical, 0);
+        inner.set_vexpand(true);
+        inner.set_hexpand(true);
+        inner.add_css_class("split-pane");
 
         let root = Rc::new(RefCell::new(PaneNode::new_terminal(working_dir)));
 
         // Add root widget to container
-        container.append(&root.borrow().widget());
+        inner.append(&root.borrow().widget());
 
-        let focused_pane: Rc<RefCell<Option<Rc<RefCell<PaneNode>>>>> = Rc::new(RefCell::new(Some(root.clone())));
+        let focused_pane: Rc<RefCell<Option<Rc<RefCell<PaneNode>>>>> =
+            Rc::new(RefCell::new(Some(root.clone())));
 
         let working_dir = Rc::new(RefCell::new(working_dir.map(|p| p.to_path_buf())));
 
         let all_panes = Rc::new(RefCell::new(vec![root.clone()]));
+        let broadcast_enabled = Rc::new(RefCell::new(false));
+        let broadcast_settings = Rc::new(RefCell::new(BroadcastSettings::default()));
+        let broadcast_targets: Rc<RefCell<HashSet<usize>>> = Rc::new(RefCell::new(HashSet::new()));
+
+        // Add capture controller for broadcast mode
+        let controller = EventControllerKey::new();
+        controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
+
+        let broadcast_enabled_for_key = broadcast_enabled.clone();
+        let all_panes_for_key = all_panes.clone();
+        let broadcast_settings_for_key = broadcast_settings.clone();
+        let broadcast_targets_for_key = broadcast_targets.clone();
+
+        controller.connect_key_pressed(move |_, key, _, modifier| {
+            // Only intercept if broadcast is enabled
+            if *broadcast_enabled_for_key.borrow() {
+                // Check for Ctrl+Shift+C/V/A (let normal handlers handle these)
+                let ctrl = modifier.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+                let shift = modifier.contains(gtk4::gdk::ModifierType::SHIFT_MASK);
+                if ctrl && shift {
+                    return glib::Propagation::Proceed;
+                }
+
+                use gtk4::gdk::Key;
+                let settings = broadcast_settings_for_key.borrow();
+
+                // Categorize and convert key to bytes
+                let (bytes, is_special, is_arrow, is_control) = match key {
+                    Key::Return | Key::KP_Enter => (vec![b'\r'], true, false, false),
+                    Key::BackSpace => (vec![0x7f], true, false, false),
+                    Key::Tab => (vec![b'\t'], true, false, false),
+                    Key::Escape => (vec![0x1b], true, false, false),
+                    Key::Up => (vec![0x1b, b'[', b'A'], false, true, false),
+                    Key::Down => (vec![0x1b, b'[', b'B'], false, true, false),
+                    Key::Right => (vec![0x1b, b'[', b'C'], false, true, false),
+                    Key::Left => (vec![0x1b, b'[', b'D'], false, true, false),
+                    Key::Home => (vec![0x1b, b'[', b'H'], false, true, false),
+                    Key::End => (vec![0x1b, b'[', b'F'], false, true, false),
+                    Key::Page_Up => (vec![0x1b, b'[', b'5', b'~'], false, true, false),
+                    Key::Page_Down => (vec![0x1b, b'[', b'6', b'~'], false, true, false),
+                    Key::Delete => (vec![0x1b, b'[', b'3', b'~'], true, false, false),
+                    Key::Insert => (vec![0x1b, b'[', b'2', b'~'], true, false, false),
+                    _ => {
+                        if let Some(c) = key.to_unicode() {
+                            if ctrl && c.is_ascii_alphabetic() {
+                                // Control sequence (Ctrl+C, Ctrl+D, etc.)
+                                (vec![(c.to_ascii_lowercase() as u8) - b'a' + 1], false, false, true)
+                            } else {
+                                // Regular text
+                                (c.to_string().into_bytes(), false, false, false)
+                            }
+                        } else {
+                            (vec![], false, false, false)
+                        }
+                    }
+                };
+
+                // Check if this key type should be broadcast based on settings
+                let should_broadcast = !bytes.is_empty() && (
+                    (is_special && settings.broadcast_special) ||
+                    (is_arrow && settings.broadcast_arrows) ||
+                    (is_control && settings.broadcast_control) ||
+                    (!is_special && !is_arrow && !is_control && settings.broadcast_text)
+                );
+
+                if should_broadcast {
+                    // Broadcast to targeted panes (or all if none selected)
+                    let targets = broadcast_targets_for_key.borrow();
+                    for (idx, pane) in all_panes_for_key.borrow().iter().enumerate() {
+                        // If targets is empty, broadcast to all; otherwise check if idx is in targets
+                        if targets.is_empty() || targets.contains(&idx) {
+                            if let Some(tv) = pane.borrow().as_terminal() {
+                                tv.send_bytes(&bytes);
+                            }
+                        }
+                    }
+                    return glib::Propagation::Stop;
+                }
+            }
+            glib::Propagation::Proceed
+        });
+
+        inner.add_controller(controller);
+
+        // Overlay for broadcast indicator
+        let overlay = gtk4::Overlay::new();
+        overlay.set_child(Some(&inner));
+
+        // Create enhanced broadcast indicator box
+        let indicator_box = GtkBox::new(Orientation::Vertical, 4);
+        indicator_box.add_css_class("broadcast-indicator-box");
+        indicator_box.set_opacity(0.0);
+        indicator_box.set_halign(gtk4::Align::Center);
+        indicator_box.set_valign(gtk4::Align::Start);
+        indicator_box.set_margin_top(8);
+
+        // Main broadcast label with icon
+        let indicator = gtk4::Label::new(Some("📡 Broadcasting"));
+        indicator.add_css_class("broadcast-indicator");
+        indicator.add_css_class("broadcast-title");
+        indicator_box.append(&indicator);
+
+        // Status label showing target info
+        let status = gtk4::Label::new(Some("→ All panes"));
+        status.add_css_class("broadcast-indicator");
+        status.add_css_class("broadcast-status");
+        indicator_box.append(&status);
+
+        overlay.add_overlay(&indicator_box);
 
         Self {
-            container,
+            container: overlay,
             root,
             focused_pane,
             working_dir,
             all_panes,
+            broadcast_enabled,
+            broadcast_label: indicator,
+            broadcast_status: status,
+            broadcast_settings,
+            broadcast_targets,
         }
     }
 
+    /// Toggle broadcast mode
+    pub fn toggle_broadcast(&self) -> bool {
+        let mut enabled = self.broadcast_enabled.borrow_mut();
+        *enabled = !*enabled;
+
+        if *enabled {
+            self.container.add_css_class("broadcast-mode");
+            // Show the indicator box (parent of broadcast_label)
+            if let Some(parent) = self.broadcast_label.parent() {
+                parent.set_opacity(0.95);
+            }
+            self.update_broadcast_status_label();
+            tracing::info!("Broadcast mode ENABLED");
+        } else {
+            self.container.remove_css_class("broadcast-mode");
+            if let Some(parent) = self.broadcast_label.parent() {
+                parent.set_opacity(0.0);
+            }
+            tracing::info!("Broadcast mode DISABLED");
+        }
+        *enabled
+    }
+
+    /// Is broadcast mode enabled?
+    pub fn is_broadcast_enabled(&self) -> bool {
+        *self.broadcast_enabled.borrow()
+    }
+
+    /// Get broadcast settings
+    pub fn broadcast_settings(&self) -> BroadcastSettings {
+        self.broadcast_settings.borrow().clone()
+    }
+
+    /// Update broadcast settings
+    pub fn set_broadcast_settings(&self, settings: BroadcastSettings) {
+        *self.broadcast_settings.borrow_mut() = settings;
+        tracing::info!("Broadcast settings updated");
+    }
+
+    /// Set broadcast targets (specific pane indices, empty = all panes)
+    pub fn set_broadcast_targets(&self, targets: HashSet<usize>) {
+        *self.broadcast_targets.borrow_mut() = targets;
+        self.update_broadcast_status_label();
+    }
+
+    /// Get current broadcast targets
+    pub fn broadcast_targets(&self) -> HashSet<usize> {
+        self.broadcast_targets.borrow().clone()
+    }
+
+    /// Toggle a specific pane's broadcast target state
+    pub fn toggle_broadcast_target(&self, pane_idx: usize) -> bool {
+        let mut targets = self.broadcast_targets.borrow_mut();
+        if targets.contains(&pane_idx) {
+            targets.remove(&pane_idx);
+            self.update_broadcast_status_label();
+            false
+        } else {
+            targets.insert(pane_idx);
+            self.update_broadcast_status_label();
+            true
+        }
+    }
+
+    /// Clear all broadcast targets (broadcast to all panes)
+    pub fn clear_broadcast_targets(&self) {
+        self.broadcast_targets.borrow_mut().clear();
+        self.update_broadcast_status_label();
+    }
+
+    /// Update the status label to show current broadcast targets
+    fn update_broadcast_status_label(&self) {
+        let targets = self.broadcast_targets.borrow();
+        let pane_count = self.all_panes.borrow().len();
+
+        let status_text = if targets.is_empty() {
+            if pane_count == 1 {
+                "→ 1 pane".to_string()
+            } else {
+                format!("→ All {} panes", pane_count)
+            }
+        } else {
+            let selected: Vec<_> = targets.iter().map(|i| i + 1).collect();
+            if selected.len() == 1 {
+                format!("→ Pane {}", selected[0])
+            } else {
+                format!("→ Panes {:?}", selected)
+            }
+        };
+
+        self.broadcast_status.set_text(&status_text);
+    }
+
+    /// Get list of pane info for UI display
+    pub fn get_pane_info(&self) -> Vec<(usize, String)> {
+        let panes = self.all_panes.borrow();
+        panes
+            .iter()
+            .enumerate()
+            .map(|(idx, pane)| {
+                let name = if let Some(tv) = pane.borrow().as_terminal() {
+                    tv.current_directory_name()
+                } else {
+                    format!("Pane {}", idx + 1)
+                };
+                (idx, name)
+            })
+            .collect()
+    }
+
     /// Get the main widget
-    pub fn widget(&self) -> &GtkBox {
+    pub fn widget(&self) -> &Overlay {
         &self.container
     }
 
@@ -143,11 +411,16 @@ impl SplitPane {
         // Take ownership of the old terminal
         let old_content = {
             let mut node_mut = node.borrow_mut();
-            std::mem::replace(&mut node_mut.content, PaneContent::Terminal(TerminalView::new()))
+            std::mem::replace(
+                &mut node_mut.content,
+                PaneContent::Terminal(TerminalView::new()),
+            )
         };
 
         // Create child1 from old content
-        let child1 = Rc::new(RefCell::new(PaneNode { content: old_content }));
+        let child1 = Rc::new(RefCell::new(PaneNode {
+            content: old_content,
+        }));
 
         // Set up the paned widget
         paned.set_start_child(Some(&child1.borrow().widget()));
@@ -166,8 +439,7 @@ impl SplitPane {
 
         // Replace widget in container if this is the root
         if Rc::ptr_eq(&node, &self.root) {
-            self.container.remove(&old_widget);
-            self.container.append(&paned);
+            self.container.set_child(Some(&paned));
         } else {
             // For nested splits, we need to update the parent paned
             // This is handled automatically since we modified the node in place
@@ -207,7 +479,9 @@ impl SplitPane {
             }
 
             // Find parent and sibling
-            if let Some((parent, sibling, is_start_child)) = self.find_parent_and_sibling(&focused_node) {
+            if let Some((parent, sibling, is_start_child)) =
+                self.find_parent_and_sibling(&focused_node)
+            {
                 self.close_pane_with_parent(parent, sibling, is_start_child);
 
                 // Update all_panes cache
@@ -266,7 +540,10 @@ impl SplitPane {
         // Take the sibling's content and put it in the parent
         let sibling_content = {
             let mut sibling_mut = sibling.borrow_mut();
-            std::mem::replace(&mut sibling_mut.content, PaneContent::Terminal(TerminalView::new()))
+            std::mem::replace(
+                &mut sibling_mut.content,
+                PaneContent::Terminal(TerminalView::new()),
+            )
         };
 
         // Replace parent's content with sibling's content
@@ -278,8 +555,7 @@ impl SplitPane {
         // Update the widget tree
         if Rc::ptr_eq(&parent, &self.root) {
             // Parent is root - update container
-            self.container.remove(&parent_widget);
-            self.container.append(&parent.borrow().widget());
+            self.container.set_child(Some(&parent.borrow().widget()));
         } else {
             // Parent is a child of another split - update the grandparent
             if let Some(grandparent) = parent_widget.parent() {
@@ -321,7 +597,11 @@ impl SplitPane {
     }
 
     /// Recursively collect all terminal nodes
-    fn collect_terminals(&self, node: &Rc<RefCell<PaneNode>>, panes: &mut Vec<Rc<RefCell<PaneNode>>>) {
+    fn collect_terminals(
+        &self,
+        node: &Rc<RefCell<PaneNode>>,
+        panes: &mut Vec<Rc<RefCell<PaneNode>>>,
+    ) {
         match &node.borrow().content {
             PaneContent::Terminal(_) => {
                 panes.push(node.clone());
@@ -365,6 +645,22 @@ impl SplitPane {
         }
 
         false
+    }
+
+    /// Send raw bytes to the focused terminal (no newline)
+    pub fn send_bytes(&self, bytes: &[u8]) {
+        let focused = self.focused_pane.borrow();
+        if let Some(node) = focused.as_ref() {
+            if let Some(tv) = node.borrow().as_terminal() {
+                tv.send_bytes(bytes);
+                return;
+            }
+        }
+
+        // Fallback: send to root terminal
+        if let Some(tv) = self.root.borrow().as_terminal() {
+            tv.send_bytes(bytes);
+        }
     }
 
     /// Get visible lines from focused terminal (for thumbnails)

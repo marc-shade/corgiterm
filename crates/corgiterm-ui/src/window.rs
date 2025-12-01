@@ -1,20 +1,23 @@
 //! Main application window
 
-use gtk4::prelude::*;
-use gtk4::{Application, Box, Button, EventControllerKey, FileDialog, FileFilter, Label, MenuButton, Orientation, Paned, Revealer, RevealerTransitionType, Spinner};
 use gtk4::gio::{self, Menu, SimpleAction};
+use gtk4::prelude::*;
+use gtk4::{
+    Application, Box, Button, EventControllerKey, FileDialog, FileFilter, Label, MenuButton,
+    Orientation, Paned, Revealer, RevealerTransitionType, Spinner,
+};
 use libadwaita::prelude::*;
 use libadwaita::{ApplicationWindow, HeaderBar, WindowTitle};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ai_panel::AiPanel;
 use crate::dialogs;
+use crate::keyboard::{KeyboardShortcuts, ShortcutAction};
 use crate::sidebar::Sidebar;
 use crate::tab_bar::TerminalTabs;
-use crate::ai_panel::AiPanel;
 use crate::widgets::natural_language_input::NaturalLanguageInput;
 use crate::widgets::safe_mode_preview::SafeModePreviewWidget;
-use crate::keyboard::{KeyboardShortcuts, ShortcutAction};
 use corgiterm_core::SafeMode;
 use std::path::PathBuf;
 
@@ -72,6 +75,7 @@ impl MainWindow {
         let tools_menu = Menu::new();
         tools_menu.append(Some("_SSH Manager"), Some("win.ssh_manager"));
         tools_menu.append(Some("_ASCII Art Generator"), Some("win.ascii_art"));
+        tools_menu.append(Some("_Emojis"), Some("win.emojis"));
         menu.append_submenu(Some("_Tools"), &tools_menu);
 
         menu.append(Some("_Preferences"), Some("win.preferences"));
@@ -97,9 +101,12 @@ impl MainWindow {
         let tabs_for_prefs = tabs.clone();
         prefs_action.connect_activate(move |_, _| {
             let tabs_clone = tabs_for_prefs.clone();
-            dialogs::show_preferences(&win_for_prefs, Some(std::boxed::Box::new(move || {
-                tabs_clone.queue_redraw_all_terminals();
-            })));
+            dialogs::show_preferences(
+                &win_for_prefs,
+                Some(std::boxed::Box::new(move || {
+                    tabs_clone.queue_redraw_all_terminals();
+                })),
+            );
         });
         window.add_action(&prefs_action);
 
@@ -140,6 +147,22 @@ impl MainWindow {
             ssh_manager.show(&win_for_ssh);
         });
         window.add_action(&ssh_manager_action);
+
+        // Emojis action
+        let emojis_action = SimpleAction::new("emojis", None);
+        let win_for_emojis = window.clone();
+        let tabs_for_emojis = tabs.clone();
+        emojis_action.connect_activate(move |_, _| {
+            let tabs = tabs_for_emojis.clone();
+            crate::emoji_picker::show_emoji_picker(&win_for_emojis, move |emoji| {
+                if tabs.send_text_to_current(&emoji) {
+                    tracing::info!("Inserted emoji into terminal: {}", emoji);
+                } else {
+                    tracing::warn!("No active terminal for emoji insertion");
+                }
+            });
+        });
+        window.add_action(&emojis_action);
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);
@@ -186,7 +209,7 @@ impl MainWindow {
         terminal_area.set_hexpand(true); // Expand horizontally to fill available space
         terminal_area.append(tabs.tab_view_widget());
         terminal_area.append(safe_mode_preview.widget()); // Safe mode preview at bottom
-        // nl_container removed - AI interaction now handled by AI panel
+                                                          // nl_container removed - AI interaction now handled by AI panel
         tabs.tab_view_widget().set_vexpand(true);
         tabs.tab_view_widget().set_hexpand(true); // Ensure tabs expand horizontally
 
@@ -410,7 +433,10 @@ impl MainWindow {
             if tabs_for_ai.send_command_to_current(command) {
                 tracing::info!("AI panel executed command: {}", command);
             } else {
-                tracing::warn!("AI panel: No active terminal to execute command: {}", command);
+                tracing::warn!(
+                    "AI panel: No active terminal to execute command: {}",
+                    command
+                );
             }
         });
 
@@ -451,7 +477,7 @@ impl MainWindow {
         content_paned.set_hexpand(true);
         content_paned.set_vexpand(true);
         content_with_ai.append(&content_paned); // Main content (sidebar + terminal)
-        content_with_ai.append(&ai_revealer);   // AI panel on the right
+        content_with_ai.append(&ai_revealer); // AI panel on the right
 
         // Revealer should NOT expand - let the paned take all available space
         ai_revealer.set_hexpand(false);
@@ -590,7 +616,11 @@ impl MainWindow {
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::SshManager, key, modifier) {
-                gtk4::prelude::ActionGroupExt::activate_action(&window_for_keys, "ssh_manager", None);
+                gtk4::prelude::ActionGroupExt::activate_action(
+                    &window_for_keys,
+                    "ssh_manager",
+                    None,
+                );
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::Snippets, key, modifier) {
@@ -640,7 +670,8 @@ impl MainWindow {
                 dialog.open(Some(&win), None::<&gio::Cancellable>, move |result| {
                     if let Ok(file) = result {
                         if let Some(path) = file.path() {
-                            let filename = path.file_name()
+                            let filename = path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("Document");
                             let page = tabs.add_document_tab(filename, Some(&path));
@@ -742,7 +773,10 @@ fn quick_translate(input: &str) -> Option<String> {
             if input_lower.contains("hidden") {
                 return Some("ls -la".to_string());
             }
-            if input_lower.contains("big") || input_lower.contains("large") || input_lower.contains("size") {
+            if input_lower.contains("big")
+                || input_lower.contains("large")
+                || input_lower.contains("size")
+            {
                 // Extract size if specified
                 if let Some(size) = extract_size(&input_lower) {
                     return Some(format!("find . -size +{} -type f", size));
@@ -760,7 +794,9 @@ fn quick_translate(input: &str) -> Option<String> {
     }
 
     // Disk usage
-    if input_lower.contains("disk") && (input_lower.contains("usage") || input_lower.contains("space")) {
+    if input_lower.contains("disk")
+        && (input_lower.contains("usage") || input_lower.contains("space"))
+    {
         return Some("df -h".to_string());
     }
     if input_lower.contains("folder") && input_lower.contains("size") {
@@ -823,7 +859,10 @@ fn quick_translate(input: &str) -> Option<String> {
     }
 
     // Current directory
-    if input_lower.contains("where am i") || input_lower.contains("current director") || input_lower.contains("pwd") {
+    if input_lower.contains("where am i")
+        || input_lower.contains("current director")
+        || input_lower.contains("pwd")
+    {
         return Some("pwd".to_string());
     }
 
@@ -839,7 +878,9 @@ fn quick_translate(input: &str) -> Option<String> {
 
     // Docker patterns
     if input_lower.contains("docker") {
-        if input_lower.contains("container") && (input_lower.contains("list") || input_lower.contains("show")) {
+        if input_lower.contains("container")
+            && (input_lower.contains("list") || input_lower.contains("show"))
+        {
             return Some("docker ps -a".to_string());
         }
         if input_lower.contains("image") {

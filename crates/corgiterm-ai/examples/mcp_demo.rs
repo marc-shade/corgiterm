@@ -7,8 +7,8 @@
 //! cargo run --example mcp_demo
 //! ```
 
-use corgiterm_ai::mcp::{HistoryEntry, McpRequest, McpServer, SessionInfo, TerminalBackend};
 use async_trait::async_trait;
+use corgiterm_ai::mcp::{HistoryEntry, McpRequest, McpServer, SessionInfo, TerminalBackend};
 use std::sync::Arc;
 
 /// Example terminal backend implementation
@@ -124,7 +124,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let response = server.handle_request(list_request).await;
     if let Some(result) = response.result {
-        println!("Available tools: {}\n", serde_json::to_string_pretty(&result)?);
+        println!(
+            "Available tools: {}\n",
+            serde_json::to_string_pretty(&result)?
+        );
     }
 
     // Example 2: Execute a command
@@ -212,7 +215,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let response = server.handle_request(error_request).await;
     if let Some(error) = response.error {
-        println!("Error (expected): {}\n", serde_json::to_string_pretty(&error)?);
+        println!(
+            "Error (expected): {}\n",
+            serde_json::to_string_pretty(&error)?
+        );
     }
 
     println!("Demo complete!");

@@ -24,25 +24,26 @@
 //! └────────────┴────────────────────────────────────────────────────┘
 //! ```
 
-pub mod app;
-pub mod window;
-pub mod sidebar;
-pub mod terminal_view;
-pub mod document_view;
-pub mod tab_bar;
 pub mod ai_panel;
-pub mod dialogs;
+pub mod app;
 pub mod ascii_art_dialog;
-pub mod widgets;
+pub mod dialogs;
+pub mod document_view;
+pub mod emoji_picker;
+pub mod keyboard;
+pub mod sidebar;
+pub mod snippets;
+pub mod split_pane;
+pub mod ssh_manager;
+pub mod tab_bar;
+pub mod terminal_view;
 pub mod theme;
 pub mod theme_creator;
-pub mod split_pane;
-pub mod snippets;
-pub mod ssh_manager;
-pub mod keyboard;
+pub mod widgets;
+pub mod window;
 
 use gtk4::prelude::*;
-use gtk4::{Application, glib};
+use gtk4::{glib, Application};
 
 /// Application ID
 pub const APP_ID: &str = "dev.corgiterm.CorgiTerm";
@@ -53,9 +54,7 @@ pub fn run() -> glib::ExitCode {
     gtk4::init().expect("Failed to initialize GTK");
 
     // Create application
-    let app = Application::builder()
-        .application_id(APP_ID)
-        .build();
+    let app = Application::builder().application_id(APP_ID).build();
 
     // Connect signals
     app.connect_activate(|app| {

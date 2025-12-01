@@ -53,4 +53,7 @@ notify.workspace = true
 # Image processing for ASCII art
 image = "0.25"
 
+# Open URLs in browser
+open = "5"
+
 [dev-dependencies]
