@@ -630,22 +630,7 @@ impl TerminalView {
                 return;
             }
 
-            // Get current PTY cols to determine if we're shrinking or expanding
-            let current_pty_cols = *pty_cols_for_resize.borrow();
-            let is_expanding = new_cols > current_pty_cols;
-
-            // EXPANDING: Resize grid immediately to fill space, debounce PTY
-            // SHRINKING: Debounce BOTH to prevent text wrapping issues
-            if is_expanding {
-                // Resize grid immediately - fills the drawing area (no dead space)
-                let new_terminal_size = TerminalSize {
-                    rows: new_rows,
-                    cols: new_cols,
-                };
-                term_for_resize.borrow_mut().resize(new_terminal_size);
-            }
-
-            // Store pending resize dimensions (for both grid and PTY when shrinking, just PTY when expanding)
+            // Store pending resize dimensions
             *pending_pty_resize.borrow_mut() = Some((new_rows, new_cols, width, height));
 
             // Cancel any existing resize timeout
@@ -661,33 +646,25 @@ impl TerminalView {
             let drawing_area_for_timeout = drawing_area_for_resize.clone();
             let pty_cols_for_timeout = pty_cols_for_resize.clone();
 
-            // 300ms debounce - longer than Revealer animation (150ms) plus buffer
-            // This ensures we only send ONE SIGWINCH after all animation resize events
+            // 100ms debounce - fast enough for responsiveness but slow enough to batch events
             let source_id = glib::timeout_add_local_once(
-                std::time::Duration::from_millis(300),
+                std::time::Duration::from_millis(100),
                 move || {
                     // Clear the timeout ID
                     *timeout_id_ref.borrow_mut() = None;
 
                     // Get the final pending dimensions
                     if let Some((rows, cols, px_width, px_height)) = pending_for_timeout.borrow_mut().take() {
-                        let current_pty_cols = *pty_cols_for_timeout.borrow();
-                        let was_shrinking = cols <= current_pty_cols;
+                        tracing::info!("Applying resize to {}x{} (debounced)", rows, cols);
 
-                        // Clear screen before resize to remove stale content that causes ghost lines
-                        // The shell will redraw fresh content after receiving SIGWINCH
-                        term_for_timeout.borrow_mut().clear_screen();
+                        // Resize terminal grid
+                        let new_terminal_size = TerminalSize {
+                            rows,
+                            cols,
+                        };
+                        term_for_timeout.borrow_mut().resize(new_terminal_size);
 
-                        // If we were shrinking, resize grid now (was deferred)
-                        if was_shrinking {
-                            let new_terminal_size = TerminalSize {
-                                rows,
-                                cols,
-                            };
-                            term_for_timeout.borrow_mut().resize(new_terminal_size);
-                        }
-
-                        // Resize PTY - triggers SINGLE SIGWINCH, shell redraws once
+                        // Resize PTY
                         if let Some(ref mut pty) = *pty_for_timeout.borrow_mut() {
                             let new_pty_size = PtySize {
                                 rows: rows as u16,

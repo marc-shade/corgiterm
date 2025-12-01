@@ -477,33 +477,134 @@ impl Terminal {
 
     /// Resize terminal
     ///
-    /// Simple resize that adjusts grid size without manipulating scrollback.
-    /// The shell handles content reflow via SIGWINCH when PTY is resized.
+    /// Resize that preserves content by reflowing text (wrapping) and handling scrollback.
+    /// Implements Alacritty-like behavior: cursor stays with content, excess lines move to scrollback.
     pub fn resize(&mut self, size: TerminalSize) {
-        let old_rows = self.state.size.rows;
-        let new_rows = size.rows;
+        let old_cols = self.state.size.cols;
         let new_cols = size.cols;
+        let new_rows = size.rows;
 
-        // Adjust row count - just add/remove at bottom
-        if new_rows < old_rows {
-            // Shrinking: truncate from bottom (cursor stays in place)
-            self.state.grid.truncate(new_rows);
-        } else if new_rows > old_rows {
-            // Growing: add blank rows at bottom
-            for _ in old_rows..new_rows {
+        // If size hasn't changed, do nothing
+        if old_cols == new_cols && self.state.size.rows == new_rows {
+            return;
+        }
+
+        let old_cursor = self.state.cursor;
+        let mut new_cursor = old_cursor;
+        let mut new_grid = Vec::new();
+
+        // 1. Horizontal Reflow
+        // Rebuild the grid by wrapping lines that are too long
+        for (r, mut row) in self.state.grid.drain(..).enumerate() {
+            // If shrinking width, we might need to split this row
+            if new_cols < old_cols {
+                let mut chunk_start = 0;
+                let row_len = row.len();
+
+                while chunk_start < row_len {
+                    let chunk_end = (chunk_start + new_cols).min(row_len);
+                    let chunk_len = chunk_end - chunk_start;
+
+                    // Extract chunk
+                    let mut chunk: Vec<Cell> = row.drain(0..chunk_len).collect();
+
+                    // Check if this chunk should be kept
+                    // Keep if:
+                    // 1. It's the first chunk (base line)
+                    // 2. It has non-empty content
+                    // 3. The cursor is inside it
+                    let is_base_line = chunk_start == 0;
+                    let has_content = chunk.iter().any(|c| !c.content.is_empty() && c.content != " ");
+                    let cursor_in_chunk = r == old_cursor.0 && old_cursor.1 >= chunk_start && old_cursor.1 < chunk_end;
+
+                    if is_base_line || has_content || cursor_in_chunk {
+                        // Pad chunk to new width if necessary
+                        chunk.resize(new_cols, Cell::default());
+                        
+                        // Update cursor if it's in this chunk
+                        if cursor_in_chunk {
+                            new_cursor.0 = new_grid.len();
+                            new_cursor.1 = old_cursor.1 - chunk_start;
+                        }
+
+                        new_grid.push(chunk);
+                    }
+
+                    chunk_start += chunk_len;
+                    
+                    // Optimization: if remaining row is empty and no cursor, stop processing this row
+                    // (This prevents generating tons of empty wrapped lines)
+                    let remaining_has_content = row.iter().any(|c| !c.content.is_empty() && c.content != " ");
+                    let cursor_in_remaining = r == old_cursor.0 && old_cursor.1 >= chunk_start;
+                    
+                    if !remaining_has_content && !cursor_in_remaining {
+                        break;
+                    }
+                }
+            } else {
+                // Expanding or same width: just resize the row
+                row.resize(new_cols, Cell::default());
+                if r == old_cursor.0 {
+                    new_cursor.0 = new_grid.len();
+                }
+                new_grid.push(row);
+            }
+        }
+
+        self.state.grid = new_grid;
+        self.state.cursor = new_cursor;
+
+        // 2. Vertical Resize (Handle Scrollback)
+        let current_rows = self.state.grid.len();
+
+        if current_rows > new_rows {
+            // Too many rows (due to wrap or shrink). Move top to scrollback.
+            let excess = current_rows - new_rows;
+            for _ in 0..excess {
+                if !self.state.grid.is_empty() {
+                    let line = self.state.grid.remove(0);
+                    self.state.scrollback.push(line);
+                }
+            }
+            // Trim scrollback
+            while self.state.scrollback.len() > self.state.max_scrollback {
+                self.state.scrollback.remove(0);
+            }
+
+            // Adjust cursor: It effectively moved up 'excess' times relative to viewport
+            self.state.cursor.0 = self.state.cursor.0.saturating_sub(excess);
+
+        } else if current_rows < new_rows {
+            // Too few rows. Pull from scrollback.
+            let needed = new_rows - current_rows;
+            let available = self.state.scrollback.len();
+            let to_pull = needed.min(available);
+
+            // Pull from scrollback (pop from end = most recent)
+            // We need to insert them at the TOP of the grid
+            // Note: These pulled lines might need horizontal resize too!
+            for _ in 0..to_pull {
+                if let Some(mut line) = self.state.scrollback.pop() {
+                    line.resize(new_cols, Cell::default());
+                    self.state.grid.insert(0, line);
+                }
+            }
+            
+            // If we pulled lines, the cursor (which tracks grid content) moves DOWN
+            self.state.cursor.0 += to_pull;
+
+            // If still need rows, append blank ones
+            let remaining = needed - to_pull;
+            for _ in 0..remaining {
                 self.state.grid.push(vec![Cell::default(); new_cols]);
             }
         }
 
-        // Adjust column count for all rows
-        for row in &mut self.state.grid {
-            row.resize(new_cols, Cell::default());
-        }
-
         self.state.size = size;
-        // Clamp cursor to valid range
-        self.state.cursor.0 = self.state.cursor.0.min(size.rows.saturating_sub(1));
-        self.state.cursor.1 = self.state.cursor.1.min(size.cols.saturating_sub(1));
+
+        // Final Clamp
+        self.state.cursor.0 = self.state.cursor.0.min(new_rows.saturating_sub(1));
+        self.state.cursor.1 = self.state.cursor.1.min(new_cols.saturating_sub(1));
     }
 
     /// Clear all content in the visible grid (not scrollback).
