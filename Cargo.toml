@@ -37,10 +37,10 @@ tracing-subscriber.workspace = true
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Marc and the CorgiTerm Team"]
+authors = ["Marc Shade <marc@marcshade.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/corgiterm/corgiterm"
-homepage = "https://corgiterm.dev"
+repository = "https://github.com/marc-shade/corgiterm"
+homepage = "https://github.com/marc-shade/corgiterm"
 description = "A next-generation, AI-powered terminal emulator that makes the command line accessible to everyone"
 keywords = ["terminal", "emulator", "ai", "gtk4", "rust"]
 categories = ["command-line-utilities", "development-tools"]
@@ -63,9 +63,9 @@ toml = "0.8"
 vte = "0.13"
 alacritty_terminal = "0.24"
 
-# GTK4 UI
-gtk4 = { version = "0.9", features = ["v4_16"] }
-libadwaita = { version = "0.7", features = ["v1_6"] }
+# GTK4 UI (v4_14 for Ubuntu 24.04 CI compatibility)
+gtk4 = { version = "0.9", features = ["v4_14"] }
+libadwaita = { version = "0.7", features = ["v1_5"] }
 glib = "0.20"
 gio = "0.20"
 gdk4 = "0.9"

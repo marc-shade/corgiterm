@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.corgiterm.CorgiTerm</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>CorgiTerm</name>
+  <summary>A next-generation, AI-powered terminal emulator</summary>
+
+  <description>
+    <p>
+      CorgiTerm is a modern terminal emulator built with GTK4 and libadwaita,
+      featuring AI-powered assistance, project management, and a friendly
+      corgi mascot named Pixel.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>AI-powered command suggestions and explanations</li>
+      <li>Natural language to shell command translation</li>
+      <li>Project-based session management with sidebar</li>
+      <li>Split panes for multi-terminal workflows</li>
+      <li>SSH connection manager</li>
+      <li>Customizable themes with live preview</li>
+      <li>Snippet and ASCII art libraries</li>
+      <li>Plugin system (Lua and WASM)</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">dev.corgiterm.CorgiTerm.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>CorgiTerm main window with AI panel</caption>
+      <image>https://corgiterm.dev/screenshots/main.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/marc-shade/corgiterm</url>
+  <url type="bugtracker">https://github.com/marc-shade/corgiterm/issues</url>
+  <url type="vcs-browser">https://github.com/marc-shade/corgiterm</url>
+
+  <developer id="dev.corgiterm">
+    <name>Marc Shade</name>
+  </developer>
+
+  <provides>
+    <binary>corgiterm</binary>
+  </provides>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2024-01-01">
+      <description>
+        <p>Initial release of CorgiTerm with core features:</p>
+        <ul>
+          <li>Full terminal emulation with VTE</li>
+          <li>AI assistant panel with multiple providers</li>
+          <li>Project-based session management</li>
+          <li>Customizable themes and keyboard shortcuts</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>console</keyword>
+    <keyword>shell</keyword>
+    <keyword>AI</keyword>
+    <keyword>corgi</keyword>
+    <keyword>command</keyword>
+  </keywords>
+
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+    <category>Utility</category>
+  </categories>
+</component>

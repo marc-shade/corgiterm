@@ -405,8 +405,7 @@ impl AsciiArtGenerator {
         let a = pixel[3] as f32 / 255.0;
 
         // Weighted average for perceived brightness
-        let brightness = (0.299 * r + 0.587 * g + 0.114 * b) * a;
-        brightness
+        (0.299 * r + 0.587 * g + 0.114 * b) * a
     }
 }
 
@@ -1660,7 +1659,7 @@ impl CorgiArt {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as usize;
-        let arts = vec![
+        let arts = [
             Self::CLASSIC,
             Self::SITTING,
             Self::RUNNING,

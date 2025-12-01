@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=CorgiTerm
+GenericName=Terminal
+Comment=A next-generation, AI-powered terminal emulator with Pixel the Corgi
+Keywords=terminal;console;shell;command;prompt;AI;corgi;
+Exec=corgiterm
+Icon=dev.corgiterm.CorgiTerm
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+StartupNotify=true
+StartupWMClass=corgiterm
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=corgiterm

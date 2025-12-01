@@ -127,14 +127,14 @@ impl PluginManager {
         Ok(count)
     }
 
-    fn load_plugin(&self, path: &PathBuf) -> anyhow::Result<Plugin> {
+    fn load_plugin(&self, path: &std::path::Path) -> anyhow::Result<Plugin> {
         let manifest_path = path.join("plugin.toml");
         let content = std::fs::read_to_string(&manifest_path)?;
         let manifest: PluginManifest = toml::from_str(&content)?;
 
         Ok(Plugin {
             manifest,
-            path: path.clone(),
+            path: path.to_path_buf(),
             enabled: true,
         })
     }

@@ -67,10 +67,10 @@ fn setup_file_watcher(path: PathBuf, provider: CssProvider) -> anyhow::Result<()
     let path_for_watcher = path.clone();
     let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
-            if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                if event.paths.iter().any(|p| *p == path_for_watcher) {
-                    let _ = tx.send(path_for_watcher.clone());
-                }
+            if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
+                && event.paths.contains(&path_for_watcher)
+            {
+                let _ = tx.send(path_for_watcher.clone());
             }
         }
     })?;

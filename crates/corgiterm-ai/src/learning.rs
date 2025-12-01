@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Context built from command history for AI suggestions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LearningContext {
     /// Most frequent commands
     pub frequent_commands: Vec<FrequentCommand>,
@@ -17,17 +17,6 @@ pub struct LearningContext {
     pub patterns: Vec<CommandPatternInfo>,
     /// Directory-specific commands
     pub directory_commands: HashMap<String, Vec<String>>,
-}
-
-impl Default for LearningContext {
-    fn default() -> Self {
-        Self {
-            frequent_commands: Vec::new(),
-            preferences: Vec::new(),
-            patterns: Vec::new(),
-            directory_commands: HashMap::new(),
-        }
-    }
 }
 
 /// A frequently used command

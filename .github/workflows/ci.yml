@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Format check
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  # Clippy lint check
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev liblua5.4-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace -- -D warnings
+
+  # Build and test on Linux
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev liblua5.4-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace
+      - name: Run tests
+        run: cargo test --workspace
+      - name: Build release
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: corgiterm-linux-x86_64
+          path: target/release/corgiterm
+
+  # Build on macOS
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          brew install gtk4 libadwaita lua@5.4
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo build --workspace
+      - name: Run tests
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo test --workspace
+      - name: Build release
+        run: |
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: corgiterm-macos-x86_64
+          path: target/release/corgiterm
+
+  # Build on Windows (currently PTY stub only)
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install GTK4
+        run: |
+          # Install gtk4 via vcpkg or gvsbuild
+          # For now, we'll use pre-built binaries
+          curl -L -o gtk4.zip https://github.com/nicholasbishop/gvsbuild/releases/download/2024-05-10/gvsbuild-release-gtk4.zip
+          unzip gtk4.zip -d C:\gtk
+          echo "PKG_CONFIG_PATH=C:\gtk\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "GTK_LIB_DIR=C:\gtk\lib" >> $env:GITHUB_ENV
+          echo "C:\gtk\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+        continue-on-error: true
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (may fail - PTY not yet implemented)
+        run: cargo build --workspace
+        continue-on-error: true
+
+  # Create release on tag
+  release:
+    name: Release
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: corgiterm-linux-x86_64
+          path: linux/
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: corgiterm-macos-x86_64
+          path: macos/
+      - name: Create release archives
+        run: |
+          cd linux && tar czf ../corgiterm-linux-x86_64.tar.gz corgiterm && cd ..
+          cd macos && tar czf ../corgiterm-macos-x86_64.tar.gz corgiterm && cd ..
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            corgiterm-linux-x86_64.tar.gz
+            corgiterm-macos-x86_64.tar.gz
+          generate_release_notes: true

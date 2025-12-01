@@ -25,16 +25,89 @@ pub fn show_about_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     let dialog = libadwaita::AboutDialog::builder()
         .application_name("CorgiTerm")
         .application_icon("dev.corgiterm.CorgiTerm")
-        .developers(vec!["CorgiTerm Team".to_string()])
+        .developer_name("Marc Shade")
+        .developers(vec![
+            "Marc Shade".to_string(),
+            "Claude Code (Anthropic)".to_string(),
+        ])
+        .designers(vec!["Pixel the Corgi 🐕".to_string()])
         .version(crate::version())
-        .website("https://corgiterm.dev")
-        .issue_url("https://github.com/corgiterm/corgiterm/issues")
+        .website("https://github.com/marc-shade/corgiterm")
+        .issue_url("https://github.com/marc-shade/corgiterm/issues")
+        .support_url("https://github.com/marc-shade/corgiterm/discussions")
         .license_type(gtk4::License::MitX11)
-        .comments("A next-generation, AI-powered terminal emulator that makes the command line accessible to everyone.")
+        .copyright("© 2024-2025 Marc Shade")
+        .comments(
+            "A next-generation, AI-powered terminal emulator that makes the \
+            command line accessible to everyone.\n\n\
+            Built with Rust, GTK4, libadwaita, and AI pair programming. 🐕",
+        )
         .build();
 
-    // Add mascot credit
-    dialog.add_credit_section(Some("Mascot"), &["Pixel the Corgi 🐕"]);
+    // Add credit sections
+    dialog.add_credit_section(
+        Some("Powered By"),
+        &[
+            "GTK4 & libadwaita",
+            "VTE Terminal Widget",
+            "Rust Programming Language",
+        ],
+    );
+
+    dialog.add_credit_section(
+        Some("AI Providers"),
+        &[
+            "Anthropic Claude",
+            "OpenAI GPT",
+            "Google Gemini",
+            "Ollama (Local)",
+        ],
+    );
+
+    dialog.add_credit_section(
+        Some("Special Thanks"),
+        &[
+            "The GNOME Project",
+            "All our contributors",
+            "Coffee ☕ and treats 🦴",
+        ],
+    );
+
+    // Add debug info
+    dialog.set_debug_info(&format!(
+        "Version: {}\n\
+        GTK: {}.{}.{}\n\
+        libadwaita: {}.{}.{}\n\
+        OS: {}\n\
+        Session Type: {}",
+        crate::version(),
+        gtk4::major_version(),
+        gtk4::minor_version(),
+        gtk4::micro_version(),
+        libadwaita::major_version(),
+        libadwaita::minor_version(),
+        libadwaita::micro_version(),
+        std::env::consts::OS,
+        std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string()),
+    ));
+    dialog.set_debug_info_filename("corgiterm-debug-info.txt");
+
+    // Add release notes for current version
+    dialog.set_release_notes(
+        "<p>Initial release of CorgiTerm featuring:</p>\
+        <ul>\
+            <li>Full terminal emulation with VTE</li>\
+            <li>AI assistant panel with Chat, Explain, and Command modes</li>\
+            <li>Project-based session management with sidebar</li>\
+            <li>Split panes and tabbed interface</li>\
+            <li>SSH connection manager</li>\
+            <li>Customizable themes with live preview</li>\
+            <li>Safe Mode for command preview</li>\
+            <li>Plugin system (WASM and Lua)</li>\
+            <li>Emoji picker and ASCII art generator</li>\
+        </ul>\
+        <p>Woof! 🐕</p>",
+    );
 
     dialog.present(Some(parent));
 }
