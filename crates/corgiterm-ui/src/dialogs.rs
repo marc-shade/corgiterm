@@ -39,8 +39,12 @@ pub fn show_about_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     dialog.present(Some(parent));
 }
 
+/// Callback type for theme changes
+pub type ThemeChangeCallback = Box<dyn Fn() + 'static>;
+
 /// Show the preferences dialog
-pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
+/// on_theme_change: Optional callback called when theme is changed
+pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W, on_theme_change: Option<ThemeChangeCallback>) {
     let dialog = libadwaita::PreferencesDialog::builder()
         .title("Preferences")
         .build();
@@ -190,7 +194,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .title("Color Theme")
         .subtitle("Choose your preferred color scheme")
         .build();
-    let themes = ["Corgi Dark", "Corgi Light", "Corgi Sunset", "Pembroke"];
+    let themes = ["Corgi Dark", "Corgi Light", "Corgi Sunset", "Pembroke", "Cyberpunk"];
     theme_row.set_model(Some(&gtk4::StringList::new(&themes)));
 
     // Set current theme selection
@@ -200,6 +204,9 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
     theme_group.add(&theme_row);
 
     // Connect theme change
+    // Wrap callback in Rc for sharing with closure
+    let theme_callback: std::rc::Rc<Option<ThemeChangeCallback>> = std::rc::Rc::new(on_theme_change);
+    let callback_for_theme = theme_callback.clone();
     theme_row.connect_selected_notify(move |row| {
         let selected = row.selected() as usize;
         if selected < themes.len() {
@@ -209,6 +216,11 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
                 });
                 let _ = config_manager.read().save();
                 tracing::info!("Theme changed to: {}", themes[selected]);
+
+                // Call the theme change callback to trigger terminal redraw
+                if let Some(ref callback) = *callback_for_theme {
+                    callback();
+                }
             }
         }
     });

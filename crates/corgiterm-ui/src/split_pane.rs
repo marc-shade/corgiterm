@@ -471,6 +471,15 @@ impl SplitPane {
             }
         }
     }
+
+    /// Queue redraw on all terminal drawing areas (for theme changes)
+    pub fn queue_redraw_all(&self) {
+        for pane in self.all_panes.borrow().iter() {
+            if let Some(tv) = pane.borrow().as_terminal() {
+                tv.drawing_area_ref().queue_draw();
+            }
+        }
+    }
 }
 
 impl Default for SplitPane {

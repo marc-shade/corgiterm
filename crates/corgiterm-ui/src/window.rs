@@ -94,8 +94,12 @@ impl MainWindow {
         // Add window actions
         let prefs_action = SimpleAction::new("preferences", None);
         let win_for_prefs = window.clone();
+        let tabs_for_prefs = tabs.clone();
         prefs_action.connect_activate(move |_, _| {
-            dialogs::show_preferences(&win_for_prefs);
+            let tabs_clone = tabs_for_prefs.clone();
+            dialogs::show_preferences(&win_for_prefs, Some(std::boxed::Box::new(move || {
+                tabs_clone.queue_redraw_all_terminals();
+            })));
         });
         window.add_action(&prefs_action);
 

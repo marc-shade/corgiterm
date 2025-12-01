@@ -204,6 +204,20 @@ cargo fmt --all
 - [x] AI Command History learning
 - [x] ASCII Art Generator (Ctrl+Shift+G)
 
+### v0.5.0 - Polish & Performance (Planned)
+- [ ] Session recording and playback
+- [ ] Searchable command history in terminal
+- [ ] AI conversation persistence across sessions
+- [ ] Performance profiling and optimization
+- [ ] Plugin API stabilization
+
+### v1.0.0 - Production Ready (Future)
+- [ ] Plugin marketplace
+- [ ] Remote terminal sessions (SSH tunneling)
+- [ ] Collaborative terminals (pair programming)
+- [ ] Full accessibility support (screen readers)
+- [ ] Comprehensive documentation and tutorials
+
 ## Privacy Promise
 
 CorgiTerm respects your privacy:

@@ -347,6 +347,16 @@ impl TerminalTabs {
             }
         }
     }
+
+    /// Queue redraw on all terminal panes (for theme changes)
+    pub fn queue_redraw_all_terminals(&self) {
+        let contents = self.contents.borrow();
+        for content in contents.iter() {
+            if let TabContent::Terminal(sp) = content {
+                sp.queue_redraw_all();
+            }
+        }
+    }
 }
 
 impl Default for TerminalTabs {

@@ -341,6 +341,61 @@ impl Theme {
             },
         }
     }
+
+    /// Cyberpunk - Neon colors on dark background
+    pub fn cyberpunk() -> Self {
+        Self {
+            name: "Cyberpunk".to_string(),
+            author: Some("CorgiTerm Team".to_string()),
+            description: Some("Neon cyberpunk aesthetic with electric colors".to_string()),
+            is_dark: true,
+            colors: TerminalColors {
+                foreground: "#00FF9F".to_string(),
+                background: "#0D0221".to_string(),
+                bold: Some("#FF00FF".to_string()),
+                dim: Some("#4A4A6A".to_string()),
+                black: "#0D0221".to_string(),
+                red: "#FF0055".to_string(),
+                green: "#00FF9F".to_string(),
+                yellow: "#FFFF00".to_string(),
+                blue: "#00BFFF".to_string(),
+                magenta: "#FF00FF".to_string(),
+                cyan: "#00FFFF".to_string(),
+                white: "#E0E0E0".to_string(),
+                bright_black: "#4A4A6A".to_string(),
+                bright_red: "#FF3377".to_string(),
+                bright_green: "#33FFB2".to_string(),
+                bright_yellow: "#FFFF66".to_string(),
+                bright_blue: "#33CFFF".to_string(),
+                bright_magenta: "#FF66FF".to_string(),
+                bright_cyan: "#66FFFF".to_string(),
+                bright_white: "#FFFFFF".to_string(),
+            },
+            ui: UiColors {
+                sidebar_bg: "#0A0118".to_string(),
+                sidebar_fg: "#00FF9F".to_string(),
+                tab_bar_bg: "#0D0221".to_string(),
+                tab_active_bg: "#1A0A3A".to_string(),
+                tab_active_fg: "#00FFFF".to_string(),
+                tab_inactive_bg: "#0D0221".to_string(),
+                tab_inactive_fg: "#4A4A6A".to_string(),
+                border: "#FF00FF".to_string(),
+                accent: "#FF00FF".to_string(),
+                success: "#00FF9F".to_string(),
+                warning: "#FFFF00".to_string(),
+                error: "#FF0055".to_string(),
+                info: "#00BFFF".to_string(),
+            },
+            cursor: CursorColors {
+                cursor: "#FF00FF".to_string(),
+                cursor_text: "#0D0221".to_string(),
+            },
+            selection: SelectionColors {
+                background: "#3D1A5C".to_string(),
+                foreground: Some("#00FFFF".to_string()),
+            },
+        }
+    }
 }
 
 /// Theme manager for loading and switching themes
@@ -359,6 +414,7 @@ impl ThemeManager {
             Theme::corgi_light(),
             Theme::corgi_sunset(),
             Theme::pembroke(),
+            Theme::cyberpunk(),
         ];
 
         for theme in builtins {
