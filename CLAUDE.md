@@ -158,7 +158,7 @@ model = "codellama"
 - [x] CLI provider auto-detection
 - [ ] Fix GTK4 4.10 deprecation warnings
 - [ ] Complete Split Panes implementation
-- [ ] Wire Execute button to terminal
+- [x] Wire Execute button to terminal
 - [ ] Complete MCP tool execution
 
 ### v0.3.0 - Cross-Platform
