@@ -862,36 +862,98 @@ impl MainWindow {
                         our_pid
                     );
 
-                    // Try each window until we find one that responds to windowactivate
-                    for wid in window_ids.iter().rev() {
-                        // Verify window exists and is valid by checking its geometry
+                    // First pass: find the main window (larger than 1x1) and any small placeholder windows
+                    let mut main_window: Option<String> = None;
+                    let mut small_windows: Vec<String> = Vec::new();
+
+                    for wid in &window_ids {
                         if let Ok(geo_output) = std::process::Command::new("xdotool")
                             .args(["getwindowgeometry", wid])
                             .output()
                         {
                             if geo_output.status.success() {
-                                eprintln!("X11 workaround: fixing window {} via xdotool", wid);
-                                // Move to visible position (WM may place windows off-screen)
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowmove", "--sync", wid, "100", "100"])
-                                    .output();
-                                // Set proper size
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowsize", "--sync", wid, "1200", "800"])
-                                    .output();
-                                // Activate, focus, and raise the window
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowactivate", "--sync", wid])
-                                    .output();
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowfocus", wid])
-                                    .output();
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowraise", wid])
-                                    .output();
-                                break; // Fixed a valid window, done
+                                let geo_str = String::from_utf8_lossy(&geo_output.stdout);
+                                // Parse geometry to check if it's a tiny placeholder window
+                                // Format: "Window XXXXX\n  Position: X,Y\n  Geometry: WxH"
+                                let is_small = geo_str.lines().any(|line| {
+                                    if line.trim().starts_with("Geometry:") {
+                                        let size = line.trim().strip_prefix("Geometry:").unwrap_or("").trim();
+                                        // Consider windows <= 10x10 as placeholders
+                                        if let Some((w, h)) = size.split_once('x') {
+                                            if let (Ok(width), Ok(height)) = (w.parse::<u32>(), h.parse::<u32>()) {
+                                                return width <= 10 || height <= 10;
+                                            }
+                                        }
+                                    }
+                                    false
+                                });
+
+                                if is_small {
+                                    small_windows.push(wid.clone());
+                                } else if main_window.is_none() {
+                                    main_window = Some(wid.clone());
+                                }
                             }
                         }
+                    }
+
+                    // Minimize small placeholder windows to get them out of the way
+                    for wid in &small_windows {
+                        eprintln!("X11 workaround: minimizing placeholder window {}", wid);
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowminimize", wid])
+                            .output();
+                    }
+
+                    // Fix and show the main window
+                    if let Some(wid) = main_window {
+                        // Detect primary monitor offset using xrandr
+                        let mut primary_x = 0;
+                        if let Ok(xrandr_output) = std::process::Command::new("xrandr")
+                            .arg("--query")
+                            .output()
+                        {
+                            let xrandr_str = String::from_utf8_lossy(&xrandr_output.stdout);
+                            // Look for "primary WIDTHxHEIGHT+X+Y" pattern
+                            for line in xrandr_str.lines() {
+                                if line.contains(" primary ") {
+                                    // Parse: "DVI-D-0 connected primary 1920x1200+1920+0"
+                                    if let Some(pos) = line.find('+') {
+                                        let after_plus = &line[pos + 1..];
+                                        if let Some(end) = after_plus.find('+') {
+                                            if let Ok(x) = after_plus[..end].parse::<i32>() {
+                                                primary_x = x;
+                                                eprintln!("X11 workaround: primary monitor at x={}", primary_x);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        eprintln!("X11 workaround: fixing main window {} via xdotool", wid);
+                        // Move to visible position on PRIMARY monitor
+                        let target_x = (primary_x + 100).to_string();
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowmove", "--sync", &wid, &target_x, "100"])
+                            .output();
+                        // Set proper size
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowsize", "--sync", &wid, "1200", "800"])
+                            .output();
+                        // Activate, focus, and raise the window
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowactivate", "--sync", &wid])
+                            .output();
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowfocus", &wid])
+                            .output();
+                        let _ = std::process::Command::new("xdotool")
+                            .args(["windowraise", &wid])
+                            .output();
+                    } else {
+                        eprintln!("X11 workaround: no main window found to fix");
                     }
                 }
             });
