@@ -51,6 +51,17 @@ impl MainWindow {
             .default_height(800)
             .build();
 
+        // Explicitly set size - needed for some X11 window managers
+        window.set_size_request(800, 600);
+        window.set_default_size(1200, 800);
+
+        // Force proper sizing on realize (fixes X11/libadwaita issues)
+        window.connect_realize(|w| {
+            // Queue a resize after realization to ensure proper geometry
+            w.queue_resize();
+            tracing::debug!("Window realized, queued resize");
+        });
+
         // Create components
         let sidebar = Rc::new(Sidebar::new());
         let tabs = Rc::new(TerminalTabs::new());
@@ -200,6 +211,8 @@ impl MainWindow {
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);
+        main_box.set_hexpand(true);
+        main_box.set_vexpand(true);
 
         // Header bar with tab bar integrated
         let header_box = Box::new(Orientation::Vertical, 0);
@@ -543,6 +556,21 @@ impl MainWindow {
 
         window.set_content(Some(&main_box));
 
+        // Force size after content is set (critical for X11/libadwaita)
+        window.set_default_size(1200, 800);
+
+        // Also force size in idle callback after main loop starts
+        let window_for_idle = window.clone();
+        gtk4::glib::idle_add_local_once(move || {
+            window_for_idle.set_default_size(1200, 800);
+            // Try direct surface sizing if available
+            if window_for_idle.surface().is_some() {
+                // Request specific size from compositor
+                tracing::debug!("Requesting surface size 1200x800");
+            }
+            window_for_idle.queue_resize();
+        });
+
         // Connect sidebar project folder clicks to tab creation
         let tabs_for_session = tabs.clone();
         sidebar.set_on_session_click(move |name, path| {
@@ -801,7 +829,73 @@ impl MainWindow {
     }
 
     pub fn present(&self) {
+        // On X11/libadwaita, show() helps ensure proper realization before present()
+        self.window.show();
         self.window.present();
+
+        // WORKAROUND: On X11/Budgie, GTK4/libadwaita sometimes fails to set initial window size/position
+        // Use xdotool as a fallback to force window to be visible and properly sized.
+        // Spawn thread directly (GTK timeout callbacks don't reliably fire on some X11 setups)
+        let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+        if session_type != "wayland" {
+            std::thread::spawn(move || {
+                // Wait for window to be fully mapped by X11/WM
+                std::thread::sleep(std::time::Duration::from_millis(500));
+
+                // Get OUR process PID to find only our windows
+                // NOTE: Only use --pid filter (NOT --name) to avoid stale window cache issues
+                let our_pid = std::process::id();
+
+                if let Ok(output) = std::process::Command::new("xdotool")
+                    .args(["search", "--pid", &our_pid.to_string()])
+                    .output()
+                {
+                    let window_ids: Vec<String> = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    eprintln!(
+                        "X11 workaround: found {} windows for pid {}",
+                        window_ids.len(),
+                        our_pid
+                    );
+
+                    // Try each window until we find one that responds to windowactivate
+                    for wid in window_ids.iter().rev() {
+                        // Verify window exists and is valid by checking its geometry
+                        if let Ok(geo_output) = std::process::Command::new("xdotool")
+                            .args(["getwindowgeometry", wid])
+                            .output()
+                        {
+                            if geo_output.status.success() {
+                                eprintln!("X11 workaround: fixing window {} via xdotool", wid);
+                                // Move to visible position (WM may place windows off-screen)
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(["windowmove", "--sync", wid, "100", "100"])
+                                    .output();
+                                // Set proper size
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(["windowsize", "--sync", wid, "1200", "800"])
+                                    .output();
+                                // Activate, focus, and raise the window
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(["windowactivate", "--sync", wid])
+                                    .output();
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(["windowfocus", wid])
+                                    .output();
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(["windowraise", wid])
+                                    .output();
+                                break; // Fixed a valid window, done
+                            }
+                        }
+                    }
+                }
+            });
+        }
     }
 
     pub fn widget(&self) -> &ApplicationWindow {
