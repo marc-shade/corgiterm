@@ -42,22 +42,17 @@ impl Rgb {
 }
 
 /// Color type - indexed (ANSI) or RGB
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Color {
     /// Named/indexed color (0-255)
     Indexed(u8),
     /// True color RGB
     Rgb(Rgb),
     /// Default foreground
+    #[default]
     Foreground,
     /// Default background
     Background,
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::Foreground
-    }
 }
 
 impl Color {

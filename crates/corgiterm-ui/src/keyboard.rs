@@ -36,6 +36,7 @@ pub enum ShortcutAction {
 
     // UI features
     ToggleAi,
+    ToggleSidebar,
     QuickSwitcher,
     SshManager,
     Snippets,
@@ -201,6 +202,13 @@ impl KeyboardShortcuts {
                 shortcuts.insert(ShortcutAction::ToggleAi, parsed);
             } else {
                 tracing::warn!("Failed to parse shortcut 'toggle_ai': {}", s);
+            }
+        }
+        if let Some(ref s) = config.toggle_sidebar {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::ToggleSidebar, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'toggle_sidebar': {}", s);
             }
         }
         if let Some(ref s) = config.quick_switcher {

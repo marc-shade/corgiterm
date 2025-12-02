@@ -30,10 +30,8 @@ pub fn get_snippets() -> Option<Arc<RwLock<SnippetsManager>>> {
 }
 
 /// Show the snippets library dialog
-pub fn show_snippets_dialog<W, F>(
-    parent: &W,
-    on_insert: F,
-) where
+pub fn show_snippets_dialog<W, F>(parent: &W, on_insert: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn(String) + 'static + Clone,
 {
@@ -253,7 +251,13 @@ pub fn show_snippets_dialog<W, F>(
     };
 
     // Initial population
-    populate_list("", "name", false, Some("All".to_string()), Some("All".to_string()));
+    populate_list(
+        "",
+        "name",
+        false,
+        Some("All".to_string()),
+        Some("All".to_string()),
+    );
 
     // Connect search
     {
@@ -458,7 +462,12 @@ where
                 let snippets = snippets_mgr.read();
                 let _ = snippets.record_use(&snippet_id);
 
-                if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
+                if let Some(snippet) = snippets
+                    .snippets()
+                    .snippets
+                    .iter()
+                    .find(|s| s.id == snippet_id)
+                {
                     let variables = snippet.extract_variables();
                     let command = snippet.command.clone();
                     let on_insert = on_insert.clone();
@@ -472,14 +481,10 @@ where
                         // Has variables - show prompt dialog
                         let snippet_clone = snippet.clone();
                         if let Some(root) = btn.root() {
-                            show_variable_prompt_dialog(
-                                &root,
-                                &snippet_clone,
-                                move |final_cmd| {
-                                    on_insert(final_cmd);
-                                    parent_dialog.close();
-                                },
-                            );
+                            show_variable_prompt_dialog(&root, &snippet_clone, move |final_cmd| {
+                                on_insert(final_cmd);
+                                parent_dialog.close();
+                            });
                         }
                     }
                 }
@@ -538,16 +543,17 @@ where
 }
 
 /// Show snippet editor dialog (for creating or editing)
-fn show_snippet_editor_dialog<W, F>(
-    parent: &W,
-    existing_snippet: Option<Snippet>,
-    on_save: F,
-) where
+fn show_snippet_editor_dialog<W, F>(parent: &W, existing_snippet: Option<Snippet>, on_save: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn() + 'static,
 {
     let is_edit = existing_snippet.is_some();
-    let title = if is_edit { "Edit Snippet" } else { "New Snippet" };
+    let title = if is_edit {
+        "Edit Snippet"
+    } else {
+        "New Snippet"
+    };
 
     let dialog = libadwaita::Dialog::builder()
         .title(title)
@@ -561,25 +567,15 @@ fn show_snippet_editor_dialog<W, F>(
     main_box.set_margin_end(24);
 
     // Form fields
-    let name_row = libadwaita::EntryRow::builder()
-        .title("Name")
-        .build();
+    let name_row = libadwaita::EntryRow::builder().title("Name").build();
 
-    let command_row = libadwaita::EntryRow::builder()
-        .title("Command")
-        .build();
+    let command_row = libadwaita::EntryRow::builder().title("Command").build();
 
-    let desc_row = libadwaita::EntryRow::builder()
-        .title("Description")
-        .build();
+    let desc_row = libadwaita::EntryRow::builder().title("Description").build();
 
-    let category_row = libadwaita::EntryRow::builder()
-        .title("Category")
-        .build();
+    let category_row = libadwaita::EntryRow::builder().title("Category").build();
 
-    let tags_row = libadwaita::EntryRow::builder()
-        .title("Tags")
-        .build();
+    let tags_row = libadwaita::EntryRow::builder().title("Tags").build();
 
     // Populate if editing
     if let Some(ref snippet) = existing_snippet {
@@ -690,15 +686,12 @@ fn show_snippet_editor_dialog<W, F>(
 }
 
 /// Show delete confirmation dialog
-fn show_delete_confirmation<W>(
-    parent: &W,
-    snippet_name: &str,
-    snippet_id: &str,
-) where
+fn show_delete_confirmation<W>(parent: &W, snippet_name: &str, snippet_id: &str)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
 {
     let dialog = libadwaita::AlertDialog::builder()
-        .heading(&format!("Delete \"{}\"?", snippet_name))
+        .heading(format!("Delete \"{}\"?", snippet_name))
         .body("This action cannot be undone.")
         .build();
 
@@ -732,10 +725,8 @@ fn show_delete_confirmation<W>(
 }
 
 /// Show quick insert dialog (Ctrl+Shift+P style)
-pub fn show_quick_insert_dialog<W, F>(
-    parent: &W,
-    on_insert: F,
-) where
+pub fn show_quick_insert_dialog<W, F>(parent: &W, on_insert: F)
+where
     W: IsA<gtk4::Window> + IsA<gtk4::Widget>,
     F: Fn(String) + 'static + Clone,
 {
@@ -862,7 +853,12 @@ pub fn show_quick_insert_dialog<W, F>(
             let snippet_id = row.widget_name();
             if let Some(snippets_mgr) = get_snippets() {
                 let snippets = snippets_mgr.read();
-                if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
+                if let Some(snippet) = snippets
+                    .snippets()
+                    .snippets
+                    .iter()
+                    .find(|s| s.id == snippet_id)
+                {
                     let _ = snippets.record_use(&snippet.id);
 
                     let variables = snippet.extract_variables();
@@ -876,14 +872,10 @@ pub fn show_quick_insert_dialog<W, F>(
                     } else {
                         let snippet_clone = snippet.clone();
                         if let Some(root) = row.root() {
-                            show_variable_prompt_dialog(
-                                &root,
-                                &snippet_clone,
-                                move |final_cmd| {
-                                    on_insert(final_cmd);
-                                    dialog_ref.close();
-                                },
-                            );
+                            show_variable_prompt_dialog(&root, &snippet_clone, move |final_cmd| {
+                                on_insert(final_cmd);
+                                dialog_ref.close();
+                            });
                         }
                     }
                 }
@@ -902,7 +894,12 @@ pub fn show_quick_insert_dialog<W, F>(
                 let snippet_id = selected.widget_name();
                 if let Some(snippets_mgr) = get_snippets() {
                     let snippets = snippets_mgr.read();
-                    if let Some(snippet) = snippets.snippets().snippets.iter().find(|s| s.id == snippet_id) {
+                    if let Some(snippet) = snippets
+                        .snippets()
+                        .snippets
+                        .iter()
+                        .find(|s| s.id == snippet_id)
+                    {
                         let _ = snippets.record_use(&snippet.id);
 
                         let variables = snippet.extract_variables();
@@ -954,11 +951,8 @@ pub fn show_quick_insert_dialog<W, F>(
 }
 
 /// Show variable prompt dialog when inserting a snippet with variables
-fn show_variable_prompt_dialog<W, F>(
-    parent: &W,
-    snippet: &Snippet,
-    on_complete: F,
-) where
+fn show_variable_prompt_dialog<W, F>(parent: &W, snippet: &Snippet, on_complete: F)
+where
     W: IsA<gtk4::Widget>,
     F: Fn(String) + 'static,
 {
@@ -1047,10 +1041,10 @@ fn show_variable_prompt_dialog<W, F>(
                 let value = entry.text().to_string();
                 // Replace all variable patterns for this name
                 let patterns = [
-                    format!("{{{{{}}}}}", name),                    // {{var}}
-                    format!("{{{{{}:[^|}}]*}}}}", name),            // {{var:default}}
-                    format!("{{{{{}|[^}}]*}}}}", name),             // {{var|hint}}
-                    format!("{{{{{}:[^|]*\\|[^}}]*}}}}", name),     // {{var:default|hint}}
+                    format!("{{{{{}}}}}", name),                // {{var}}
+                    format!("{{{{{}:[^|}}]*}}}}", name),        // {{var:default}}
+                    format!("{{{{{}|[^}}]*}}}}", name),         // {{var|hint}}
+                    format!("{{{{{}:[^|]*\\|[^}}]*}}}}", name), // {{var:default|hint}}
                 ];
                 for pattern in &patterns {
                     if let Ok(re) = regex::Regex::new(pattern) {

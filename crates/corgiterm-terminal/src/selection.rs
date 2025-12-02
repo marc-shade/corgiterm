@@ -156,17 +156,16 @@ impl Selection {
         let double_click_threshold = std::time::Duration::from_millis(500);
 
         // Detect multi-click
-        let click_count = if let (Some(last_point), Some(last_time)) =
-            (self.last_click, self.last_click_time)
-        {
-            if last_point == point && now.duration_since(last_time) < double_click_threshold {
-                (self.click_count % 3) + 1
+        let click_count =
+            if let (Some(last_point), Some(last_time)) = (self.last_click, self.last_click_time) {
+                if last_point == point && now.duration_since(last_time) < double_click_threshold {
+                    (self.click_count % 3) + 1
+                } else {
+                    1
+                }
             } else {
                 1
-            }
-        } else {
-            1
-        };
+            };
 
         self.click_count = click_count;
         self.last_click = Some(point);
@@ -264,11 +263,7 @@ mod tests {
 
     #[test]
     fn test_selection_contains() {
-        let range = SelectionRange::new(
-            Point::new(5, 0),
-            Point::new(10, 2),
-            SelectionType::Simple,
-        );
+        let range = SelectionRange::new(Point::new(5, 0), Point::new(10, 2), SelectionType::Simple);
 
         // On start line
         assert!(range.contains(Point::new(5, 0)));

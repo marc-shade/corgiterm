@@ -15,7 +15,9 @@ use std::rc::Rc;
 
 use crate::app::config_manager;
 use corgiterm_config::themes::ThemeManager;
-use corgiterm_core::{terminal::Cell, HintDetector, HintModeState, Pty, PtySize, Terminal, TerminalSize};
+use corgiterm_core::{
+    terminal::Cell, HintDetector, HintModeState, Pty, PtySize, Terminal, TerminalSize,
+};
 use std::path::Path;
 
 /// URL regex pattern
@@ -80,9 +82,9 @@ const DEFAULT_COLORS: [(f64, f64, f64); 16] = [
 /// Convert hex color string to RGB tuple
 fn hex_to_rgb(hex: &str) -> (f64, f64, f64) {
     let hex = hex.trim_start_matches('#');
-    let r = u8::from_str_radix(&hex.get(0..2).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
-    let g = u8::from_str_radix(&hex.get(2..4).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
-    let b = u8::from_str_radix(&hex.get(4..6).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let r = u8::from_str_radix(hex.get(0..2).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let g = u8::from_str_radix(hex.get(2..4).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let b = u8::from_str_radix(hex.get(4..6).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
     (r, g, b)
 }
 
@@ -899,9 +901,10 @@ impl TerminalView {
                 let grid = term.grid();
 
                 // Collect visible lines as strings
-                let lines: Vec<String> = grid.iter().map(|row| {
-                    row.iter().map(|cell| cell.content.as_str()).collect()
-                }).collect();
+                let lines: Vec<String> = grid
+                    .iter()
+                    .map(|row| row.iter().map(|cell| cell.content.as_str()).collect())
+                    .collect();
 
                 // Scan for hints
                 let hints = hint_detector_for_key.scan(&lines);
@@ -1303,7 +1306,9 @@ impl TerminalView {
                         // Log health status changes for debugging
                         match health {
                             corgiterm_core::TerminalHealth::Degraded => {
-                                tracing::warn!("Terminal entered degraded mode - attempting recovery");
+                                tracing::warn!(
+                                    "Terminal entered degraded mode - attempting recovery"
+                                );
                             }
                             corgiterm_core::TerminalHealth::Recovered => {
                                 tracing::info!("Terminal recovered from error state");

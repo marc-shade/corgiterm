@@ -7,7 +7,10 @@ use corgiterm_core::all_fonts;
 fn main() {
     let fonts = all_fonts();
     println!("═══════════════════════════════════════════════════════════");
-    println!("  CorgiTerm ASCII Art Font Test - {} fonts available", fonts.len());
+    println!(
+        "  CorgiTerm ASCII Art Font Test - {} fonts available",
+        fonts.len()
+    );
     println!("═══════════════════════════════════════════════════════════\n");
 
     let mut passed = 0;
@@ -20,7 +23,12 @@ fn main() {
                 let non_empty = lines.iter().any(|l| !l.trim().is_empty());
 
                 if non_empty {
-                    println!("✓ {} (height: {}, actual lines: {})", font.name, font.height, lines.len());
+                    println!(
+                        "✓ {} (height: {}, actual lines: {})",
+                        font.name,
+                        font.height,
+                        lines.len()
+                    );
                     passed += 1;
                 } else {
                     println!("✗ {} - Empty output", font.name);

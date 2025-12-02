@@ -14,7 +14,7 @@ use crossbeam_channel;
 use gtk4::prelude::*;
 use gtk4::{
     Box, Button, DropDown, FileDialog, Label, ListBox, Orientation, ScrolledWindow, SearchEntry,
-    SelectionMode, StringList, ToggleButton, Stack, StackSidebar,
+    SelectionMode, Stack, StackSidebar, StringList, ToggleButton,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ActionRow, Dialog, EntryRow, PreferencesGroup};
@@ -41,9 +41,9 @@ pub struct PortForward {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum PortForwardType {
     #[default]
-    Local,      // -L
-    Remote,     // -R
-    Dynamic,    // -D (SOCKS proxy)
+    Local, // -L
+    Remote,  // -R
+    Dynamic, // -D (SOCKS proxy)
 }
 
 impl PortForwardType {
@@ -182,6 +182,7 @@ impl SshManager {
         // Initial populate
         manager.populate_hosts();
         manager.populate_history();
+        manager.populate_keys();
 
         manager
     }
@@ -347,13 +348,7 @@ impl SshManager {
             let state_c = state.clone();
             let tag_filter_c = tag_filter.clone();
             add_btn.connect_clicked(move |_| {
-                Self::show_host_editor(
-                    &dialog_c,
-                    None,
-                    &hosts_list_c,
-                    &state_c,
-                    &tag_filter_c,
-                );
+                Self::show_host_editor(&dialog_c, None, &hosts_list_c, &state_c, &tag_filter_c);
             });
         }
 
@@ -389,7 +384,13 @@ impl SshManager {
             });
         }
 
-        (page_box, hosts_list, search_entry, tag_filter, favorites_toggle)
+        (
+            page_box,
+            hosts_list,
+            search_entry,
+            tag_filter,
+            favorites_toggle,
+        )
     }
 
     /// Populate the hosts list
@@ -472,7 +473,10 @@ impl SshManager {
         let total = state_ref.hosts.len();
         let showing = filtered_hosts.len();
         let favs = state_ref.hosts.iter().filter(|h| h.favorite).count();
-        stats_label.set_label(&format!("Showing {} of {} hosts • {} favorites", showing, total, favs));
+        stats_label.set_label(&format!(
+            "Showing {} of {} hosts • {} favorites",
+            showing, total, favs
+        ));
 
         drop(state_ref);
 
@@ -505,7 +509,7 @@ impl SshManager {
     ) -> ActionRow {
         let row = ActionRow::builder()
             .title(&host.name)
-            .subtitle(&host.display_string())
+            .subtitle(host.display_string())
             .activatable(true)
             .build();
 
@@ -568,7 +572,11 @@ impl SshManager {
         // Favorite toggle
         let fav_btn = ToggleButton::builder()
             .icon_name("starred-symbolic")
-            .tooltip_text(if host.favorite { "Unfavorite" } else { "Favorite" })
+            .tooltip_text(if host.favorite {
+                "Unfavorite"
+            } else {
+                "Favorite"
+            })
             .css_classes(vec!["flat", "circular"])
             .valign(gtk4::Align::Center)
             .active(host.favorite)
@@ -625,7 +633,10 @@ impl SshManager {
                                 Some(&host_c),
                                 &hosts_list_c,
                                 &state_c,
-                                &DropDown::new(None::<gtk4::gio::ListModel>, None::<gtk4::Expression>),
+                                &DropDown::new(
+                                    None::<gtk4::gio::ListModel>,
+                                    None::<gtk4::Expression>,
+                                ),
                             );
                             break;
                         }
@@ -716,21 +727,21 @@ impl SshManager {
             }
         });
 
-        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-            match receiver.try_recv() {
-                Ok(result) => {
-                    match result {
-                        Ok(true) => row_clone.set_subtitle(&format!("{} ✓ config ok", target)),
-                        Ok(false) => row_clone.set_subtitle(&format!("{} ✗ config error", target)),
-                        Err(e) => row_clone.set_subtitle(&format!("{} ⚠ {}", target, e)),
-                    }
-                    glib::ControlFlow::Break
+        glib::timeout_add_local(std::time::Duration::from_millis(50), move || match receiver
+            .try_recv()
+        {
+            Ok(result) => {
+                match result {
+                    Ok(true) => row_clone.set_subtitle(&format!("{} ✓ config ok", target)),
+                    Ok(false) => row_clone.set_subtitle(&format!("{} ✗ config error", target)),
+                    Err(e) => row_clone.set_subtitle(&format!("{} ⚠ {}", target, e)),
                 }
-                Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    row_clone.set_subtitle(&format!("{} ⚠ disconnected", target));
-                    glib::ControlFlow::Break
-                }
+                glib::ControlFlow::Break
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                row_clone.set_subtitle(&format!("{} ⚠ disconnected", target));
+                glib::ControlFlow::Break
             }
         });
     }
@@ -744,7 +755,11 @@ impl SshManager {
         tag_filter: &DropDown,
     ) {
         let editor_dialog = Dialog::builder()
-            .title(if host.is_some() { "Edit SSH Host" } else { "Add SSH Host" })
+            .title(if host.is_some() {
+                "Edit SSH Host"
+            } else {
+                "Add SSH Host"
+            })
             .content_width(550)
             .build();
 
@@ -755,9 +770,7 @@ impl SshManager {
         content_box.set_margin_bottom(24);
 
         // Basic settings group
-        let basic_group = PreferencesGroup::builder()
-            .title("Basic Settings")
-            .build();
+        let basic_group = PreferencesGroup::builder().title("Basic Settings").build();
 
         let name_entry = EntryRow::builder()
             .title("Name")
@@ -794,9 +807,7 @@ impl SshManager {
         content_box.append(&basic_group);
 
         // Authentication group
-        let auth_group = PreferencesGroup::builder()
-            .title("Authentication")
-            .build();
+        let auth_group = PreferencesGroup::builder().title("Authentication").build();
 
         let identity_text = host
             .and_then(|h| h.identity_file.as_ref().map(|p| p.display().to_string()))
@@ -838,16 +849,15 @@ impl SshManager {
         content_box.append(&auth_group);
 
         // Advanced settings (expandable)
-        let advanced_group = PreferencesGroup::builder()
-            .title("Advanced")
-            .build();
+        let advanced_group = PreferencesGroup::builder().title("Advanced").build();
 
         // Jump host / ProxyJump
         let jump_host_entry = EntryRow::builder()
             .title("Jump Host (ProxyJump)")
             .text("")
             .build();
-        jump_host_entry.set_tooltip_text(Some("SSH host to jump through (e.g., bastion.example.com)"));
+        jump_host_entry
+            .set_tooltip_text(Some("SSH host to jump through (e.g., bastion.example.com)"));
         advanced_group.add(&jump_host_entry);
 
         // Extra SSH options
@@ -855,21 +865,18 @@ impl SshManager {
             .title("Extra SSH Options")
             .text("")
             .build();
-        options_entry.set_tooltip_text(Some("Additional ssh options (e.g., -o StrictHostKeyChecking=no)"));
+        options_entry.set_tooltip_text(Some(
+            "Additional ssh options (e.g., -o StrictHostKeyChecking=no)",
+        ));
         advanced_group.add(&options_entry);
 
         content_box.append(&advanced_group);
 
         // Organization group
-        let org_group = PreferencesGroup::builder()
-            .title("Organization")
-            .build();
+        let org_group = PreferencesGroup::builder().title("Organization").build();
 
         let tags_text = host.map(|h| h.tags.join(", ")).unwrap_or_default();
-        let tags_entry = EntryRow::builder()
-            .title("Tags")
-            .text(&tags_text)
-            .build();
+        let tags_entry = EntryRow::builder().title("Tags").text(&tags_text).build();
         let tags_hint = Label::new(Some("Comma-separated"));
         tags_hint.add_css_class("dim-label");
         tags_entry.add_suffix(&tags_hint);
@@ -989,11 +996,7 @@ impl SshManager {
     }
 
     /// Delete an SSH host
-    fn delete_host(
-        host: &SshHost,
-        hosts_list: &ListBox,
-        state: &Rc<RefCell<SshManagerState>>,
-    ) {
+    fn delete_host(host: &SshHost, hosts_list: &ListBox, state: &Rc<RefCell<SshManagerState>>) {
         {
             let mut state_mut = state.borrow_mut();
             if let Some(pos) = state_mut.hosts.iter().position(|h| h == host) {
@@ -1107,22 +1110,28 @@ impl SshManager {
 
         let state_c = state.clone();
         let parent_widget = parent.clone().upcast::<gtk4::Widget>();
-        let window_parent = parent_widget.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+        let window_parent = parent_widget
+            .root()
+            .and_then(|r| r.downcast::<gtk4::Window>().ok());
 
-        file_dialog.save(window_parent.as_ref(), None::<&gtk4::gio::Cancellable>, move |result| {
-            if let Ok(file) = result {
-                if let Some(path) = file.path() {
-                    let hosts = &state_c.borrow().hosts;
-                    if let Ok(json) = serde_json::to_string_pretty(hosts) {
-                        if let Err(e) = std::fs::write(&path, json) {
-                            tracing::error!("Failed to export hosts: {}", e);
-                        } else {
-                            tracing::info!("Exported {} hosts to {:?}", hosts.len(), path);
+        file_dialog.save(
+            window_parent.as_ref(),
+            None::<&gtk4::gio::Cancellable>,
+            move |result| {
+                if let Ok(file) = result {
+                    if let Some(path) = file.path() {
+                        let hosts = &state_c.borrow().hosts;
+                        if let Ok(json) = serde_json::to_string_pretty(hosts) {
+                            if let Err(e) = std::fs::write(&path, json) {
+                                tracing::error!("Failed to export hosts: {}", e);
+                            } else {
+                                tracing::info!("Exported {} hosts to {:?}", hosts.len(), path);
+                            }
                         }
                     }
                 }
-            }
-        });
+            },
+        );
     }
 
     // ==================== HISTORY TAB ====================
@@ -1221,7 +1230,11 @@ impl SshManager {
                     reconnect_btn.connect_clicked(move |_| {
                         let host_opt = {
                             let state_ref = state_c.borrow();
-                            state_ref.hosts.iter().find(|h| h.name == host_name).cloned()
+                            state_ref
+                                .hosts
+                                .iter()
+                                .find(|h| h.name == host_name)
+                                .cloned()
                         };
                         if let Some(host) = host_opt {
                             Self::connect_to_host(&host, &state_c);
@@ -1233,6 +1246,10 @@ impl SshManager {
                 self.history_list.append(&row);
             }
         }
+    }
+
+    fn populate_keys(&self) {
+        Self::populate_keys_list(&self.state, &self.keys_list);
     }
 
     fn format_timestamp(ts: u64) -> String {
@@ -1290,12 +1307,6 @@ impl SshManager {
         let refresh_btn = Button::from_icon_name("view-refresh-symbolic");
         refresh_btn.set_tooltip_text(Some("Rescan SSH keys"));
         refresh_btn.add_css_class("flat");
-        {
-            let state_c = state.clone();
-            refresh_btn.connect_clicked(move |_| {
-                Self::scan_ssh_keys(&state_c);
-            });
-        }
         header_box.append(&refresh_btn);
 
         page_box.append(&header_box);
@@ -1310,21 +1321,13 @@ impl SshManager {
             .css_classes(vec!["boxed-list"])
             .build();
 
-        // Populate keys
         {
-            let state_ref = state.borrow();
-            if state_ref.keys.is_empty() {
-                let empty_row = ActionRow::builder()
-                    .title("No SSH keys found")
-                    .subtitle("Generate a new key or add existing keys to ~/.ssh/")
-                    .build();
-                keys_list.append(&empty_row);
-            } else {
-                for key in &state_ref.keys {
-                    let row = Self::create_key_row(key);
-                    keys_list.append(&row);
-                }
-            }
+            let state_c = state.clone();
+            let keys_list_c = keys_list.clone();
+            refresh_btn.connect_clicked(move |_| {
+                Self::scan_ssh_keys(&state_c);
+                Self::populate_keys_list(&state_c, &keys_list_c);
+            });
         }
 
         scrolled.set_child(Some(&keys_list));
@@ -1344,9 +1347,7 @@ impl SshManager {
                 .output()
                 .map(|o| {
                     if o.status.success() {
-                        let count = String::from_utf8_lossy(&o.stdout)
-                            .lines()
-                            .count();
+                        let count = String::from_utf8_lossy(&o.stdout).lines().count();
                         format!("SSH Agent: {} keys loaded", count)
                     } else {
                         "SSH Agent: No keys loaded".to_string()
@@ -1357,6 +1358,26 @@ impl SshManager {
         });
 
         (page_box, keys_list)
+    }
+
+    fn populate_keys_list(state: &Rc<RefCell<SshManagerState>>, keys_list: &ListBox) {
+        while let Some(child) = keys_list.first_child() {
+            keys_list.remove(&child);
+        }
+
+        let state_ref = state.borrow();
+        if state_ref.keys.is_empty() {
+            let empty_row = ActionRow::builder()
+                .title("No SSH keys found")
+                .subtitle("Generate a new key or add existing keys to ~/.ssh/")
+                .build();
+            keys_list.append(&empty_row);
+        } else {
+            for key in &state_ref.keys {
+                let row = Self::create_key_row(key);
+                keys_list.append(&row);
+            }
+        }
     }
 
     fn scan_ssh_keys(state: &Rc<RefCell<SshManagerState>>) {
@@ -1415,7 +1436,7 @@ impl SshManager {
     fn create_key_row(key: &SshKeyInfo) -> ActionRow {
         let row = ActionRow::builder()
             .title(&key.name)
-            .subtitle(&format!("{} • {}", key.key_type, key.fingerprint))
+            .subtitle(format!("{} • {}", key.key_type, key.fingerprint))
             .build();
 
         // Key type icon
@@ -1447,9 +1468,7 @@ impl SshManager {
         {
             let path = key.path.clone();
             add_agent_btn.connect_clicked(move |_| {
-                let _ = std::process::Command::new("ssh-add")
-                    .arg(&path)
-                    .spawn();
+                let _ = std::process::Command::new("ssh-add").arg(&path).spawn();
             });
         }
         row.add_suffix(&add_agent_btn);
@@ -1487,13 +1506,8 @@ impl SshManager {
 
         // Key type dropdown
         let type_model = StringList::new(&["ed25519 (recommended)", "rsa", "ecdsa"]);
-        let type_dropdown = DropDown::builder()
-            .model(&type_model)
-            .selected(0)
-            .build();
-        let type_row = ActionRow::builder()
-            .title("Key Type")
-            .build();
+        let type_dropdown = DropDown::builder().model(&type_model).selected(0).build();
+        let type_row = ActionRow::builder().title("Key Type").build();
         type_row.add_suffix(&type_dropdown);
         prefs_group.add(&type_row);
 
@@ -1510,7 +1524,7 @@ impl SshManager {
             .unwrap_or_else(|_| "localhost".to_string());
         let comment_entry = EntryRow::builder()
             .title("Comment")
-            .text(&format!("{}@{}", username, hostname))
+            .text(format!("{}@{}", username, hostname))
             .build();
         prefs_group.add(&comment_entry);
 
@@ -1574,7 +1588,10 @@ impl SshManager {
                         if output.status.success() {
                             tracing::info!("Generated SSH key: {:?}", key_path);
                         } else {
-                            tracing::error!("Failed to generate key: {}", String::from_utf8_lossy(&output.stderr));
+                            tracing::error!(
+                                "Failed to generate key: {}",
+                                String::from_utf8_lossy(&output.stderr)
+                            );
                         }
                     }
                     Err(e) => {
@@ -1594,7 +1611,7 @@ impl SshManager {
 
     // ==================== TUNNELS TAB ====================
 
-    fn create_tunnels_page(_state: &Rc<RefCell<SshManagerState>>) -> Box {
+    fn create_tunnels_page(state: &Rc<RefCell<SshManagerState>>) -> Box {
         let page_box = Box::new(Orientation::Vertical, 12);
         page_box.set_margin_start(16);
         page_box.set_margin_end(16);
@@ -1644,44 +1661,21 @@ impl SshManager {
             .css_classes(vec!["boxed-list"])
             .build();
 
-        // Example tunnels
-        let example_tunnels = vec![
-            ("Local DB Forward", "Local (-L)", "5432 → localhost:5432"),
-            ("Remote Web Access", "Remote (-R)", "8080 → localhost:80"),
-            ("SOCKS Proxy", "Dynamic (-D)", "1080"),
-        ];
+        Self::populate_tunnels_list(state, &tunnels_list);
 
-        for (name, fwd_type, desc) in example_tunnels {
-            let row = ActionRow::builder()
-                .title(name)
-                .subtitle(&format!("{} • {}", fwd_type, desc))
-                .build();
-
-            let enable_switch = gtk4::Switch::builder()
-                .valign(gtk4::Align::Center)
-                .build();
-            row.add_suffix(&enable_switch);
-
-            let edit_btn = Button::from_icon_name("document-edit-symbolic");
-            edit_btn.add_css_class("flat");
-            edit_btn.set_valign(gtk4::Align::Center);
-            row.add_suffix(&edit_btn);
-
-            let delete_btn = Button::from_icon_name("user-trash-symbolic");
-            delete_btn.add_css_class("flat");
-            delete_btn.set_valign(gtk4::Align::Center);
-            row.add_suffix(&delete_btn);
-
-            tunnels_list.append(&row);
+        {
+            let state_c = state.clone();
+            let tunnels_list_c = tunnels_list.clone();
+            add_tunnel_btn.connect_clicked(move |_| {
+                Self::show_tunnel_editor(&state_c, &tunnels_list_c);
+            });
         }
 
         scrolled.set_child(Some(&tunnels_list));
         page_box.append(&scrolled);
 
         // Tunnel type reference
-        let ref_group = PreferencesGroup::builder()
-            .title("Tunnel Types")
-            .build();
+        let ref_group = PreferencesGroup::builder().title("Tunnel Types").build();
 
         let local_row = ActionRow::builder()
             .title("Local (-L)")
@@ -1704,6 +1698,198 @@ impl SshManager {
         page_box.append(&ref_group);
 
         page_box
+    }
+
+    fn populate_tunnels_list(state: &Rc<RefCell<SshManagerState>>, tunnels_list: &ListBox) {
+        while let Some(child) = tunnels_list.first_child() {
+            tunnels_list.remove(&child);
+        }
+
+        let mut added = 0;
+        let state_ref = state.borrow();
+        for (host, forwards) in state_ref.port_forwards.iter() {
+            for fwd in forwards {
+                added += 1;
+                let route = match fwd.forward_type {
+                    PortForwardType::Local => {
+                        format!(
+                            "{} → {}:{}",
+                            fwd.local_port, fwd.remote_host, fwd.remote_port
+                        )
+                    }
+                    PortForwardType::Remote => {
+                        format!("{} → localhost:{}", fwd.remote_port, fwd.local_port)
+                    }
+                    PortForwardType::Dynamic => {
+                        format!("SOCKS {} → {}", fwd.local_port, fwd.remote_host)
+                    }
+                };
+
+                let row = ActionRow::builder()
+                    .title(&fwd.name)
+                    .subtitle(format!("{} • {}", fwd.forward_type.as_str(), route))
+                    .build();
+
+                let host_badge = Label::new(Some(host.as_str()));
+                host_badge.add_css_class("dim-label");
+                host_badge.add_css_class("caption");
+                row.add_prefix(&host_badge);
+
+                let enable_switch = gtk4::Switch::builder()
+                    .valign(gtk4::Align::Center)
+                    .active(fwd.enabled)
+                    .build();
+                row.add_suffix(&enable_switch);
+
+                let delete_btn = Button::from_icon_name("user-trash-symbolic");
+                delete_btn.add_css_class("flat");
+                delete_btn.set_valign(gtk4::Align::Center);
+                {
+                    let state_c = state.clone();
+                    let tunnels_list_c = tunnels_list.clone();
+                    let host_key = host.clone();
+                    let name = fwd.name.clone();
+                    delete_btn.connect_clicked(move |_| {
+                        if let Some(forwards) =
+                            state_c.borrow_mut().port_forwards.get_mut(&host_key)
+                        {
+                            forwards.retain(|pf| pf.name != name);
+                        }
+                        Self::populate_tunnels_list(&state_c, &tunnels_list_c);
+                    });
+                }
+                row.add_suffix(&delete_btn);
+
+                tunnels_list.append(&row);
+            }
+        }
+
+        if added == 0 {
+            let empty_row = ActionRow::builder()
+                .title("No tunnels configured")
+                .subtitle("Add a tunnel to forward local/remote ports")
+                .build();
+            tunnels_list.append(&empty_row);
+        }
+    }
+
+    fn show_tunnel_editor(state: &Rc<RefCell<SshManagerState>>, tunnels_list: &ListBox) {
+        let dialog = Dialog::builder()
+            .title("Add SSH Tunnel")
+            .content_width(520)
+            .content_height(320)
+            .build();
+
+        let content_box = Box::new(Orientation::Vertical, 12);
+        content_box.set_margin_start(20);
+        content_box.set_margin_end(20);
+        content_box.set_margin_top(16);
+        content_box.set_margin_bottom(16);
+
+        let prefs_group = PreferencesGroup::new();
+
+        let name_entry = EntryRow::builder()
+            .title("Tunnel Name")
+            .text("Local DB Forward")
+            .build();
+        prefs_group.add(&name_entry);
+
+        let host_entry = EntryRow::builder()
+            .title("Host Label")
+            .text("default")
+            .build();
+        prefs_group.add(&host_entry);
+
+        let type_model = StringList::new(&[
+            PortForwardType::Local.as_str(),
+            PortForwardType::Remote.as_str(),
+            PortForwardType::Dynamic.as_str(),
+        ]);
+        let type_dropdown = DropDown::builder().model(&type_model).selected(0).build();
+        prefs_group.add(&type_dropdown);
+
+        let local_adj = gtk4::Adjustment::new(5432.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
+        let local_row = libadwaita::SpinRow::builder()
+            .title("Local Port")
+            .adjustment(&local_adj)
+            .build();
+        prefs_group.add(&local_row);
+
+        let remote_host_entry = EntryRow::builder()
+            .title("Remote Host")
+            .text("localhost")
+            .build();
+        prefs_group.add(&remote_host_entry);
+
+        let remote_adj = gtk4::Adjustment::new(5432.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
+        let remote_row = libadwaita::SpinRow::builder()
+            .title("Remote Port")
+            .adjustment(&remote_adj)
+            .build();
+        prefs_group.add(&remote_row);
+
+        content_box.append(&prefs_group);
+
+        let button_box = Box::new(Orientation::Horizontal, 8);
+        button_box.set_halign(gtk4::Align::End);
+
+        let cancel_btn = Button::builder()
+            .label("Cancel")
+            .css_classes(vec!["pill"])
+            .build();
+        {
+            let dialog_c = dialog.clone();
+            cancel_btn.connect_clicked(move |_| {
+                dialog_c.close();
+            });
+        }
+        button_box.append(&cancel_btn);
+
+        let save_btn = Button::builder()
+            .label("Save Tunnel")
+            .css_classes(vec!["pill", "suggested-action"])
+            .build();
+        {
+            let state_c = state.clone();
+            let tunnels_list_c = tunnels_list.clone();
+            let dialog_c = dialog.clone();
+            save_btn.connect_clicked(move |_| {
+                let forward_type = PortForwardType::from_index(type_dropdown.selected());
+                let mut state_mut = state_c.borrow_mut();
+                let host_key = {
+                    let host_text = host_entry.text();
+                    if host_text.is_empty() {
+                        "default".to_string()
+                    } else {
+                        host_text.to_string()
+                    }
+                };
+
+                let tunnel = PortForward {
+                    name: name_entry.text().to_string(),
+                    forward_type,
+                    local_port: local_row.value() as u16,
+                    remote_host: remote_host_entry.text().to_string(),
+                    remote_port: remote_row.value() as u16,
+                    enabled: true,
+                };
+
+                state_mut
+                    .port_forwards
+                    .entry(host_key)
+                    .or_default()
+                    .push(tunnel);
+                drop(state_mut);
+
+                Self::populate_tunnels_list(&state_c, &tunnels_list_c);
+                dialog_c.close();
+            });
+        }
+        button_box.append(&save_btn);
+
+        content_box.append(&button_box);
+        dialog.set_child(Some(&content_box));
+        dialog.present(None::<&gtk4::Window>);
     }
 
     // ==================== QUICK CONNECT TAB ====================
@@ -1732,9 +1918,7 @@ impl SshManager {
         let prefs_group = PreferencesGroup::new();
 
         // Connection string entry
-        let conn_entry = EntryRow::builder()
-            .title("SSH Connection")
-            .build();
+        let conn_entry = EntryRow::builder().title("SSH Connection").build();
         conn_entry.set_tooltip_text(Some("user@hostname or user@hostname:port"));
         prefs_group.add(&conn_entry);
 

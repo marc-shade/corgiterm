@@ -71,7 +71,7 @@ impl<'a> Perform for TerminalPerformer<'a> {
                 self.grid.tab();
             }
             // Line Feed / New Line / Vertical Tab
-            0x0A | 0x0B | 0x0C => {
+            0x0A..=0x0C => {
                 self.grid.linefeed();
             }
             // Carriage Return
@@ -148,9 +148,9 @@ impl<'a> Perform for TerminalPerformer<'a> {
             // Erase in Display (ED)
             'J' => {
                 match param(0, 0) {
-                    0 => self.grid.clear_below(),    // From cursor to end
-                    1 => self.grid.clear_above(),    // From start to cursor
-                    2 | 3 => self.grid.clear(),      // Entire screen
+                    0 => self.grid.clear_below(), // From cursor to end
+                    1 => self.grid.clear_above(), // From start to cursor
+                    2 | 3 => self.grid.clear(),   // Entire screen
                     _ => {}
                 }
             }
@@ -216,7 +216,11 @@ impl<'a> Perform for TerminalPerformer<'a> {
 
     /// Handle ESC sequence
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
-        trace!("ESC: intermediates={:?}, byte=0x{:02X}", intermediates, byte);
+        trace!(
+            "ESC: intermediates={:?}, byte=0x{:02X}",
+            intermediates,
+            byte
+        );
 
         match (intermediates.first(), byte) {
             // Save Cursor (DECSC)
@@ -274,8 +278,11 @@ impl<'a> Perform for TerminalPerformer<'a> {
 
     /// Hook for DCS (Device Control String) start
     fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, _action: char) {
-        trace!("DCS hook: params={:?}, intermediates={:?}",
-            params.iter().collect::<Vec<_>>(), intermediates);
+        trace!(
+            "DCS hook: params={:?}, intermediates={:?}",
+            params.iter().collect::<Vec<_>>(),
+            intermediates
+        );
     }
 
     /// DCS data

@@ -17,24 +17,24 @@ impl AnsiPalette {
 
         // Standard 16 colors (0-15)
         // These match typical terminal defaults
-        colors[0] = Rgb::new(0x00, 0x00, 0x00);  // Black
-        colors[1] = Rgb::new(0xCD, 0x00, 0x00);  // Red
-        colors[2] = Rgb::new(0x00, 0xCD, 0x00);  // Green
-        colors[3] = Rgb::new(0xCD, 0xCD, 0x00);  // Yellow
-        colors[4] = Rgb::new(0x00, 0x00, 0xEE);  // Blue
-        colors[5] = Rgb::new(0xCD, 0x00, 0xCD);  // Magenta
-        colors[6] = Rgb::new(0x00, 0xCD, 0xCD);  // Cyan
-        colors[7] = Rgb::new(0xE5, 0xE5, 0xE5);  // White
+        colors[0] = Rgb::new(0x00, 0x00, 0x00); // Black
+        colors[1] = Rgb::new(0xCD, 0x00, 0x00); // Red
+        colors[2] = Rgb::new(0x00, 0xCD, 0x00); // Green
+        colors[3] = Rgb::new(0xCD, 0xCD, 0x00); // Yellow
+        colors[4] = Rgb::new(0x00, 0x00, 0xEE); // Blue
+        colors[5] = Rgb::new(0xCD, 0x00, 0xCD); // Magenta
+        colors[6] = Rgb::new(0x00, 0xCD, 0xCD); // Cyan
+        colors[7] = Rgb::new(0xE5, 0xE5, 0xE5); // White
 
         // Bright colors (8-15)
-        colors[8] = Rgb::new(0x7F, 0x7F, 0x7F);   // Bright Black (Gray)
-        colors[9] = Rgb::new(0xFF, 0x00, 0x00);   // Bright Red
-        colors[10] = Rgb::new(0x00, 0xFF, 0x00);  // Bright Green
-        colors[11] = Rgb::new(0xFF, 0xFF, 0x00);  // Bright Yellow
-        colors[12] = Rgb::new(0x5C, 0x5C, 0xFF);  // Bright Blue
-        colors[13] = Rgb::new(0xFF, 0x00, 0xFF);  // Bright Magenta
-        colors[14] = Rgb::new(0x00, 0xFF, 0xFF);  // Bright Cyan
-        colors[15] = Rgb::new(0xFF, 0xFF, 0xFF);  // Bright White
+        colors[8] = Rgb::new(0x7F, 0x7F, 0x7F); // Bright Black (Gray)
+        colors[9] = Rgb::new(0xFF, 0x00, 0x00); // Bright Red
+        colors[10] = Rgb::new(0x00, 0xFF, 0x00); // Bright Green
+        colors[11] = Rgb::new(0xFF, 0xFF, 0x00); // Bright Yellow
+        colors[12] = Rgb::new(0x5C, 0x5C, 0xFF); // Bright Blue
+        colors[13] = Rgb::new(0xFF, 0x00, 0xFF); // Bright Magenta
+        colors[14] = Rgb::new(0x00, 0xFF, 0xFF); // Bright Cyan
+        colors[15] = Rgb::new(0xFF, 0xFF, 0xFF); // Bright White
 
         // 216-color cube (16-231)
         // 6x6x6 RGB cube

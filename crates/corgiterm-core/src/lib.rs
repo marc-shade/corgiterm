@@ -32,6 +32,7 @@ pub use ascii_art::{
     FONT_BANNER, FONT_BLOCK, FONT_MINI, FONT_SHADOW, FONT_SMALL, FONT_STANDARD,
 };
 pub use error::{CoreError, Result};
+pub use hints::{Hint, HintDetector, HintModeState, HintType};
 pub use history::{CommandHistory, OutputHistory, SearchableHistory};
 pub use history_learning::{
     FrequentCommandData, HistoryLearningManager, LearningContextData, PatternData, PreferenceData,
@@ -40,7 +41,6 @@ pub use learning::{
     CommandLearning, CommandPattern, CommandStats, CommandSuggestion, SuggestionSource,
     UserPreference,
 };
-pub use hints::{Hint, HintDetector, HintModeState, HintType};
 pub use pty::{Pty, PtySize};
 pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
 pub use session::{Session, SessionId, SessionManager};

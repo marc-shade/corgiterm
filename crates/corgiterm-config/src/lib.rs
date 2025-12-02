@@ -35,6 +35,7 @@ pub fn config_dir() -> PathBuf {
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Config {
     /// General settings
     pub general: GeneralConfig,
@@ -58,24 +59,6 @@ pub struct Config {
     pub advanced: AdvancedConfig,
     /// SSH configuration
     pub ssh: SshConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            appearance: AppearanceConfig::default(),
-            terminal: TerminalConfig::default(),
-            keybindings: KeybindingsConfig::default(),
-            ai: AiConfig::default(),
-            safe_mode: SafeModeConfig::default(),
-            sessions: SessionsConfig::default(),
-            performance: PerformanceConfig::default(),
-            accessibility: AccessibilityConfig::default(),
-            advanced: AdvancedConfig::default(),
-            ssh: SshConfig::default(),
-        }
-    }
 }
 
 /// General application settings
@@ -333,20 +316,12 @@ pub enum CloseOnExit {
 /// Keyboard shortcuts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct KeybindingsConfig {
     /// Custom keybindings
     pub bindings: Vec<Keybinding>,
     /// Configurable shortcuts
     pub shortcuts: ShortcutsConfig,
-}
-
-impl Default for KeybindingsConfig {
-    fn default() -> Self {
-        Self {
-            bindings: Vec::new(),
-            shortcuts: ShortcutsConfig::default(),
-        }
-    }
 }
 
 /// A single keybinding
@@ -388,6 +363,7 @@ pub struct ShortcutsConfig {
 
     // UI features
     pub toggle_ai: Option<String>,
+    pub toggle_sidebar: Option<String>,
     pub quick_switcher: Option<String>,
     pub ssh_manager: Option<String>,
     pub snippets: Option<String>,
@@ -428,6 +404,7 @@ impl Default for ShortcutsConfig {
 
             // UI features
             toggle_ai: Some("Ctrl+Shift+A".to_string()),
+            toggle_sidebar: Some("Ctrl+Shift+B".to_string()),
             quick_switcher: Some("Ctrl+K".to_string()),
             ssh_manager: Some("Ctrl+S".to_string()),
             snippets: Some("Ctrl+Shift+S".to_string()),

@@ -13,8 +13,8 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, FlowBox, Label, Notebook, Orientation, PolicyType, Popover,
-    ScrolledWindow, SelectionMode, ToggleButton,
+    Box, Button, Entry, FlowBox, Label, Notebook, Orientation, PolicyType, Popover, ScrolledWindow,
+    SelectionMode, ToggleButton,
 };
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -2063,8 +2063,11 @@ pub fn show_emoji_picker(
             flow_box.append(&btn);
         }
 
+        let tab_label = Label::new(Some(cat.icon));
+        tab_label.set_tooltip_text(Some(cat.name));
+
         scrolled.set_child(Some(&flow_box));
-        notebook.append_page(&scrolled, Some(&Label::new(Some(cat.icon))));
+        notebook.append_page(&scrolled, Some(&tab_label));
     }
 
     // Kaomoji tab

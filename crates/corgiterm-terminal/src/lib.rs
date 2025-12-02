@@ -22,19 +22,19 @@
 //!   /　 つ   Making terminals rock-solid
 //! ```
 
+pub mod ansi;
 pub mod cell;
 pub mod grid;
 pub mod parser;
 pub mod renderer;
 pub mod selection;
-pub mod ansi;
 
+pub use ansi::{AnsiColor, AnsiPalette};
 pub use cell::{Cell, CellFlags, Color, Rgb};
-pub use grid::{Grid, GridRow, Cursor, CursorShape, GraphicsState};
+pub use grid::{Cursor, CursorShape, GraphicsState, Grid, GridRow};
 pub use parser::TerminalParser;
 pub use renderer::{GpuRenderer, RenderStats, RendererConfig};
-pub use selection::{Selection, SelectionRange, SelectionType, Point};
-pub use ansi::{AnsiPalette, AnsiColor};
+pub use selection::{Point, Selection, SelectionRange, SelectionType};
 
 use thiserror::Error;
 
@@ -93,7 +93,12 @@ pub struct TerminalSize {
 
 impl TerminalSize {
     pub fn new(cols: u16, rows: u16, cell_width: u16, cell_height: u16) -> Self {
-        Self { cols, rows, cell_width, cell_height }
+        Self {
+            cols,
+            rows,
+            cell_width,
+            cell_height,
+        }
     }
 
     /// Total width in pixels
@@ -183,7 +188,7 @@ impl Terminal {
     /// Returns the health status after processing
     pub fn safe_process(&mut self, bytes: &[u8]) -> TerminalHealth {
         // First validate state
-        if let Err(_) = self.validate_state() {
+        if self.validate_state().is_err() {
             self.error_count += 1;
 
             if self.error_count >= self.max_errors {
@@ -211,20 +216,24 @@ impl Terminal {
         // Check cursor is within bounds
         if cursor.col >= cols {
             return Err(TerminalError::InvalidState(format!(
-                "Cursor column {} out of bounds (max {})", cursor.col, cols - 1
+                "Cursor column {} out of bounds (max {})",
+                cursor.col,
+                cols - 1
             )));
         }
 
         if cursor.row >= rows {
             return Err(TerminalError::InvalidState(format!(
-                "Cursor row {} out of bounds (max {})", cursor.row, rows - 1
+                "Cursor row {} out of bounds (max {})",
+                cursor.row,
+                rows - 1
             )));
         }
 
         // Check size consistency
         if self.size.cols as usize != cols || self.size.rows as usize != rows {
             return Err(TerminalError::InvalidState(
-                "Grid dimensions don't match terminal size".into()
+                "Grid dimensions don't match terminal size".into(),
             ));
         }
 

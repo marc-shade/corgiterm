@@ -375,7 +375,7 @@ impl Perform for TerminalState {
                 let next_tab = (self.cursor.1 / 8 + 1) * 8;
                 self.cursor.1 = next_tab.min(self.size.cols - 1);
             }
-            0x0A | 0x0B | 0x0C => {
+            0x0A..=0x0C => {
                 self.newline();
             }
             0x0D => {

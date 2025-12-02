@@ -174,7 +174,7 @@ impl SafeMode {
                 preview.explanation.clear();
                 preview
                     .explanation
-                    .push(format!("This is a safe, read-only command"));
+                    .push("This is a safe, read-only command".to_string());
                 break;
             }
         }

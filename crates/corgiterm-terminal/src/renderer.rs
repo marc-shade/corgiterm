@@ -140,8 +140,12 @@ impl GpuRenderer {
         let swash_cache = SwashCache::new();
         let cache = Cache::new(&device);
         let mut text_atlas = TextAtlas::new(&device, &queue, &cache, surface_config.format);
-        let text_renderer =
-            TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
+        let text_renderer = TextRenderer::new(
+            &mut text_atlas,
+            &device,
+            wgpu::MultisampleState::default(),
+            None,
+        );
 
         let viewport = Viewport::new(&device, &cache);
 
@@ -195,7 +199,10 @@ impl GpuRenderer {
     pub fn set_config(&mut self, config: RendererConfig) {
         self.config = config;
         // Recalculate cell metrics
-        let metrics = Metrics::new(self.config.font_size, self.config.font_size * self.config.line_height);
+        let metrics = Metrics::new(
+            self.config.font_size,
+            self.config.font_size * self.config.line_height,
+        );
         self.cell_width = self.config.font_size * 0.6;
         self.cell_height = metrics.line_height;
         // Recalculate terminal size
@@ -297,11 +304,7 @@ impl GpuRenderer {
     }
 
     /// Render the terminal grid
-    pub fn render(
-        &mut self,
-        grid: &Grid,
-        selection: Option<&Selection>,
-    ) -> Result<()> {
+    pub fn render(&mut self, grid: &Grid, selection: Option<&Selection>) -> Result<()> {
         let surface = match &self.surface {
             Some(s) => s,
             None => return Ok(()), // No surface to render to
@@ -312,7 +315,9 @@ impl GpuRenderer {
             .get_current_texture()
             .map_err(|e| TerminalError::Gpu(format!("Surface error: {}", e)))?;
 
-        let view = output.texture.create_view(&TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&TextureViewDescriptor::default());
 
         // Update text buffers for each row
         self.update_text_buffers(grid, selection);
@@ -353,9 +358,11 @@ impl GpuRenderer {
             .map_err(|e| TerminalError::Gpu(format!("Text prepare error: {:?}", e)))?;
 
         // Create command encoder
-        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         // Render pass
         {
@@ -381,7 +388,8 @@ impl GpuRenderer {
             });
 
             // Render text
-            self.text_renderer.render(&self.text_atlas, &self.viewport, &mut render_pass)
+            self.text_renderer
+                .render(&self.text_atlas, &self.viewport, &mut render_pass)
                 .map_err(|e| TerminalError::Gpu(format!("Text render error: {:?}", e)))?;
         }
 
@@ -401,7 +409,11 @@ impl GpuRenderer {
         // Ensure we have enough buffers and dirty tracking
         while self.buffers.len() < rows {
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
-            buffer.set_size(&mut self.font_system, Some(self.surface_config.width as f32), Some(self.cell_height));
+            buffer.set_size(
+                &mut self.font_system,
+                Some(self.surface_config.width as f32),
+                Some(self.cell_height),
+            );
             self.buffers.push(buffer);
             self.buffer_dirty.push(true); // New buffers need content
         }
@@ -415,7 +427,10 @@ impl GpuRenderer {
         let mut rows_updated = 0;
 
         // Collect row data for dirty rows only (or all if full redraw)
-        let row_data: Vec<_> = grid.rows().iter().enumerate()
+        let row_data: Vec<_> = grid
+            .rows()
+            .iter()
+            .enumerate()
             .filter(|(row_idx, grid_row)| {
                 // Update if: full redraw, grid row is dirty, or our buffer was dirty
                 full_redraw
@@ -423,35 +438,36 @@ impl GpuRenderer {
                     || self.buffer_dirty.get(*row_idx).copied().unwrap_or(true)
             })
             .map(|(row_idx, grid_row)| {
-            // Build spans with per-cell attributes and resolved colors
-            let mut spans: Vec<(String, CellFlags, Rgb)> = Vec::new();
-            let mut current_text = String::new();
-            let mut current_flags = CellFlags::empty();
-            let mut current_fg = Color::Foreground;
+                // Build spans with per-cell attributes and resolved colors
+                let mut spans: Vec<(String, CellFlags, Rgb)> = Vec::new();
+                let mut current_text = String::new();
+                let mut current_flags = CellFlags::empty();
+                let mut current_fg = Color::Foreground;
 
-            for cell in grid_row.cells() {
-                // Check if attributes changed
-                if cell.flags != current_flags || cell.fg != current_fg {
-                    if !current_text.is_empty() {
-                        // Resolve color now while we have immutable access
-                        let resolved_color = self.resolve_color(current_fg);
-                        spans.push((current_text.clone(), current_flags, resolved_color));
-                        current_text.clear();
+                for cell in grid_row.cells() {
+                    // Check if attributes changed
+                    if cell.flags != current_flags || cell.fg != current_fg {
+                        if !current_text.is_empty() {
+                            // Resolve color now while we have immutable access
+                            let resolved_color = self.resolve_color(current_fg);
+                            spans.push((current_text.clone(), current_flags, resolved_color));
+                            current_text.clear();
+                        }
+                        current_flags = cell.flags;
+                        current_fg = cell.fg;
                     }
-                    current_flags = cell.flags;
-                    current_fg = cell.fg;
+                    current_text.push(cell.c);
                 }
-                current_text.push(cell.c);
-            }
 
-            // Push remaining text
-            if !current_text.is_empty() {
-                let resolved_color = self.resolve_color(current_fg);
-                spans.push((current_text, current_flags, resolved_color));
-            }
+                // Push remaining text
+                if !current_text.is_empty() {
+                    let resolved_color = self.resolve_color(current_fg);
+                    spans.push((current_text, current_flags, resolved_color));
+                }
 
-            (row_idx, spans)
-        }).collect();
+                (row_idx, spans)
+            })
+            .collect();
 
         // Now update buffers using collected data - colors already resolved
         for (row_idx, spans) in row_data {
@@ -486,37 +502,35 @@ impl GpuRenderer {
                         .style(style)
                         .color(GlyphonColor::rgb(color.r, color.g, color.b));
 
-                    buffer.set_text(
-                        &mut self.font_system,
-                        text,
-                        attrs,
-                        Shaping::Advanced,
-                    );
+                    buffer.set_text(&mut self.font_system, text, attrs, Shaping::Advanced);
                 } else {
                     // Multiple spans - build rich text (colors already resolved)
-                    let rich_text: Vec<_> = spans.iter().map(|(text, flags, color)| {
-                        let weight = if flags.contains(CellFlags::BOLD) {
-                            Weight::BOLD
-                        } else if flags.contains(CellFlags::DIM) {
-                            Weight::LIGHT
-                        } else {
-                            Weight::NORMAL
-                        };
+                    let rich_text: Vec<_> = spans
+                        .iter()
+                        .map(|(text, flags, color)| {
+                            let weight = if flags.contains(CellFlags::BOLD) {
+                                Weight::BOLD
+                            } else if flags.contains(CellFlags::DIM) {
+                                Weight::LIGHT
+                            } else {
+                                Weight::NORMAL
+                            };
 
-                        let style = if flags.contains(CellFlags::ITALIC) {
-                            Style::Italic
-                        } else {
-                            Style::Normal
-                        };
+                            let style = if flags.contains(CellFlags::ITALIC) {
+                                Style::Italic
+                            } else {
+                                Style::Normal
+                            };
 
-                        let attrs = Attrs::new()
-                            .family(Family::Monospace)
-                            .weight(weight)
-                            .style(style)
-                            .color(GlyphonColor::rgb(color.r, color.g, color.b));
+                            let attrs = Attrs::new()
+                                .family(Family::Monospace)
+                                .weight(weight)
+                                .style(style)
+                                .color(GlyphonColor::rgb(color.r, color.g, color.b));
 
-                        (text.as_str(), attrs)
-                    }).collect();
+                            (text.as_str(), attrs)
+                        })
+                        .collect();
 
                     buffer.set_rich_text(
                         &mut self.font_system,

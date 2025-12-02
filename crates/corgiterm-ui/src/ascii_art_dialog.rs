@@ -193,7 +193,7 @@ impl AsciiArtDialog {
             for entry in history.borrow().iter().rev().take(20) {
                 let row = libadwaita::ActionRow::builder()
                     .title("ASCII art")
-                    .subtitle(&format!("{} chars", entry.len()))
+                    .subtitle(format!("{} chars", entry.len()))
                     .activatable(true)
                     .build();
                 let copy_btn = Button::from_icon_name("edit-copy-symbolic");
@@ -202,7 +202,7 @@ impl AsciiArtDialog {
                 let entry_text = entry.clone();
                 copy_btn.connect_clicked(move |_| {
                     let _ = gtk4::gdk::Display::default()
-                        .and_then(|d| Some(d.clipboard()))
+                        .map(|d| d.clipboard())
                         .map(|cb| cb.set_text(&entry_text));
                 });
                 row.add_suffix(&copy_btn);
@@ -311,10 +311,7 @@ impl AsciiArtDialog {
         filter_row.set_subtitle("Apply image processing");
         let filter_names: Vec<&str> = ImageFilter::all().iter().map(|f| f.name()).collect();
         let filter_model = StringList::new(&filter_names);
-        let filter_dropdown = DropDown::builder()
-            .model(&filter_model)
-            .selected(0)
-            .build();
+        let filter_dropdown = DropDown::builder().model(&filter_model).selected(0).build();
         filter_row.add_suffix(&filter_dropdown);
         settings_group.add(&filter_row);
 
@@ -587,7 +584,8 @@ impl AsciiArtDialog {
         if let Some(notebook_page) = self.notebook.nth_page(Some(0)) {
             if let Some(vbox) = notebook_page.downcast_ref::<Box>() {
                 // Setup drag-drop on the vbox
-                let drop_target = gtk4::DropTarget::new(gtk4::gio::File::static_type(), gdk::DragAction::COPY);
+                let drop_target =
+                    gtk4::DropTarget::new(gtk4::gio::File::static_type(), gdk::DragAction::COPY);
                 let current_image_drop = current_image.clone();
                 let preview_drop = preview.clone();
                 let width_drop = width_scale.clone();
@@ -619,7 +617,8 @@ impl AsciiArtDialog {
                                 );
                                 // Store result
                                 let buffer = preview_drop.buffer();
-                                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                                let text =
+                                    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
                                 *result_drop.borrow_mut() = Some(text.to_string());
                                 return true;
                             }
@@ -689,8 +688,13 @@ impl AsciiArtDialog {
                                                         );
                                                         // Store result
                                                         let buffer = preview_clone.buffer();
-                                                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                                                        *result_clone.borrow_mut() = Some(text.to_string());
+                                                        let text = buffer.text(
+                                                            &buffer.start_iter(),
+                                                            &buffer.end_iter(),
+                                                            false,
+                                                        );
+                                                        *result_clone.borrow_mut() =
+                                                            Some(text.to_string());
                                                     }
                                                 }
                                             }
@@ -726,8 +730,16 @@ impl AsciiArtDialog {
                 $control.$signal(move |_| {
                     if let Some(img) = current_image.borrow().as_ref() {
                         Self::update_image_preview(
-                            img, &preview, &width, &charset, &filter,
-                            &brightness, &contrast, &aspect, &colored, &inverted,
+                            img,
+                            &preview,
+                            &width,
+                            &charset,
+                            &filter,
+                            &brightness,
+                            &contrast,
+                            &aspect,
+                            &colored,
+                            &inverted,
                         );
                         let buffer = preview.buffer();
                         let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
@@ -751,58 +763,138 @@ impl AsciiArtDialog {
 
         // Width change
         connect_image_control!(
-            width_scale, connect_value_changed, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            width_scale,
+            connect_value_changed,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Charset change
         connect_image_control!(
-            charset_dropdown, connect_selected_notify, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            charset_dropdown,
+            connect_selected_notify,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Filter change
         connect_image_control!(
-            filter_dropdown, connect_selected_notify, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            filter_dropdown,
+            connect_selected_notify,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Brightness change
         connect_image_control!(
-            brightness_scale, connect_value_changed, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            brightness_scale,
+            connect_value_changed,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Contrast change
         connect_image_control!(
-            contrast_scale, connect_value_changed, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            contrast_scale,
+            connect_value_changed,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Aspect change
         connect_image_control!(
-            aspect_scale, connect_value_changed, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            aspect_scale,
+            connect_value_changed,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Color checkbox
         connect_image_control!(
-            colored_check, connect_toggled, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            colored_check,
+            connect_toggled,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
 
         // Inverted checkbox
         connect_image_control!(
-            inverted_check, connect_toggled, current_image, preview,
-            width_scale, charset_dropdown, filter_dropdown, brightness_scale,
-            contrast_scale, aspect_scale, colored_check, inverted_check, result
+            inverted_check,
+            connect_toggled,
+            current_image,
+            preview,
+            width_scale,
+            charset_dropdown,
+            filter_dropdown,
+            brightness_scale,
+            contrast_scale,
+            aspect_scale,
+            colored_check,
+            inverted_check,
+            result
         );
     }
 

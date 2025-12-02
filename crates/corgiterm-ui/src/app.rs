@@ -252,10 +252,8 @@ fn init_ai() {
             config.ai.default_provider.clone()
         };
 
-        if !default.is_empty() {
-            if ai_manager.set_default(&default) {
-                tracing::info!("Default AI provider: {}", default);
-            }
+        if !default.is_empty() && ai_manager.set_default(&default) {
+            tracing::info!("Default AI provider: {}", default);
         }
     }
 

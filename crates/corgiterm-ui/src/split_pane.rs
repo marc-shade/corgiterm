@@ -186,7 +186,12 @@ impl SplitPane {
                         if let Some(c) = key.to_unicode() {
                             if ctrl && c.is_ascii_alphabetic() {
                                 // Control sequence (Ctrl+C, Ctrl+D, etc.)
-                                (vec![(c.to_ascii_lowercase() as u8) - b'a' + 1], false, false, true)
+                                (
+                                    vec![(c.to_ascii_lowercase() as u8) - b'a' + 1],
+                                    false,
+                                    false,
+                                    true,
+                                )
                             } else {
                                 // Regular text
                                 (c.to_string().into_bytes(), false, false, false)
@@ -198,12 +203,11 @@ impl SplitPane {
                 };
 
                 // Check if this key type should be broadcast based on settings
-                let should_broadcast = !bytes.is_empty() && (
-                    (is_special && settings.broadcast_special) ||
-                    (is_arrow && settings.broadcast_arrows) ||
-                    (is_control && settings.broadcast_control) ||
-                    (!is_special && !is_arrow && !is_control && settings.broadcast_text)
-                );
+                let should_broadcast = !bytes.is_empty()
+                    && ((is_special && settings.broadcast_special)
+                        || (is_arrow && settings.broadcast_arrows)
+                        || (is_control && settings.broadcast_control)
+                        || (!is_special && !is_arrow && !is_control && settings.broadcast_text));
 
                 if should_broadcast {
                     // Broadcast to targeted panes (or all if none selected)

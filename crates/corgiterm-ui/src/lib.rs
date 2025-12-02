@@ -42,6 +42,7 @@ pub mod theme_creator;
 pub mod widgets;
 pub mod window;
 
+use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::{glib, Application};
 
@@ -53,8 +54,12 @@ pub fn run() -> glib::ExitCode {
     // Initialize GTK
     gtk4::init().expect("Failed to initialize GTK");
 
-    // Create application
-    let app = Application::builder().application_id(APP_ID).build();
+    // Create application with NON_UNIQUE flag to avoid D-Bus registration issues
+    // on some X11 desktop environments (e.g., Budgie, older XFCE)
+    let app = Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
+        .build();
 
     // Connect signals
     app.connect_activate(|app| {

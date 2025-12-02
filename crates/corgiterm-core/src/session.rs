@@ -324,6 +324,8 @@ pub struct SessionManager {
     active_project: usize,
     /// Recently closed projects (for undo)
     recently_closed: Vec<Project>,
+    /// File shortcuts (quick access to frequently used files)
+    file_shortcuts: Vec<PathBuf>,
     /// Config directory for persistence
     config_dir: PathBuf,
 }
@@ -335,6 +337,7 @@ impl SessionManager {
             projects: Vec::new(),
             active_project: 0,
             recently_closed: Vec::new(),
+            file_shortcuts: Vec::new(),
             config_dir,
         }
     }
@@ -348,6 +351,17 @@ impl SessionManager {
             self.projects = serde_json::from_str(&content)
                 .map_err(|e| CoreError::Session(format!("Failed to parse projects: {}", e)))?;
         }
+
+        // Load file shortcuts
+        let shortcuts_file = self.config_dir.join("file_shortcuts.json");
+        if shortcuts_file.exists() {
+            let content = std::fs::read_to_string(&shortcuts_file)
+                .map_err(|e| CoreError::Session(format!("Failed to read file shortcuts: {}", e)))?;
+            self.file_shortcuts = serde_json::from_str(&content).map_err(|e| {
+                CoreError::Session(format!("Failed to parse file shortcuts: {}", e))
+            })?;
+        }
+
         Ok(())
     }
 
@@ -361,6 +375,14 @@ impl SessionManager {
             .map_err(|e| CoreError::Session(format!("Failed to serialize projects: {}", e)))?;
         std::fs::write(&projects_file, content)
             .map_err(|e| CoreError::Session(format!("Failed to write projects: {}", e)))?;
+
+        // Save file shortcuts
+        let shortcuts_file = self.config_dir.join("file_shortcuts.json");
+        let content = serde_json::to_string_pretty(&self.file_shortcuts).map_err(|e| {
+            CoreError::Session(format!("Failed to serialize file shortcuts: {}", e))
+        })?;
+        std::fs::write(&shortcuts_file, content)
+            .map_err(|e| CoreError::Session(format!("Failed to write file shortcuts: {}", e)))?;
 
         Ok(())
     }
@@ -456,6 +478,24 @@ impl SessionManager {
         // Sort by last activity
         items.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
         items
+    }
+
+    /// Get all file shortcuts
+    pub fn file_shortcuts(&self) -> &[PathBuf] {
+        &self.file_shortcuts
+    }
+
+    /// Add a file shortcut
+    pub fn add_file_shortcut(&mut self, path: PathBuf) {
+        // Don't add duplicates
+        if !self.file_shortcuts.contains(&path) {
+            self.file_shortcuts.push(path);
+        }
+    }
+
+    /// Remove a file shortcut
+    pub fn remove_file_shortcut(&mut self, path: &PathBuf) {
+        self.file_shortcuts.retain(|p| p != path);
     }
 }
 

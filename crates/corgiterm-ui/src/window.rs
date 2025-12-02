@@ -4,7 +4,7 @@ use gtk4::gio::{self, Menu, SimpleAction};
 use gtk4::prelude::*;
 use gtk4::{
     Application, Box, Button, EventControllerKey, FileDialog, FileFilter, Label, MenuButton,
-    Orientation, Paned, Revealer, RevealerTransitionType, Spinner,
+    Orientation, Paned, Revealer, RevealerTransitionType, Spinner, Widget,
 };
 use libadwaita::prelude::*;
 use libadwaita::{ApplicationWindow, HeaderBar, WindowTitle};
@@ -28,6 +28,8 @@ pub struct MainWindow {
     tabs: Rc<TerminalTabs>,
     #[allow(dead_code)]
     sidebar: Rc<Sidebar>,
+    #[allow(dead_code)]
+    sidebar_widget: Widget,
     #[allow(dead_code)]
     ai_panel: Rc<RefCell<AiPanel>>,
     #[allow(dead_code)]
@@ -58,6 +60,11 @@ impl MainWindow {
         // Window title
         let title = WindowTitle::new("CorgiTerm", "~/");
         header.set_title_widget(Some(&title));
+
+        // Sidebar toggle button
+        let sidebar_toggle_btn = Button::from_icon_name("sidebar-show-symbolic");
+        sidebar_toggle_btn.set_tooltip_text(Some("Toggle Sidebar (Ctrl+Shift+B)"));
+        header.pack_start(&sidebar_toggle_btn);
 
         // New tab button
         let new_tab_btn = Button::from_icon_name("tab-new-symbolic");
@@ -226,14 +233,37 @@ impl MainWindow {
             tracing::info!("Safe mode: Command cancelled");
         });
 
-        // Content: sidebar + terminal area
+        // Sidebar setup with Paned layout (original working approach)
+        let sidebar_widget = sidebar.widget().clone();
+        sidebar_widget.set_width_request(220);
+
+        // Content paned: sidebar | terminal area
         let content_paned = Paned::new(Orientation::Horizontal);
-        content_paned.set_start_child(Some(sidebar.widget()));
+        content_paned.set_start_child(Some(&sidebar_widget));
         content_paned.set_end_child(Some(&terminal_area));
-        content_paned.set_position(220);
+        content_paned.set_resize_start_child(false);
         content_paned.set_shrink_start_child(false);
+        content_paned.set_resize_end_child(true);
         content_paned.set_shrink_end_child(false);
+        content_paned.set_position(220);
         content_paned.set_vexpand(true);
+
+        // Sidebar visibility state (tracked separately to avoid is_visible() issues)
+        let sidebar_visible = Rc::new(RefCell::new(true));
+
+        // Connect sidebar toggle button - only adjust paned position (avoids visibility toggle issues)
+        let sidebar_visible_for_btn = sidebar_visible.clone();
+        let paned_for_btn = content_paned.clone();
+        sidebar_toggle_btn.connect_clicked(move |_| {
+            let is_visible = *sidebar_visible_for_btn.borrow();
+            *sidebar_visible_for_btn.borrow_mut() = !is_visible;
+            // Just change paned position - don't toggle visibility
+            if is_visible {
+                paned_for_btn.set_position(0);
+            } else {
+                paned_for_btn.set_position(220);
+            }
+        });
 
         // Connect NL input to AI translation and terminal execution
         let tabs_for_nl = tabs.clone();
@@ -494,6 +524,15 @@ impl MainWindow {
             tracing::info!("Opened terminal in: {}", path);
         });
 
+        // Connect sidebar file shortcut clicks to document tab creation
+        let tabs_for_file = tabs.clone();
+        sidebar.set_on_file_click(move |name, path| {
+            // Open file in document editor tab
+            let file_path = std::path::PathBuf::from(path);
+            tabs_for_file.add_document_tab(name, Some(&file_path));
+            tracing::info!("Opened file: {}", path);
+        });
+
         // Load keyboard shortcuts from configuration
         let shortcuts = if let Some(cm) = crate::app::config_manager() {
             let config = cm.read().config();
@@ -508,17 +547,17 @@ impl MainWindow {
         let tabs_for_keys = tabs.clone();
         let window_for_keys = window.clone();
         let ai_revealer_for_keys = ai_revealer.clone();
+        let sidebar_visible_for_keys = sidebar_visible.clone();
+        let paned_for_keys = content_paned.clone();
         let safe_mode_preview_for_keys = safe_mode_preview.clone();
         let shortcuts_for_keys = shortcuts.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::Key;
 
             // Handle Escape to close safe mode preview
-            if key == Key::Escape {
-                if safe_mode_preview_for_keys.is_visible() {
-                    safe_mode_preview_for_keys.cancel();
-                    return gtk4::glib::Propagation::Stop;
-                }
+            if key == Key::Escape && safe_mode_preview_for_keys.is_visible() {
+                safe_mode_preview_for_keys.cancel();
+                return gtk4::glib::Propagation::Stop;
             }
 
             // Check configured shortcuts
@@ -609,6 +648,17 @@ impl MainWindow {
             if shortcuts_for_keys.matches(ShortcutAction::ToggleAi, key, modifier) {
                 let currently_revealed = ai_revealer_for_keys.reveals_child();
                 ai_revealer_for_keys.set_reveal_child(!currently_revealed);
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::ToggleSidebar, key, modifier) {
+                let is_visible = *sidebar_visible_for_keys.borrow();
+                *sidebar_visible_for_keys.borrow_mut() = !is_visible;
+                // Just change paned position - don't toggle visibility
+                if is_visible {
+                    paned_for_keys.set_position(0);
+                } else {
+                    paned_for_keys.set_position(220);
+                }
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::QuickSwitcher, key, modifier) {
@@ -705,6 +755,7 @@ impl MainWindow {
             window,
             tabs,
             sidebar,
+            sidebar_widget: sidebar_widget.into(),
             ai_panel,
             ai_revealer,
             nl_input,
@@ -831,10 +882,10 @@ fn quick_translate(input: &str) -> Option<String> {
     }
 
     // Process patterns
-    if input_lower.contains("kill") || input_lower.contains("stop") {
-        if input_lower.contains("process") {
-            return Some("# Use: kill <PID> or killall <name>".to_string());
-        }
+    if (input_lower.contains("kill") || input_lower.contains("stop"))
+        && input_lower.contains("process")
+    {
+        return Some("# Use: kill <PID> or killall <name>".to_string());
     }
     if input_lower.contains("running") && input_lower.contains("process") {
         return Some("ps aux | head -20".to_string());

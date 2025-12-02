@@ -100,9 +100,8 @@ impl Default for HintDetector {
 }
 
 // Compiled regex patterns (lazy static for performance)
-static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"https?://[^\s<>"'`\]\)]+"#).expect("Invalid URL regex")
-});
+static URL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"https?://[^\s<>"'`\]\)]+"#).expect("Invalid URL regex"));
 
 static FILE_PATH_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // Match absolute paths and relative paths with extensions
@@ -134,11 +133,21 @@ impl HintDetector {
     }
 
     /// Scan a single line for hints
-    fn scan_line(&self, line: &str, _row: usize, hints: &mut Vec<(HintType, String, usize, usize)>) {
+    fn scan_line(
+        &self,
+        line: &str,
+        _row: usize,
+        hints: &mut Vec<(HintType, String, usize, usize)>,
+    ) {
         // URLs (highest priority - check first)
         if self.detect_urls {
             for mat in URL_REGEX.find_iter(line) {
-                hints.push((HintType::Url, mat.as_str().to_string(), mat.start(), mat.end()));
+                hints.push((
+                    HintType::Url,
+                    mat.as_str().to_string(),
+                    mat.start(),
+                    mat.end(),
+                ));
             }
         }
 
@@ -161,9 +170,9 @@ impl HintDetector {
                 let end = mat.end();
                 // Validate IP components are <= 255
                 let ip_text = mat.as_str().split(':').next().unwrap_or("");
-                let valid = ip_text.split('.').all(|part| {
-                    part.parse::<u16>().map(|n| n <= 255).unwrap_or(false)
-                });
+                let valid = ip_text
+                    .split('.')
+                    .all(|part| part.parse::<u16>().map(|n| n <= 255).unwrap_or(false));
                 if valid && !hints.iter().any(|(_, _, s, e)| start < *e && end > *s) {
                     hints.push((HintType::IpAddress, mat.as_str().to_string(), start, end));
                 }
@@ -183,11 +192,16 @@ impl HintDetector {
             for mat in FILE_PATH_REGEX.find_iter(line) {
                 let start = mat.start();
                 let end = mat.end();
-                let text = mat.as_str().trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+                let text = mat
+                    .as_str()
+                    .trim_start_matches(|c: char| c.is_whitespace() || c == ':');
                 let actual_start = start + (mat.as_str().len() - text.len());
 
                 // Skip if overlaps with existing hints
-                if !hints.iter().any(|(_, _, s, e)| actual_start < *e && end > *s) {
+                if !hints
+                    .iter()
+                    .any(|(_, _, s, e)| actual_start < *e && end > *s)
+                {
                     // Skip common false positives
                     if !text.starts_with("http") && text.len() > 2 {
                         hints.push((HintType::FilePath, text.to_string(), actual_start, end));
@@ -234,9 +248,7 @@ impl HintDetector {
         }
 
         // Sort by row, then by column (top-to-bottom, left-to-right)
-        raw_hints.sort_by(|a, b| {
-            a.0.cmp(&b.0).then(a.3.cmp(&b.3))
-        });
+        raw_hints.sort_by(|a, b| a.0.cmp(&b.0).then(a.3.cmp(&b.3)));
 
         // Assign labels
         let mut hints = Vec::with_capacity(raw_hints.len());
@@ -346,7 +358,10 @@ impl HintModeState {
             }
 
             // Check if any hints start with current buffer
-            let has_prefix = self.hints.iter().any(|h| h.label.starts_with(&self.input_buffer));
+            let has_prefix = self
+                .hints
+                .iter()
+                .any(|h| h.label.starts_with(&self.input_buffer));
             if !has_prefix {
                 // No matches possible, clear buffer
                 self.input_buffer.clear();

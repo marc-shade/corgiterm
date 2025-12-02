@@ -415,10 +415,8 @@ impl Grid {
 
     /// Move cursor relative
     pub fn move_cursor_relative(&mut self, dcol: isize, drow: isize) {
-        let new_col = (self.cursor.col as isize + dcol)
-            .max(0) as usize;
-        let new_row = (self.cursor.row as isize + drow)
-            .max(0) as usize;
+        let new_col = (self.cursor.col as isize + dcol).max(0) as usize;
+        let new_row = (self.cursor.row as isize + drow).max(0) as usize;
         self.move_cursor(new_col, new_row);
     }
 
@@ -486,7 +484,9 @@ impl Grid {
         if self.alternate_screen.is_none() {
             let main_screen = std::mem::replace(
                 &mut self.rows,
-                (0..self.num_rows).map(|_| GridRow::new(self.cols)).collect()
+                (0..self.num_rows)
+                    .map(|_| GridRow::new(self.cols))
+                    .collect(),
             );
             self.alternate_screen = Some(main_screen);
         }
@@ -501,7 +501,10 @@ impl Grid {
 
     /// Get dirty rows for rendering
     pub fn dirty_rows(&self) -> impl Iterator<Item = (usize, &GridRow)> {
-        self.rows.iter().enumerate().filter(|(_, row)| row.is_dirty())
+        self.rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.is_dirty())
     }
 
     /// Clear all dirty flags
