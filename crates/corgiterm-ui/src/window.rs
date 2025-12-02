@@ -809,9 +809,10 @@ impl MainWindow {
         window.add_controller(key_controller);
 
         // Set up periodic timer to update tab titles based on working directory
-        // Poll every 500ms to check if the current directory has changed
+        // Poll every 2s to check if the current directory has changed
+        // (reduced from 500ms to save CPU - directory changes are rare)
         let tabs_for_title_update = tabs.clone();
-        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+        gtk4::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             tabs_for_title_update.update_tab_titles();
             gtk4::glib::ControlFlow::Continue
         });

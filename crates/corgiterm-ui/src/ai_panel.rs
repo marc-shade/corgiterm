@@ -390,7 +390,7 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 match receiver.try_recv() {
                     Ok(result) => {
                         // Clear loading
@@ -653,7 +653,7 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || match receiver
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || match receiver
                 .try_recv()
             {
                 Ok(result) => {
@@ -814,7 +814,7 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || match receiver
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || match receiver
                 .try_recv()
             {
                 Ok(result) => {

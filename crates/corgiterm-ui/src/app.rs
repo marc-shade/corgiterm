@@ -141,140 +141,153 @@ fn init_sessions() {
     let _ = SESSION_MANAGER.set(session_arc);
 }
 
-/// Initialize AI providers from config
+/// Initialize AI manager (lazy - actual provider detection happens in background)
 fn init_ai() {
-    let mut ai_manager = corgiterm_ai::AiManager::new();
-    let mut first_provider: Option<String> = None;
-
-    // Get AI config
-    if let Some(cm) = config_manager() {
-        let config = cm.read().config();
-
-        // Priority 1: CLI-based providers (OAuth, no API key needed)
-
-        // Claude CLI (claude command)
-        if std::process::Command::new("which")
-            .arg("claude")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            let provider = corgiterm_ai::providers::ClaudeCliProvider::new(Some(
-                config.ai.claude.model.clone(),
-            ));
-            if first_provider.is_none() {
-                first_provider = Some("claude-cli".to_string());
-            }
-            ai_manager.add_provider(Box::new(provider));
-            tracing::info!("Claude CLI provider available");
-        }
-
-        // Gemini CLI (gemini command)
-        if std::process::Command::new("which")
-            .arg("gemini")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            let provider = corgiterm_ai::providers::GeminiCliProvider::new(Some(
-                config.ai.gemini.model.clone(),
-            ));
-            if first_provider.is_none() {
-                first_provider = Some("gemini-cli".to_string());
-            }
-            ai_manager.add_provider(Box::new(provider));
-            tracing::info!("Gemini CLI provider available");
-        }
-
-        // Priority 2: Local Ollama (check if reachable)
-        if config.ai.local.enabled && !config.ai.local.endpoint.is_empty() {
-            // Quick connectivity check (non-blocking timeout)
-            let endpoint = config.ai.local.endpoint.clone();
-            let ollama_available = std::process::Command::new("curl")
-                .args(["-s", "-m", "1", &format!("{}/api/tags", endpoint)])
-                .output()
-                .map(|o| o.status.success() && !o.stdout.is_empty())
-                .unwrap_or(false);
-
-            if ollama_available {
-                let provider = corgiterm_ai::providers::OllamaProvider::new(
-                    endpoint,
-                    config.ai.local.model.clone(),
-                );
-                if first_provider.is_none() {
-                    first_provider = Some("ollama".to_string());
-                }
-                ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Ollama provider available at {}", config.ai.local.endpoint);
-            } else {
-                tracing::debug!("Ollama not reachable at {}", config.ai.local.endpoint);
-            }
-        }
-
-        // Priority 3: API key providers
-        if let Some(ref api_key) = config.ai.claude.api_key {
-            if !api_key.is_empty() {
-                let provider = corgiterm_ai::providers::ClaudeProvider::new(
-                    api_key.clone(),
-                    Some(config.ai.claude.model.clone()),
-                );
-                if first_provider.is_none() {
-                    first_provider = Some("claude".to_string());
-                }
-                ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Claude API provider configured");
-            }
-        }
-
-        if let Some(ref api_key) = config.ai.openai.api_key {
-            if !api_key.is_empty() {
-                let provider = corgiterm_ai::providers::OpenAiProvider::new(
-                    api_key.clone(),
-                    Some(config.ai.openai.model.clone()),
-                );
-                if first_provider.is_none() {
-                    first_provider = Some("openai".to_string());
-                }
-                ai_manager.add_provider(Box::new(provider));
-                tracing::info!("OpenAI API provider configured");
-            }
-        }
-
-        if let Some(ref api_key) = config.ai.gemini.api_key {
-            if !api_key.is_empty() {
-                let provider = corgiterm_ai::providers::GeminiProvider::new(
-                    api_key.clone(),
-                    Some(config.ai.gemini.model.clone()),
-                );
-                if first_provider.is_none() {
-                    first_provider = Some("gemini".to_string());
-                }
-                ai_manager.add_provider(Box::new(provider));
-                tracing::info!("Gemini API provider configured");
-            }
-        }
-
-        // Set default provider (auto = first available)
-        let default = if config.ai.default_provider == "auto" {
-            first_provider.clone().unwrap_or_default()
-        } else {
-            config.ai.default_provider.clone()
-        };
-
-        if !default.is_empty() && ai_manager.set_default(&default) {
-            tracing::info!("Default AI provider: {}", default);
-        }
-    }
-
-    let provider_count = ai_manager.list_providers().len();
+    // Create empty AI manager first (instant)
+    let ai_manager = corgiterm_ai::AiManager::new();
     let ai_arc = Arc::new(RwLock::new(ai_manager));
     let _ = AI_MANAGER.set(ai_arc);
+    tracing::info!("AI manager created (providers loading in background)");
+}
 
-    if provider_count > 0 {
-        tracing::info!("AI manager initialized with {} provider(s)", provider_count);
-    } else {
-        tracing::warn!("No AI providers available - install claude CLI, ollama, or add API keys");
-    }
+/// Detect and add AI providers (called asynchronously after window is shown)
+fn detect_ai_providers() {
+    let Some(ai_arc) = AI_MANAGER.get().cloned() else {
+        return;
+    };
+
+    // Run provider detection in background thread
+    std::thread::spawn(move || {
+        let mut first_provider: Option<String> = None;
+        let mut providers: Vec<(String, Box<dyn corgiterm_ai::AiProvider + Send + Sync>)> =
+            Vec::new();
+
+        // Get AI config
+        if let Some(cm) = config_manager() {
+            let config = cm.read().config();
+
+            // Priority 1: CLI-based providers (OAuth, no API key needed)
+            // Claude CLI (claude command)
+            if std::process::Command::new("which")
+                .arg("claude")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                let provider = corgiterm_ai::providers::ClaudeCliProvider::new(Some(
+                    config.ai.claude.model.clone(),
+                ));
+                if first_provider.is_none() {
+                    first_provider = Some("claude-cli".to_string());
+                }
+                providers.push(("Claude CLI".to_string(), Box::new(provider)));
+            }
+
+            // Gemini CLI (gemini command)
+            if std::process::Command::new("which")
+                .arg("gemini")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                let provider = corgiterm_ai::providers::GeminiCliProvider::new(Some(
+                    config.ai.gemini.model.clone(),
+                ));
+                if first_provider.is_none() {
+                    first_provider = Some("gemini-cli".to_string());
+                }
+                providers.push(("Gemini CLI".to_string(), Box::new(provider)));
+            }
+
+            // Priority 2: Local Ollama (check if reachable)
+            if config.ai.local.enabled && !config.ai.local.endpoint.is_empty() {
+                let endpoint = config.ai.local.endpoint.clone();
+                let ollama_available = std::process::Command::new("curl")
+                    .args(["-s", "-m", "1", &format!("{}/api/tags", endpoint)])
+                    .output()
+                    .map(|o| o.status.success() && !o.stdout.is_empty())
+                    .unwrap_or(false);
+
+                if ollama_available {
+                    let provider = corgiterm_ai::providers::OllamaProvider::new(
+                        endpoint.clone(),
+                        config.ai.local.model.clone(),
+                    );
+                    if first_provider.is_none() {
+                        first_provider = Some("ollama".to_string());
+                    }
+                    providers.push((format!("Ollama at {}", endpoint), Box::new(provider)));
+                }
+            }
+
+            // Priority 3: API key providers (instant, no network check needed)
+            if let Some(ref api_key) = config.ai.claude.api_key {
+                if !api_key.is_empty() {
+                    let provider = corgiterm_ai::providers::ClaudeProvider::new(
+                        api_key.clone(),
+                        Some(config.ai.claude.model.clone()),
+                    );
+                    if first_provider.is_none() {
+                        first_provider = Some("claude".to_string());
+                    }
+                    providers.push(("Claude API".to_string(), Box::new(provider)));
+                }
+            }
+
+            if let Some(ref api_key) = config.ai.openai.api_key {
+                if !api_key.is_empty() {
+                    let provider = corgiterm_ai::providers::OpenAiProvider::new(
+                        api_key.clone(),
+                        Some(config.ai.openai.model.clone()),
+                    );
+                    if first_provider.is_none() {
+                        first_provider = Some("openai".to_string());
+                    }
+                    providers.push(("OpenAI API".to_string(), Box::new(provider)));
+                }
+            }
+
+            if let Some(ref api_key) = config.ai.gemini.api_key {
+                if !api_key.is_empty() {
+                    let provider = corgiterm_ai::providers::GeminiProvider::new(
+                        api_key.clone(),
+                        Some(config.ai.gemini.model.clone()),
+                    );
+                    if first_provider.is_none() {
+                        first_provider = Some("gemini".to_string());
+                    }
+                    providers.push(("Gemini API".to_string(), Box::new(provider)));
+                }
+            }
+
+            // Add all providers to the manager
+            let mut ai_manager = ai_arc.write();
+            for (name, provider) in providers {
+                ai_manager.add_provider(provider);
+                tracing::info!("{} provider available", name);
+            }
+
+            // Set default provider (auto = first available)
+            let default = if config.ai.default_provider == "auto" {
+                first_provider.clone().unwrap_or_default()
+            } else {
+                config.ai.default_provider.clone()
+            };
+
+            if !default.is_empty() && ai_manager.set_default(&default) {
+                tracing::info!("Default AI provider: {}", default);
+            }
+
+            let provider_count = ai_manager.list_providers().len();
+            if provider_count > 0 {
+                tracing::info!("AI providers ready: {} available", provider_count);
+            } else {
+                tracing::warn!(
+                    "No AI providers available - install claude CLI, ollama, or add API keys"
+                );
+            }
+        }
+    });
 }
 
 /// Initialize the plugin system
@@ -369,37 +382,39 @@ pub fn save_conversations() {
 
 /// Build the main UI
 pub fn build_ui(app: &Application) {
-    // Initialize config first
+    // CRITICAL PATH - must complete before window shows
+    // Initialize config first (needed for window settings)
     init_config();
 
-    // Initialize session manager for project persistence
-    init_sessions();
-
-    // Initialize AI providers
-    init_ai();
-
-    // Initialize plugin system
-    init_plugins();
-
-    // Initialize snippets library
-    init_snippets();
-
-    // Initialize command history for AI learning
-    init_history();
-
-    // Initialize conversation store for AI chat persistence
-    init_conversations();
-
-    // Load custom CSS
+    // Load custom CSS (needed for styling)
     load_css();
 
     // Apply libadwaita styling
     let style_manager = libadwaita::StyleManager::default();
     style_manager.set_color_scheme(libadwaita::ColorScheme::PreferDark);
 
-    // Create main window
+    // Create and show main window IMMEDIATELY
     let window = MainWindow::new(app);
     window.present();
+
+    // LAZY INITIALIZATION - happens after window is visible
+    // Use idle_add to run after GTK main loop processes the window
+    gtk4::glib::idle_add_local_once(|| {
+        // Initialize AI manager (instant - creates empty manager)
+        init_ai();
+
+        // Start async provider detection (runs in background thread)
+        detect_ai_providers();
+
+        // These are quick filesystem operations
+        init_sessions();
+        init_plugins();
+        init_snippets();
+        init_history();
+        init_conversations();
+
+        tracing::info!("Lazy initialization complete");
+    });
 }
 
 /// Application state
