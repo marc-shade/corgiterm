@@ -369,6 +369,7 @@ pub struct ShortcutsConfig {
     pub snippets: Option<String>,
     pub ascii_art: Option<String>,
     pub open_file: Option<String>,
+    pub history_search: Option<String>,
 
     // Application
     pub quit: Option<String>,
@@ -410,6 +411,7 @@ impl Default for ShortcutsConfig {
             snippets: Some("Ctrl+Shift+S".to_string()),
             ascii_art: Some("Ctrl+Shift+G".to_string()),
             open_file: Some("Ctrl+Shift+O".to_string()),
+            history_search: Some("Ctrl+R".to_string()),
 
             // Application
             quit: Some("Ctrl+Q".to_string()),

@@ -317,13 +317,70 @@ impl CommandHistoryStore {
             .collect()
     }
 
-    /// Search history
+    /// Search history with substring matching
     pub fn search(&self, query: &str, limit: usize) -> Vec<&HistoryEntry> {
         let query_lower = query.to_lowercase();
         self.entries
             .iter()
             .rev()
             .filter(|e| e.command.to_lowercase().contains(&query_lower))
+            .take(limit)
+            .collect()
+    }
+
+    /// Fuzzy search history with scoring
+    pub fn fuzzy_search(&self, query: &str, limit: usize) -> Vec<(&HistoryEntry, f32)> {
+        let query_lower = query.to_lowercase();
+        let query_chars: Vec<char> = query_lower.chars().collect();
+
+        if query_chars.is_empty() {
+            return self.entries.iter().rev().take(limit).map(|e| (e, 1.0)).collect();
+        }
+
+        let mut scored: Vec<(&HistoryEntry, f32)> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let cmd_lower = entry.command.to_lowercase();
+                let score = fuzzy_match_score(&query_chars, &cmd_lower);
+                if score > 0.0 {
+                    Some((entry, score))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by score descending, then by recency (later entries first)
+        scored.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.0.timestamp.cmp(&a.0.timestamp))
+        });
+
+        scored.truncate(limit);
+        scored
+    }
+
+    /// Get all entries for iteration
+    pub fn entries(&self) -> &[HistoryEntry] {
+        &self.entries
+    }
+
+    /// Get unique commands (deduplicated, most recent first)
+    pub fn unique_commands(&self, limit: usize) -> Vec<&str> {
+        let mut seen = std::collections::HashSet::new();
+        self.entries
+            .iter()
+            .rev()
+            .filter_map(|e| {
+                let cmd = e.command.as_str();
+                if seen.insert(cmd) {
+                    Some(cmd)
+                } else {
+                    None
+                }
+            })
             .take(limit)
             .collect()
     }
@@ -369,6 +426,74 @@ pub struct HistoryStats {
     pub failed_commands: usize,
     pub unique_commands: usize,
     pub unique_directories: usize,
+}
+
+/// Fuzzy match scoring (returns 0.0 for no match, higher for better matches)
+fn fuzzy_match_score(query: &[char], text: &str) -> f32 {
+    let text_chars: Vec<char> = text.chars().collect();
+    let text_len = text_chars.len();
+    let query_len = query.len();
+
+    if query_len == 0 {
+        return 1.0;
+    }
+    if text_len == 0 || query_len > text_len {
+        return 0.0;
+    }
+
+    // Check if all query characters exist in order
+    let mut query_idx = 0;
+    let mut match_positions = Vec::new();
+
+    for (i, c) in text_chars.iter().enumerate() {
+        if query_idx < query_len && *c == query[query_idx] {
+            match_positions.push(i);
+            query_idx += 1;
+        }
+    }
+
+    if query_idx != query_len {
+        return 0.0; // Not all characters matched
+    }
+
+    // Calculate score based on:
+    // 1. Match density (characters close together)
+    // 2. Match at word boundaries
+    // 3. Prefix matching bonus
+
+    let mut score = 1.0;
+
+    // Bonus for consecutive matches
+    let mut consecutive = 0;
+    for window in match_positions.windows(2) {
+        if window[1] == window[0] + 1 {
+            consecutive += 1;
+        }
+    }
+    score += consecutive as f32 * 0.5;
+
+    // Bonus for matching at start
+    if !match_positions.is_empty() && match_positions[0] == 0 {
+        score += 1.5;
+    }
+
+    // Bonus for word boundary matches
+    for &pos in &match_positions {
+        if pos > 0 {
+            let prev = text_chars[pos - 1];
+            if prev == ' ' || prev == '/' || prev == '-' || prev == '_' {
+                score += 0.3;
+            }
+        }
+    }
+
+    // Penalty for spread-out matches
+    let spread = match_positions.last().unwrap_or(&0) - match_positions.first().unwrap_or(&0);
+    if spread > query_len * 2 {
+        score -= (spread - query_len * 2) as f32 * 0.1;
+    }
+
+    score.max(0.1) // Minimum score for any match
 }
 
 #[cfg(test)]

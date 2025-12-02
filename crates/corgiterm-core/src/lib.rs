@@ -23,6 +23,7 @@ pub mod history;
 pub mod history_learning;
 pub mod learning;
 pub mod pty;
+pub mod recording;
 pub mod safe_mode;
 pub mod session;
 pub mod terminal;
@@ -43,6 +44,9 @@ pub use learning::{
 };
 pub use pty::{Pty, PtySize};
 pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
+pub use recording::{
+    EventType, PlaybackState, Recording, RecordingEvent, RecordingId, RecordingMeta, RecordingStore,
+};
 pub use session::{Session, SessionId, SessionManager};
 pub use terminal::{Terminal, TerminalEvent, TerminalHealth, TerminalSize};
 

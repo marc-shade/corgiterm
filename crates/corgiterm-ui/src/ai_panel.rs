@@ -15,7 +15,7 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::app::{ai_manager, get_learning_context};
+use crate::app::{ai_manager, conversation_store, get_learning_context, save_conversations};
 use corgiterm_ai::{Message, Role};
 
 /// Helper trait to set all margins at once (GTK4 removed set_margin_all)
@@ -530,9 +530,19 @@ impl AiPanel {
         view.set_margins(8);
         view.add_css_class("view");
 
-        // Welcome message
+        // Load previous conversations or show welcome message
         let mut iter = buffer.end_iter();
-        buffer.insert(&mut iter, "Welcome! Ask me anything about terminal commands, scripting, or get help with errors.\n\n");
+        if let Some(store) = conversation_store() {
+            let store = store.read();
+            let display = store.current_chat_display();
+            if !display.is_empty() {
+                buffer.insert(&mut iter, &display);
+            } else {
+                buffer.insert(&mut iter, "Welcome! Ask me anything about terminal commands, scripting, or get help with errors.\n\n");
+            }
+        } else {
+            buffer.insert(&mut iter, "Welcome! Ask me anything about terminal commands, scripting, or get help with errors.\n\n");
+        }
 
         let scrolled = ScrolledWindow::new();
         scrolled.set_vexpand(true);
@@ -568,6 +578,12 @@ impl AiPanel {
             }
 
             *processing.borrow_mut() = true;
+
+            // Save user message to conversation store
+            if let Some(store) = conversation_store() {
+                let mut store = store.write();
+                store.add_message("chat", Role::User, &text);
+            }
 
             // Show user message
             let mut iter = buffer_for_input.end_iter();
@@ -645,6 +661,14 @@ impl AiPanel {
                     match result {
                         Ok(content) => {
                             buffer.insert(&mut iter, &format!("Assistant: {}\n\n", content));
+
+                            // Save assistant response to conversation store
+                            if let Some(store) = conversation_store() {
+                                let mut store = store.write();
+                                store.add_message("chat", Role::Assistant, &content);
+                            }
+                            // Auto-save conversations periodically
+                            save_conversations();
                         }
                         Err(error) => {
                             buffer.insert(&mut iter, &format!("Error: {}\n\n", error));
@@ -848,6 +872,13 @@ impl AiPanel {
 
     /// Clear the chat history
     pub fn clear_chat(&self) {
+        // Start a new conversation in the store (archives the old one)
+        if let Some(store) = conversation_store() {
+            let mut store = store.write();
+            store.new_conversation("chat");
+            let _ = store.save();
+        }
+
         let start = self.chat_buffer.start_iter();
         let end = self.chat_buffer.end_iter();
         self.chat_buffer

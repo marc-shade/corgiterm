@@ -31,6 +31,10 @@ static SNIPPETS_MANAGER: std::sync::OnceLock<Arc<RwLock<corgiterm_config::Snippe
 static HISTORY_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> =
     std::sync::OnceLock::new();
 
+/// Global conversation store for AI chat persistence
+static CONVERSATION_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::conversation::ConversationStore>>> =
+    std::sync::OnceLock::new();
+
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {
     CONFIG_MANAGER.get().cloned()
@@ -59,6 +63,11 @@ pub fn snippets_manager() -> Option<Arc<RwLock<corgiterm_config::SnippetsManager
 /// Get the global command history store
 pub fn history_store() -> Option<Arc<RwLock<corgiterm_ai::history::CommandHistoryStore>>> {
     HISTORY_STORE.get().cloned()
+}
+
+/// Get the global conversation store
+pub fn conversation_store() -> Option<Arc<RwLock<corgiterm_ai::conversation::ConversationStore>>> {
+    CONVERSATION_STORE.get().cloned()
 }
 
 /// Record a command execution for AI learning
@@ -329,6 +338,35 @@ fn init_history() {
     );
 }
 
+/// Initialize conversation store for AI chat persistence
+fn init_conversations() {
+    let mut conv_store = corgiterm_ai::conversation::ConversationStore::new();
+    if let Err(e) = conv_store.load() {
+        tracing::warn!("Failed to load conversations: {}", e);
+    } else {
+        let stats = conv_store.stats();
+        tracing::info!(
+            "Loaded {} conversations (chat: {}, command: {}, explain: {})",
+            stats.total_conversations,
+            stats.chat_count,
+            stats.command_count,
+            stats.explain_count
+        );
+    }
+    let conv_arc = Arc::new(RwLock::new(conv_store));
+    let _ = CONVERSATION_STORE.set(conv_arc);
+}
+
+/// Save conversations to disk (call on app exit or periodically)
+pub fn save_conversations() {
+    if let Some(store) = conversation_store() {
+        let mut store = store.write();
+        if let Err(e) = store.save() {
+            tracing::error!("Failed to save conversations: {}", e);
+        }
+    }
+}
+
 /// Build the main UI
 pub fn build_ui(app: &Application) {
     // Initialize config first
@@ -348,6 +386,9 @@ pub fn build_ui(app: &Application) {
 
     // Initialize command history for AI learning
     init_history();
+
+    // Initialize conversation store for AI chat persistence
+    init_conversations();
 
     // Load custom CSS
     load_css();

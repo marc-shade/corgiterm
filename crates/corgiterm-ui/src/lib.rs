@@ -38,6 +38,8 @@ pub mod ssh_manager;
 pub mod tab_bar;
 pub mod terminal_view;
 pub mod theme;
+pub mod history_search;
+pub mod recording_panel;
 pub mod theme_creator;
 pub mod widgets;
 pub mod window;

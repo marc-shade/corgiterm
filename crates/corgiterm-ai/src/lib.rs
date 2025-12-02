@@ -14,6 +14,7 @@
 //! - MCP (Model Context Protocol) support
 
 pub mod completions;
+pub mod conversation;
 pub mod history;
 pub mod learning;
 pub mod mcp;

@@ -14,6 +14,7 @@ use std::rc::Rc;
 use crate::ai_panel::AiPanel;
 use crate::dialogs;
 use crate::keyboard::{KeyboardShortcuts, ShortcutAction};
+use crate::recording_panel::show_recording_dialog;
 use crate::sidebar::Sidebar;
 use crate::tab_bar::TerminalTabs;
 use crate::widgets::natural_language_input::NaturalLanguageInput;
@@ -83,6 +84,8 @@ impl MainWindow {
         tools_menu.append(Some("_SSH Manager"), Some("win.ssh_manager"));
         tools_menu.append(Some("_ASCII Art Generator"), Some("win.ascii_art"));
         tools_menu.append(Some("_Emojis"), Some("win.emojis"));
+        tools_menu.append(Some("_History Search"), Some("win.history_search"));
+        tools_menu.append(Some("_Session Recording"), Some("win.session_recording"));
         menu.append_submenu(Some("_Tools"), &tools_menu);
 
         menu.append(Some("_Preferences"), Some("win.preferences"));
@@ -170,6 +173,30 @@ impl MainWindow {
             });
         });
         window.add_action(&emojis_action);
+
+        // History Search action
+        let history_action = SimpleAction::new("history_search", None);
+        let win_for_history = window.clone();
+        let tabs_for_history = tabs.clone();
+        history_action.connect_activate(move |_, _| {
+            let tabs = tabs_for_history.clone();
+            crate::history_search::show_history_search_dialog(&win_for_history, move |cmd| {
+                if tabs.send_command_to_current(cmd) {
+                    tracing::info!("History search: inserted command {}", cmd);
+                } else {
+                    tracing::warn!("No active terminal for history search");
+                }
+            });
+        });
+        window.add_action(&history_action);
+
+        // Session Recording action
+        let recording_action = SimpleAction::new("session_recording", None);
+        let win_for_recording = window.clone();
+        recording_action.connect_activate(move |_, _| {
+            show_recording_dialog(&win_for_recording);
+        });
+        window.add_action(&recording_action);
 
         // Main layout with header + content
         let main_box = Box::new(Orientation::Vertical, 0);
@@ -686,6 +713,16 @@ impl MainWindow {
                 let tabs = tabs_for_keys.clone();
                 dialogs::show_ascii_art_dialog(&win, move |art| {
                     tabs.send_command_to_current(&format!("echo '{}'\n", art));
+                });
+                return gtk4::glib::Propagation::Stop;
+            }
+            if shortcuts_for_keys.matches(ShortcutAction::HistorySearch, key, modifier) {
+                let win = window_for_keys.clone();
+                let tabs = tabs_for_keys.clone();
+                crate::history_search::show_history_search_dialog(&win, move |cmd| {
+                    if tabs.send_command_to_current(cmd) {
+                        tracing::info!("History search: executed {}", cmd);
+                    }
                 });
                 return gtk4::glib::Propagation::Stop;
             }

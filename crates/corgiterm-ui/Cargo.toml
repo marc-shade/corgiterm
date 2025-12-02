@@ -55,5 +55,7 @@ image = "0.25"
 
 # Open URLs in browser
 open = "5"
+chrono.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]

@@ -42,6 +42,7 @@ pub enum ShortcutAction {
     Snippets,
     AsciiArt,
     OpenFile,
+    HistorySearch,
 
     // Application
     Quit,
@@ -244,6 +245,13 @@ impl KeyboardShortcuts {
                 shortcuts.insert(ShortcutAction::OpenFile, parsed);
             } else {
                 tracing::warn!("Failed to parse shortcut 'open_file': {}", s);
+            }
+        }
+        if let Some(ref s) = config.history_search {
+            if let Ok(parsed) = parse_shortcut(s) {
+                shortcuts.insert(ShortcutAction::HistorySearch, parsed);
+            } else {
+                tracing::warn!("Failed to parse shortcut 'history_search': {}", s);
             }
         }
 
