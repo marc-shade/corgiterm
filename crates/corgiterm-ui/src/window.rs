@@ -303,7 +303,8 @@ impl MainWindow {
 
         // Sidebar setup with Paned layout (original working approach)
         let sidebar_widget = sidebar.widget().clone();
-        sidebar_widget.set_width_request(220);
+        // Don't set width_request - it prevents shrinking below that size
+        // The paned position controls the width instead
 
         // Content paned: sidebar | terminal area
         let content_paned = Paned::new(Orientation::Horizontal);
