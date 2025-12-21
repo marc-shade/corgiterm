@@ -1,82 +1,185 @@
-# CorgiTerm 🐕
+# CorgiTerm
 
-**CorgiTerm** is a next-generation, AI-powered terminal emulator that makes the command line accessible to everyone - from nervous beginners to power users who demand maximum control.
+**The terminal that teaches you as you go.**
+
+For people who know their way around a computer but find the command line intimidating. CorgiTerm bridges the gap between powerful CLI tools and the friendly, visual interfaces you're used to.
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![GTK4](https://img.shields.io/badge/GTK-4.x-green.svg)](https://gtk.org/)
 
-## Features
+---
 
-### 🎯 For Everyone
-- **Safe Mode** - Preview commands before execution with risk assessment
-- **Natural Language Input** - Type "show large files" instead of memorizing syntax
-- **Modern UI** - Clean, beautiful interface inspired by the best productivity apps
-- **Project Organization** - Group terminals by project, just like your IDE
+## The Problem: Staring at a Blank Canvas
 
-### 🤖 AI-Powered (Inspired by Warp, Cursor, Copilot, and Cline)
-- **Multiple Providers** - Claude CLI, Gemini CLI, Ollama (local/remote), or API keys
-- **Three AI Modes** in a slide-out panel:
-  - **Chat Mode** - Conversational AI assistant for questions and help
-  - **Explain Mode** - Paste commands or errors to understand them
-  - **Command Mode** - Natural language → shell commands (Warp-style # prefix)
-- **Auto-Detection** - Automatically finds and uses available AI providers
-- **Zero Config** - Works out of the box with Claude CLI or local Ollama
+You've heard that the command line is powerful. You've seen developers type cryptic commands that somehow do amazing things. But when you open a terminal, you're greeted by... nothing. A blinking cursor. A blank canvas.
 
-### ⚡ For Power Users
-- **GPU Rendering** - Silky smooth 144fps performance
-- **500+ Settings** - Customize everything
-- **Plugin System** - WASM and Lua extensibility
-- **SSH Manager** - Visual connection management
-- **Searchable History** - Never lose output again
+**Where do you even start?**
 
-### 🖥️ Terminal Features
-- **True Color** - Full 24-bit RGB color support (16 million colors)
-- **Text Attributes** - Bold, dim, italic, underline, strikethrough, inverse
-- **Scrollback Buffer** - 10,000 lines of history with mouse wheel scroll
-- **URL Detection** - Automatic URL highlighting with Ctrl+click to open
-- **Quick Switcher** - VS Code-style tab switching with `Ctrl+K`
-- **Context Menu** - Right-click for Copy, Paste, Select All, Find
-- **Bell Notifications** - Visual tab indicator for terminal bell events
-- **Dynamic Titles** - Tab titles update based on current directory/command
+- "What if I break something?"
+- "I don't know what to type"
+- "How do I even know what's possible?"
 
-## Installation
+CorgiTerm solves this.
 
-### From Source (Linux)
+---
+
+## How CorgiTerm Makes CLI Accessible
+
+### 1. Safe Mode: Review Before You Run
+
+Every command is previewed before execution. See exactly what will happen, with risk assessment and undo suggestions.
+
+```
++------------------------------------------------------------------+
+|  Safe Mode Preview                                               |
++------------------------------------------------------------------+
+|                                                                  |
+|  Command: rm -rf ./node_modules                                  |
+|                                                                  |
+|  CAUTION - This will permanently delete files                   |
+|                                                                  |
+|  What it does:                                                   |
+|  - Recursively removes the 'node_modules' directory              |
+|  - Files will be permanently deleted (not moved to trash)        |
+|                                                                  |
+|  Safer alternative: trash-put ./node_modules (recoverable)       |
+|  To restore: npm install                                         |
+|                                                                  |
+|  [ Execute ]  [ Cancel ]                                         |
++------------------------------------------------------------------+
+```
+
+**No more "oh no, what did I just do?"** Safe Mode catches dangerous operations before they happen, explains what commands will do, and suggests safer alternatives.
+
+### 2. Just Ask: Type What You Want, Not What You Know
+
+Don't know the command? Just describe what you want in plain English:
+
+| You type... | CorgiTerm translates to... |
+|-------------|---------------------------|
+| "show files bigger than 1GB" | `find . -size +1G -type f` |
+| "what's using port 3000" | `lsof -i :3000` |
+| "count lines in all python files" | `find . -name "*.py" \| xargs wc -l` |
+| "compress this folder" | `tar -czvf folder.tar.gz folder/` |
+
+The AI shows you the command, explains it, and you decide whether to run it. **You learn the actual commands by seeing what your natural language becomes.**
+
+### 3. AI That Learns Your Style
+
+CorgiTerm observes how you work and adapts:
+
+- **Remembers your preferences**: Uses `exa` if you prefer it over `ls`
+- **Suggests based on patterns**: Knows you usually run `git status` after `git add`
+- **Gets smarter over time**: More relevant suggestions the more you use it
+
+### 4. Snippets Library: Your Personal Command Cookbook
+
+Save commands you'll use again with variables for the parts that change:
 
 ```bash
-# Install dependencies (Fedora)
+# Docker: Run container with port mapping
+docker run -d -p {{host_port}}:{{container_port}} --name {{name}} {{image}}
+
+# Git: Create feature branch
+git checkout -b feature/{{branch_name}} && git push -u origin feature/{{branch_name}}
+
+# SSH: Connect to server
+ssh {{user|username}}@{{host:192.168.1.100}} -p {{port:22}}
+```
+
+Never google "how to do X in the terminal" twice. Build your personal library and reuse commands with `Ctrl+Shift+S`.
+
+---
+
+## What Makes CorgiTerm Different
+
+| Feature | CorgiTerm | Warp | iTerm2 | GNOME Terminal |
+|---------|-----------|------|--------|----------------|
+| Safe Mode (preview before run) | **Yes** | No | No | No |
+| Natural language commands | **Yes** | Yes | No | No |
+| Learns your preferences | **Yes** | Limited | No | No |
+| Works offline (local AI) | **Yes** | No | N/A | N/A |
+| No account required | **Yes** | No | Yes | Yes |
+| Open source | **Yes** | No | Yes | Yes |
+| Snippets with variables | **Yes** | Workflows | No | No |
+| AI explains errors | **Yes** | Yes | No | No |
+
+### Why Not Just Use Warp?
+
+Warp is great, but:
+- **Requires login** to use AI features
+- **Closed source** - you can't see what it's doing
+- **Cloud-dependent** - AI features don't work offline
+- **macOS only** (Linux in beta)
+
+CorgiTerm is **open source, runs AI locally with Ollama, requires no account**, and works on Linux today.
+
+---
+
+## Getting Started
+
+### Install (Linux)
+
+```bash
+# Fedora
 sudo dnf install gtk4-devel libadwaita-devel
 
-# Build
+# Ubuntu/Debian
+sudo apt install libgtk-4-dev libadwaita-1-dev
+
+# Build and run
 git clone https://github.com/corgiterm/corgiterm
 cd corgiterm
 cargo build --release
-
-# Run
 ./target/release/corgiterm
 ```
 
-### Flatpak (Coming Soon)
-```bash
-flatpak install dev.corgiterm.CorgiTerm
-```
+### First Steps
 
-## Quick Start
+1. **Open CorgiTerm** - Safe Mode is on by default
+2. **Press `Ctrl+Shift+A`** to open the AI panel
+3. **Type naturally** in the Command tab: "show me what's in this folder"
+4. **Review** the suggested command and click Execute
+5. **Save useful commands** to Snippets with `Ctrl+Shift+S`
 
-```bash
-# Launch CorgiTerm
-corgiterm
+---
 
-# Open a project directory
-corgiterm --project ~/projects/myapp
+## The AI Panel: Three Ways to Get Help
 
-# Start with Safe Mode enabled
-corgiterm --safe-mode
+Press `Ctrl+Shift+A` to open the AI assistant:
 
-# Execute a command
-corgiterm -e "npm run dev"
-```
+| Tab | What it does | When to use it |
+|-----|--------------|----------------|
+| **Chat** | Have a conversation about anything terminal-related | "How do I set up SSH keys?" |
+| **Explain** | Paste a command or error to understand it | "What does `chmod 755` mean?" |
+| **Command** | Describe what you want, get the command | "find all PDFs modified today" |
+
+### AI Providers (Your Choice, Zero Config)
+
+CorgiTerm auto-detects what's available:
+
+1. **Claude CLI / Gemini CLI** - If you have these installed, they just work
+2. **Ollama (local)** - Run AI on your own machine, no internet needed
+3. **API keys** - Claude, OpenAI, or Gemini if you prefer
+
+**No account required. No data sent anywhere by default.**
+
+---
+
+## Features for Power Users
+
+Already comfortable with the terminal? CorgiTerm has you covered:
+
+- **GPU-accelerated rendering** - 144fps smooth scrolling
+- **Split panes** - `Ctrl+Shift+H` (horizontal) / `Ctrl+Shift+D` (vertical)
+- **SSH Manager** - Visual saved connections (`Ctrl+Shift+M`)
+- **Quick Switcher** - VS Code-style tab switching (`Ctrl+K`)
+- **URL/Path hints** - Keyboard-driven link navigation
+- **500+ settings** - Customize everything
+- **WASM + Lua plugins** - Extend functionality
+
+---
 
 ## Keyboard Shortcuts
 
@@ -84,159 +187,75 @@ corgiterm -e "npm run dev"
 |--------|----------|
 | New Tab | `Ctrl+T` |
 | Close Tab | `Ctrl+W` |
-| Toggle AI Panel | `Ctrl+Shift+A` |
+| **Toggle AI Panel** | `Ctrl+Shift+A` |
+| **Snippets Library** | `Ctrl+Shift+S` |
 | Quick Switcher | `Ctrl+K` |
 | SSH Manager | `Ctrl+Shift+M` |
-| Snippets Library | `Ctrl+Shift+S` |
-| ASCII Art Generator | `Ctrl+Shift+G` |
 | Split Horizontal | `Ctrl+Shift+H` |
 | Split Vertical | `Ctrl+Shift+D` |
-| Close Pane | `Ctrl+Shift+W` |
+| Search in Terminal | `Ctrl+Shift+F` |
 | Copy | `Ctrl+Shift+C` |
 | Paste | `Ctrl+Shift+V` |
-| Zoom In | `Ctrl++` or `Ctrl+=` |
-| Zoom Out | `Ctrl+-` |
-| Reset Zoom | `Ctrl+0` |
-| Search in Terminal | `Ctrl+Shift+F` |
-| Next Match | `Enter` (in search) |
-| Previous Match | `Shift+Enter` (in search) |
-| Close Search | `Escape` |
-| Switch to Tab 1-9 | `Ctrl+1` to `Ctrl+9` |
-| Next Tab | `Ctrl+Tab` |
-| Previous Tab | `Ctrl+Shift+Tab` |
-| Open File | `Ctrl+Shift+O` |
-| Open URL | `Ctrl+Click` on URL |
-| Quit | `Ctrl+Q` |
 
-## Configuration
+---
 
-Configuration lives in `~/.config/corgiterm/config.toml`:
+## Privacy First
 
-```toml
-[general]
-shell = "/bin/zsh"
-restore_sessions = true
+- **No login required** - Start using immediately
+- **No telemetry** - We don't track you
+- **Local-first AI** - Run Ollama for completely offline AI
+- **Open source** - Audit the code yourself
+- **Your data stays yours** - Command history never leaves your machine
 
-[appearance]
-theme = "Corgi Dark"
-font_family = "Source Code Pro"
-font_size = 11.0
-opacity = 1.0
+---
 
-[ai]
-enabled = true
-default_provider = "auto"  # Auto-detect best available provider
+## Roadmap
 
-[ai.local]
-enabled = true
-endpoint = "http://localhost:11434"  # Ollama server
-model = "codellama"
+### Done
+- [x] Safe Mode with risk assessment
+- [x] Natural language to commands
+- [x] AI Chat/Explain/Command modes
+- [x] Multiple AI providers (Claude, Gemini, Ollama, OpenAI)
+- [x] Snippets library with variables
+- [x] SSH Manager
+- [x] Split panes
+- [x] Theme creator
 
-[safe_mode]
-enabled = false
-preview_dangerous_only = true
-```
+### Coming Soon
+- [ ] Session recording and playback
+- [ ] Plugin marketplace
+- [ ] Collaborative terminals (pair programming)
+- [ ] Windows and macOS releases
 
-## Themes
+---
 
-CorgiTerm comes with the beautiful "Corgi Collection" themes:
+## Built With
 
-- **Corgi Dark** - Warm, cozy dark theme (default)
-- **Corgi Light** - Clean, readable light theme
-- **Corgi Sunset** - Warm pinks and oranges for evening coding
-- **Pembroke** - Regal theme inspired by the Pembroke Welsh Corgi
+- [Rust](https://www.rust-lang.org/) - Fast and safe
+- [GTK4](https://gtk.org/) + [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) - Modern Linux UI
+- [VTE](https://gitlab.gnome.org/GNOME/vte) - Terminal emulation
 
-## Architecture
-
-```
-corgiterm/
-├── crates/
-│   ├── corgiterm-core/     # Terminal emulation, PTY, sessions
-│   ├── corgiterm-ui/       # GTK4/libadwaita interface
-│   ├── corgiterm-ai/       # AI provider integration
-│   ├── corgiterm-config/   # Configuration management
-│   └── corgiterm-plugins/  # WASM/Lua plugin system
-└── src/main.rs             # Application entry point
-```
+---
 
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### Development Setup
-
 ```bash
-# Clone
-git clone https://github.com/corgiterm/corgiterm
-cd corgiterm
-
-# Install dev dependencies
+# Development setup
 cargo install cargo-watch
-
-# Run with hot-reload
 cargo watch -x run
 
 # Run tests
 cargo test --workspace
-
-# Format code
-cargo fmt --all
 ```
-
-## Roadmap
-
-### v0.2.0 - Quality & Polish ✓
-- [x] AI Panel with Chat/Explain/Command modes
-- [x] CLI provider auto-detection (Claude CLI, Gemini CLI)
-- [x] Fix GTK4 4.10 deprecation warnings
-- [x] Wire AI Execute button to terminal
-- [x] Split Panes (Ctrl+Shift+H/D/W)
-
-### v0.3.0 - Cross-Platform ✓
-- [x] Windows support with ConPTY (via portable-pty)
-- [x] macOS support with native PTY (via portable-pty)
-- [x] Flatpak packaging for Linux (see `flatpak/README.md`)
-
-### v0.4.0 - Feature Complete ✓
-- [x] SSH Manager with saved hosts (Ctrl+Shift+M)
-- [x] Snippets Library (Ctrl+Shift+S)
-- [x] Theme Creator with live preview
-- [x] AI Command History learning
-- [x] ASCII Art Generator (Ctrl+Shift+G)
-
-### v0.5.0 - Polish & Performance (Planned)
-- [ ] Session recording and playback
-- [ ] Searchable command history in terminal
-- [ ] AI conversation persistence across sessions
-- [ ] Performance profiling and optimization
-- [ ] Plugin API stabilization
-
-### v1.0.0 - Production Ready (Future)
-- [ ] Plugin marketplace
-- [ ] Remote terminal sessions (SSH tunneling)
-- [ ] Collaborative terminals (pair programming)
-- [ ] Full accessibility support (screen readers)
-- [ ] Comprehensive documentation and tutorials
-
-## Privacy Promise
-
-CorgiTerm respects your privacy:
-
-- ✅ **No login required** - Use immediately
-- ✅ **No telemetry by default** - Opt-in only
-- ✅ **Open source** - Audit the code yourself
-- ✅ **Local-first** - AI can run locally with Ollama
-
-## License
-
-CorgiTerm is dual-licensed under MIT and Apache 2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
-
-## Acknowledgments
-
-- Built with [Rust](https://www.rust-lang.org/), [GTK4](https://gtk.org/), and [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/)
-- Terminal emulation powered by [VTE](https://gitlab.gnome.org/GNOME/vte)
-- Inspired by [iTerm2](https://iterm2.com/), [Warp](https://warp.dev/), and [Alacritty](https://alacritty.org/)
 
 ---
 
-**Made with ❤️ by the CorgiTerm Team**
+## License
+
+Dual-licensed under MIT and Apache 2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
+
+---
+
+**CorgiTerm** - *The terminal that teaches you as you go.*
