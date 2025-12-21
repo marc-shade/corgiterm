@@ -81,12 +81,17 @@ else
     print_success "Homebrew found"
 fi
 
-# Install GTK4 and libadwaita
-print_step "Installing GTK4 and libadwaita..."
-if brew list gtk4 &>/dev/null && brew list libadwaita &>/dev/null; then
+# Install GTK4, libadwaita, and icon theme
+print_step "Installing dependencies..."
+DEPS_NEEDED=""
+brew list gtk4 &>/dev/null || DEPS_NEEDED="$DEPS_NEEDED gtk4"
+brew list libadwaita &>/dev/null || DEPS_NEEDED="$DEPS_NEEDED libadwaita"
+brew list adwaita-icon-theme &>/dev/null || DEPS_NEEDED="$DEPS_NEEDED adwaita-icon-theme"
+
+if [[ -z "$DEPS_NEEDED" ]]; then
     print_success "Dependencies already installed"
 else
-    brew install gtk4 libadwaita
+    brew install $DEPS_NEEDED
     print_success "Dependencies installed"
 fi
 
