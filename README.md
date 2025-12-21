@@ -122,6 +122,20 @@ CorgiTerm is **open source, runs AI locally with Ollama, requires no account**, 
 
 ## Getting Started
 
+### Install (macOS) - One Command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marc-shade/corgiterm/main/scripts/install-macos.sh | bash
+```
+
+That's it! The installer automatically:
+- Installs Homebrew (if needed)
+- Installs GTK4 and libadwaita dependencies
+- Downloads the correct DMG for your Mac (Apple Silicon or Intel)
+- Installs to Applications
+- Clears macOS quarantine flags
+- Offers to launch immediately
+
 ### Install (Linux)
 
 ```bash
@@ -138,25 +152,19 @@ cargo build --release
 ./target/release/corgiterm
 ```
 
-### Install (macOS) - Recommended
+### Manual Install (macOS)
 
-Download the latest DMG from [Releases](https://github.com/marc-shade/corgiterm/releases):
+<details>
+<summary>Click to expand manual installation steps</summary>
 
-1. Download `CorgiTerm-x.x.x-macos-apple-silicon.dmg` (Apple Silicon) or `CorgiTerm-x.x.x-macos-intel.dmg` (Intel)
-2. Open the DMG and drag CorgiTerm to Applications
-3. Install runtime dependencies: `brew install gtk4 libadwaita`
-4. **Important:** Remove the quarantine flag before first launch:
-   ```bash
-   xattr -cr /Applications/CorgiTerm.app
-   ```
-5. Launch CorgiTerm from Applications
+1. Install dependencies: `brew install gtk4 libadwaita`
+2. Download DMG from [Releases](https://github.com/marc-shade/corgiterm/releases)
+3. Open the DMG and drag CorgiTerm to Applications
+4. Clear quarantine: `xattr -c /Applications/CorgiTerm.app && find /Applications/CorgiTerm.app -exec xattr -c {} \;`
+5. Launch from Applications
 
-**Gatekeeper note:** CorgiTerm is not notarized with Apple. If macOS says the app is "damaged" or "cannot be opened":
-```bash
-# Remove quarantine attribute (required after downloading)
-xattr -cr /Applications/CorgiTerm.app
-```
-Then right-click the app and select "Open" to bypass Gatekeeper.
+**Note:** CorgiTerm is ad-hoc signed but not Apple notarized. The quarantine clear step is required.
+</details>
 
 ### Build from Source (macOS)
 
