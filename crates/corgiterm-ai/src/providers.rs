@@ -595,6 +595,26 @@ impl ClaudeCliProvider {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    /// Format CLI errors with helpful context and suggestions
+    fn format_cli_error(raw_error: &str) -> String {
+        let lower = raw_error.to_lowercase();
+
+        if lower.contains("credit balance") || lower.contains("credits") {
+            "Claude Code: Insufficient credits. Check your subscription at claude.ai/settings".to_string()
+        } else if lower.contains("rate limit") {
+            "Claude Code: Rate limited. Please wait a moment and try again.".to_string()
+        } else if lower.contains("unauthorized") || lower.contains("authentication") || lower.contains("not logged in") {
+            "Claude Code: Not authenticated. Run 'claude' in terminal to log in.".to_string()
+        } else if lower.contains("network") || lower.contains("connection") {
+            "Claude Code: Network error. Check your internet connection.".to_string()
+        } else if raw_error.len() > 200 {
+            // Truncate very long errors
+            format!("Claude Code error: {}...", &raw_error[..200])
+        } else {
+            format!("Claude Code: {}", raw_error)
+        }
+    }
 }
 
 #[async_trait]
@@ -648,27 +668,32 @@ impl AiProvider for ClaudeCliProvider {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
         if !output.status.success() {
-            // Check both stderr and stdout for error messages (Claude CLI writes some errors to stdout)
-            let error_msg = if !stderr.is_empty() {
+            // Parse the error and provide helpful context
+            let raw_error = if !stderr.is_empty() {
                 stderr
             } else if !stdout.is_empty() {
-                stdout
+                stdout.clone()
             } else {
                 format!("Exit code: {:?}", output.status.code())
             };
-            return Err(AiError::ApiError(format!("claude CLI: {}", error_msg)));
+
+            let error_msg = Self::format_cli_error(&raw_error);
+            return Err(AiError::ApiError(error_msg));
         }
 
-        // Also check if stdout looks like an error message (e.g., "Credit balance is too low")
-        let content = if stdout.to_lowercase().contains("error")
-            || stdout.to_lowercase().contains("credit balance")
-            || stdout.to_lowercase().contains("rate limit")
-            || stdout.to_lowercase().contains("unauthorized")
+        // Check if stdout looks like an error message (Claude CLI sometimes returns errors with exit 0)
+        let stdout_lower = stdout.to_lowercase();
+        if stdout_lower.contains("credit balance")
+            || stdout_lower.contains("rate limit")
+            || stdout_lower.contains("unauthorized")
+            || stdout_lower.contains("authentication")
         {
-            return Err(AiError::ApiError(format!("claude CLI: {}", stdout)));
-        } else {
-            stdout
-        };
+            let error_msg = Self::format_cli_error(&stdout);
+            return Err(AiError::ApiError(error_msg));
+        }
+
+        // Don't treat normal responses containing "error" as errors
+        let content = stdout;
 
         Ok(AiResponse {
             content,
@@ -710,6 +735,23 @@ impl GeminiCliProvider {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    /// Format CLI errors with helpful context and suggestions
+    fn format_cli_error(raw_error: &str) -> String {
+        let lower = raw_error.to_lowercase();
+
+        if lower.contains("quota") || lower.contains("limit") {
+            "Gemini CLI: Quota exceeded. Try again later or check your Google account.".to_string()
+        } else if lower.contains("unauthorized") || lower.contains("authentication") || lower.contains("not logged in") {
+            "Gemini CLI: Not authenticated. Run 'gemini' in terminal to log in with Google.".to_string()
+        } else if lower.contains("network") || lower.contains("connection") {
+            "Gemini CLI: Network error. Check your internet connection.".to_string()
+        } else if raw_error.len() > 200 {
+            format!("Gemini CLI error: {}...", &raw_error[..200])
+        } else {
+            format!("Gemini CLI: {}", raw_error)
+        }
+    }
 }
 
 #[async_trait]
@@ -746,15 +788,15 @@ impl AiProvider for GeminiCliProvider {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
         if !output.status.success() {
-            // Check both stderr and stdout for error messages
-            let error_msg = if !stderr.is_empty() {
+            let raw_error = if !stderr.is_empty() {
                 stderr
             } else if !stdout.is_empty() {
-                stdout
+                stdout.clone()
             } else {
                 format!("Exit code: {:?}", output.status.code())
             };
-            return Err(AiError::ApiError(format!("gemini CLI: {}", error_msg)));
+            let error_msg = Self::format_cli_error(&raw_error);
+            return Err(AiError::ApiError(error_msg));
         }
 
         let content = stdout;

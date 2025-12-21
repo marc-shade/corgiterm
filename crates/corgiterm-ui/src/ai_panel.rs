@@ -608,7 +608,9 @@ impl AiPanel {
     }
 
     fn chat_response(prompt: &str, buffer: TextBuffer, is_processing: Rc<RefCell<bool>>) {
+        tracing::debug!("chat_response called with prompt: {}", prompt);
         if let Some(am) = ai_manager() {
+            tracing::debug!("AI manager available, preparing chat request");
             let system = "You are a helpful terminal assistant integrated into CorgiTerm. \
                          Help users with shell commands, scripting, and terminal usage. \
                          Be concise but thorough. Use code blocks for commands.";
@@ -628,9 +630,11 @@ impl AiPanel {
 
             let ai_manager = am.clone();
             std::thread::spawn(move || {
+                tracing::debug!("AI chat thread started");
                 let rt = match tokio::runtime::Runtime::new() {
                     Ok(rt) => rt,
                     Err(e) => {
+                        tracing::error!("Failed to create tokio runtime: {}", e);
                         let _ = sender.send(Err(e.to_string()));
                         return;
                     }
@@ -639,24 +643,30 @@ impl AiPanel {
                 rt.block_on(async {
                     let ai_mgr = ai_manager.read();
                     if let Some(provider) = ai_mgr.default_provider() {
+                        tracing::info!("Using AI provider for chat: {}", provider.name());
                         match provider.complete(&messages).await {
                             Ok(resp) => {
+                                tracing::debug!("AI response received: {} chars", resp.content.len());
                                 let _ = sender.send(Ok(resp.content));
                             }
                             Err(e) => {
+                                tracing::error!("AI provider error: {}", e);
                                 let _ = sender.send(Err(e.to_string()));
                             }
                         }
                     } else {
+                        tracing::warn!("No default AI provider available for chat");
                         let _ = sender.send(Err("No AI provider".to_string()));
                     }
                 });
             });
 
+            tracing::debug!("Setting up response poller");
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || match receiver
                 .try_recv()
             {
                 Ok(result) => {
+                    tracing::debug!("Received AI response from channel");
                     let mut iter = buffer.end_iter();
                     match result {
                         Ok(content) => {
@@ -685,6 +695,11 @@ impl AiPanel {
                     glib::ControlFlow::Break
                 }
             });
+        } else {
+            tracing::error!("AI manager not available - chat cannot work");
+            let mut iter = buffer.end_iter();
+            buffer.insert(&mut iter, "Error: AI manager not initialized\n\n");
+            *is_processing.borrow_mut() = false;
         }
     }
 

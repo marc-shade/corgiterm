@@ -39,6 +39,9 @@ impl Sidebar {
         let container = gtk4::Box::new(Orientation::Vertical, 0);
         container.add_css_class("sidebar");
         container.set_width_request(220);
+        // Add padding to prevent clipping at edges
+        container.set_margin_start(4);
+        container.set_margin_end(4);
 
         // Callbacks
         let on_project_click: ProjectCallback = Rc::new(RefCell::new(None));

@@ -111,10 +111,38 @@ impl MainWindow {
             .build();
         header.pack_end(&menu_btn);
 
-        // AI panel toggle button
-        let ai_toggle_btn = Button::from_icon_name("user-available-symbolic");
-        ai_toggle_btn.set_tooltip_text(Some("Toggle AI Assistant (Ctrl+Shift+A)"));
+        // AI panel toggle button - more visible for beginners
+        let ai_toggle_btn = Button::from_icon_name("dialog-question-symbolic");
+        ai_toggle_btn.set_tooltip_text(Some("AI Assistant - Get help with commands! (Ctrl+Shift+A)"));
+        ai_toggle_btn.add_css_class("suggested-action"); // Make it stand out
         header.pack_end(&ai_toggle_btn);
+
+        // Safe Mode status indicator for beginners (shows protection status)
+        let safe_mode_enabled = crate::app::config_manager()
+            .map(|cm| cm.read().config().safe_mode.enabled)
+            .unwrap_or(false);
+        let safe_mode_indicator = Button::new();
+        if safe_mode_enabled {
+            safe_mode_indicator.set_icon_name("security-high-symbolic");
+            safe_mode_indicator.set_tooltip_text(Some("Safe Mode ON - Commands are reviewed before running"));
+            safe_mode_indicator.add_css_class("success");
+        } else {
+            safe_mode_indicator.set_icon_name("security-medium-symbolic");
+            safe_mode_indicator.set_tooltip_text(Some("Safe Mode OFF - Click to enable command review"));
+        }
+        safe_mode_indicator.add_css_class("flat");
+        let win_for_safe = window.clone();
+        let tabs_for_safe = tabs.clone();
+        safe_mode_indicator.connect_clicked(move |_| {
+            let tabs_clone = tabs_for_safe.clone();
+            dialogs::show_preferences(
+                &win_for_safe,
+                Some(std::boxed::Box::new(move || {
+                    tabs_clone.queue_redraw_all_terminals();
+                })),
+            );
+        });
+        header.pack_end(&safe_mode_indicator);
 
         // Add window actions
         let prefs_action = SimpleAction::new("preferences", None);
@@ -282,7 +310,7 @@ impl MainWindow {
         content_paned.set_start_child(Some(&sidebar_widget));
         content_paned.set_end_child(Some(&terminal_area));
         content_paned.set_resize_start_child(false);
-        content_paned.set_shrink_start_child(false);
+        content_paned.set_shrink_start_child(true);  // Allow sidebar to shrink to 0
         content_paned.set_resize_end_child(true);
         content_paned.set_shrink_end_child(false);
         content_paned.set_position(220);
@@ -291,17 +319,21 @@ impl MainWindow {
         // Sidebar visibility state (tracked separately to avoid is_visible() issues)
         let sidebar_visible = Rc::new(RefCell::new(true));
 
-        // Connect sidebar toggle button - only adjust paned position (avoids visibility toggle issues)
+        // Connect sidebar toggle button - toggle between 0 and 220
         let sidebar_visible_for_btn = sidebar_visible.clone();
         let paned_for_btn = content_paned.clone();
         sidebar_toggle_btn.connect_clicked(move |_| {
-            let is_visible = *sidebar_visible_for_btn.borrow();
-            *sidebar_visible_for_btn.borrow_mut() = !is_visible;
-            // Just change paned position - don't toggle visibility
+            // Read current paned position to determine actual state
+            // This handles manual dragging by the user
+            let current_pos = paned_for_btn.position();
+            let is_visible = current_pos > 50;  // Threshold: >50px = visible
+
             if is_visible {
                 paned_for_btn.set_position(0);
+                *sidebar_visible_for_btn.borrow_mut() = false;
             } else {
                 paned_for_btn.set_position(220);
+                *sidebar_visible_for_btn.borrow_mut() = true;
             }
         });
 
@@ -706,13 +738,16 @@ impl MainWindow {
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::ToggleSidebar, key, modifier) {
-                let is_visible = *sidebar_visible_for_keys.borrow();
-                *sidebar_visible_for_keys.borrow_mut() = !is_visible;
-                // Just change paned position - don't toggle visibility
+                // Read current paned position to determine actual state
+                let current_pos = paned_for_keys.position();
+                let is_visible = current_pos > 50;  // Threshold: >50px = visible
+
                 if is_visible {
                     paned_for_keys.set_position(0);
+                    *sidebar_visible_for_keys.borrow_mut() = false;
                 } else {
                     paned_for_keys.set_position(220);
+                    *sidebar_visible_for_keys.borrow_mut() = true;
                 }
                 return gtk4::glib::Propagation::Stop;
             }

@@ -41,12 +41,18 @@ RUST_LOG=corgiterm_ai=debug cargo run
 
 **Fedora:**
 ```bash
-sudo dnf install gtk4-devel libadwaita-devel vte291-gtk4-devel
+sudo dnf install gtk4-devel libadwaita-devel vte291-gtk4-devel lua-devel
 ```
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt install libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev liblua5.4-dev
+```
+
+**macOS:**
+```bash
+brew install gtk4 libadwaita lua@5.4
+export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
 ## Architecture
@@ -71,6 +77,7 @@ sudo apt install libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev
 - `plugin_manager()` - Plugins
 - `snippets_manager()` - Command snippets
 - `history_store()` - Command history for AI learning
+- `conversation_store()` - AI chat persistence across sessions
 
 ### Async AI Pattern
 
@@ -82,7 +89,7 @@ AI calls use a GTK4-compatible async pattern since GTK is single-threaded:
 4. Send result through channel
 5. Poll channel in `glib::timeout_add_local` (GTK main loop)
 
-See `ai_panel.rs:360-510` for the complete implementation.
+See `ai_panel.rs` - this pattern is used at lines ~363, ~629, and ~803 for different AI operations.
 
 ### AI Provider Priority
 
@@ -147,3 +154,12 @@ Key sections: `[general]`, `[appearance]`, `[ai]`, `[ai.local]`, `[safe_mode]`
 | `Ctrl+Shift+M` | SSH Manager |
 | `Ctrl+Shift+S` | Snippets Library |
 | `Ctrl+K` | Quick switcher |
+
+## CI/CD
+
+GitHub Actions runs on push to `main`/`develop` and PRs to `main`:
+- **Format**: `cargo fmt --all -- --check`
+- **Clippy**: `cargo clippy --workspace -- -D warnings`
+- **Build/Test**: Linux (ubuntu-24.04), macOS, Windows (partial - PTY not implemented)
+
+Release artifacts are automatically created on version tags (`v*`).

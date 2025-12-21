@@ -14,6 +14,7 @@
 .sidebar {
     background-color: @sidebar_bg_color;
     border-right: 1px solid alpha(@borders, 0.5);
+    padding: 4px;
 }
 
 .sidebar .navigation-sidebar row {
@@ -202,4 +203,23 @@ button.flat:hover {
 .session-thumbnail-label {
     font-size: 11px;
     color: @dim_label_color;
+}
+
+/* Safe Mode Status Indicator */
+button.success {
+    color: @success_color;
+}
+
+button.success:hover {
+    background-color: alpha(@success_color, 0.1);
+}
+
+/* Help Buttons - Make AI assistant button stand out */
+headerbar button.suggested-action {
+    background-color: alpha(@accent_color, 0.15);
+    color: @accent_color;
+}
+
+headerbar button.suggested-action:hover {
+    background-color: alpha(@accent_color, 0.25);
 }

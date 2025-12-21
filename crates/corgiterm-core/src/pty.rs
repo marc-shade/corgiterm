@@ -237,6 +237,16 @@ impl Pty {
         None
     }
 
+    /// Clone the reader Arc for use in a background thread
+    ///
+    /// This enables non-blocking PTY reading by allowing a separate thread
+    /// to do blocking reads while the main thread polls via a channel.
+    /// Required because portable-pty doesn't expose raw file descriptors,
+    /// so fcntl non-blocking mode cannot be used.
+    pub fn reader_clone(&self) -> Arc<Mutex<Box<dyn Read + Send>>> {
+        self.reader.clone()
+    }
+
     /// Kill the child process
     pub fn kill(&self) -> Result<()> {
         let mut child = self

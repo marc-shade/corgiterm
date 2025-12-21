@@ -268,11 +268,11 @@ impl TerminalView {
         let cursor_visible_for_draw = cursor_visible.clone();
         let bell_flash_for_draw = bell_flash.clone();
         let pty_cols_for_draw = pty_cols.clone();
-        let _colors_for_draw = colors.clone(); // Kept for future per-terminal color customization
+        let colors_for_draw = colors.clone();
         let hint_mode_for_draw = hint_mode.clone();
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
-            // Reload theme colors on each draw (allows live theme switching)
-            let current_colors = load_theme_colors();
+            // Use cached theme colors (updated via reload_theme_colors())
+            let current_colors = *colors_for_draw.borrow();
             let term = term_for_draw.borrow();
             let grid = term.grid();
             let scrollback = term.scrollback();
@@ -1284,52 +1284,87 @@ impl TerminalView {
         });
         drawing_area.add_controller(scroll_controller);
 
-        // Set up PTY reading with glib timeout
+        // Set up PTY reading with background thread + channel (non-blocking)
+        // The old approach used fcntl with pty.master_fd() which returns -1 (portable-pty
+        // doesn't expose the fd), causing blocking reads that froze the GTK main loop.
+        // This new approach spawns a background thread for blocking reads and uses a
+        // channel to send data to the GTK main loop.
         let term_for_read = terminal.clone();
-        let pty_for_read = pty.clone();
         let drawing_area_clone = drawing_area.clone();
         let scroll_offset_for_reset = scroll_offset.clone();
 
-        glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-            if let Some(ref pty) = *pty_for_read.borrow() {
+        // Create channel for PTY data (background thread -> main loop)
+        let (pty_data_tx, pty_data_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+        let pty_data_rx = Rc::new(pty_data_rx);
+
+        // Spawn background thread for PTY reading
+        if let Some(pty_ref) = pty.borrow().as_ref() {
+            // Clone the Pty's reader Arc for the background thread
+            let pty_reader = pty_ref.reader_clone();
+            std::thread::spawn(move || {
                 let mut buf = [0u8; 4096];
-                // Set non-blocking read
-                unsafe {
-                    let flags = libc::fcntl(pty.master_fd(), libc::F_GETFL);
-                    libc::fcntl(pty.master_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK);
+                loop {
+                    // This read is blocking, but it's in a background thread so it's fine
+                    match pty_reader.lock() {
+                        Ok(mut reader) => {
+                            match reader.read(&mut buf) {
+                                Ok(0) => {
+                                    // EOF - PTY closed
+                                    tracing::debug!("PTY reader: EOF");
+                                    break;
+                                }
+                                Ok(n) => {
+                                    // Send data to main loop via channel
+                                    if pty_data_tx.send(buf[..n].to_vec()).is_err() {
+                                        // Receiver dropped, exit thread
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::debug!("PTY read error: {} (may be normal on close)", e);
+                                    break;
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            tracing::error!("PTY reader lock poisoned");
+                            break;
+                        }
+                    }
                 }
-                match pty.read(&mut buf) {
-                    Ok(n) if n > 0 => {
-                        // Use safe_process for automatic crash recovery
-                        let health = term_for_read.borrow_mut().safe_process(&buf[..n]);
+                tracing::debug!("PTY reader thread exiting");
+            });
+        }
 
-                        // Log health status changes for debugging
-                        match health {
-                            corgiterm_core::TerminalHealth::Degraded => {
-                                tracing::warn!(
-                                    "Terminal entered degraded mode - attempting recovery"
-                                );
-                            }
-                            corgiterm_core::TerminalHealth::Recovered => {
-                                tracing::info!("Terminal recovered from error state");
-                            }
-                            corgiterm_core::TerminalHealth::NeedsReset => {
-                                tracing::error!("Terminal needs manual reset");
-                            }
-                            _ => {}
-                        }
+        // Poll channel for PTY data in GTK main loop (non-blocking)
+        glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
+            // Try to receive data from background thread (non-blocking)
+            while let Ok(data) = pty_data_rx.try_recv() {
+                // Use safe_process for automatic crash recovery
+                let health = term_for_read.borrow_mut().safe_process(&data);
 
-                        // Check scroll_on_output setting - if enabled, scroll to bottom
-                        let scroll_on_output = crate::app::config_manager()
-                            .map(|cm| cm.read().config().terminal.scroll_on_output)
-                            .unwrap_or(false);
-                        if scroll_on_output {
-                            *scroll_offset_for_reset.borrow_mut() = 0;
-                        }
-                        drawing_area_clone.queue_draw();
+                // Log health status changes for debugging
+                match health {
+                    corgiterm_core::TerminalHealth::Degraded => {
+                        tracing::warn!("Terminal entered degraded mode - attempting recovery");
+                    }
+                    corgiterm_core::TerminalHealth::Recovered => {
+                        tracing::info!("Terminal recovered from error state");
+                    }
+                    corgiterm_core::TerminalHealth::NeedsReset => {
+                        tracing::error!("Terminal needs manual reset");
                     }
                     _ => {}
                 }
+
+                // Check scroll_on_output setting - if enabled, scroll to bottom
+                let scroll_on_output = crate::app::config_manager()
+                    .map(|cm| cm.read().config().terminal.scroll_on_output)
+                    .unwrap_or(false);
+                if scroll_on_output {
+                    *scroll_offset_for_reset.borrow_mut() = 0;
+                }
+                drawing_area_clone.queue_draw();
             }
             glib::ControlFlow::Continue
         });

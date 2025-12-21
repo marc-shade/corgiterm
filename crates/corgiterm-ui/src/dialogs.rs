@@ -961,7 +961,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
     // AI Provider group
     let provider_group = libadwaita::PreferencesGroup::builder()
         .title("Provider")
-        .description("Configure AI provider and API keys")
+        .description("Select your preferred AI provider. CLI tools (Claude Code, Gemini CLI) use OAuth and are preferred over API keys.")
         .build();
 
     // Get current provider settings
@@ -1013,7 +1013,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         .title("Default Provider")
         .subtitle("AI provider to use for commands")
         .build();
-    let providers = ["claude", "openai", "gemini", "local"];
+    let providers = ["claude", "openai", "gemini", "ollama"];
     provider_row.set_model(Some(&gtk4::StringList::new(&providers)));
     if let Some(pos) = providers.iter().position(|&p| p == default_provider) {
         provider_row.set_selected(pos as u32);
@@ -1053,9 +1053,48 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     ai_page.add(&provider_group);
 
-    // Claude group
+    // CLI Providers info group
+    let cli_group = libadwaita::PreferencesGroup::builder()
+        .title("CLI Providers (Auto-detected)")
+        .description("These use your logged-in accounts - no API keys needed. Install and authenticate with: claude (Claude Code), gemini (Gemini CLI)")
+        .build();
+
+    // Show detected CLI tools status
+    let claude_cli_available = std::process::Command::new("which")
+        .arg("claude")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let gemini_cli_available = std::process::Command::new("which")
+        .arg("gemini")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let claude_cli_row = libadwaita::ActionRow::builder()
+        .title("Claude Code")
+        .subtitle(if claude_cli_available { "Installed - uses OAuth" } else { "Not installed" })
+        .build();
+    if claude_cli_available {
+        claude_cli_row.add_suffix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));
+    }
+    cli_group.add(&claude_cli_row);
+
+    let gemini_cli_row = libadwaita::ActionRow::builder()
+        .title("Gemini CLI")
+        .subtitle(if gemini_cli_available { "Installed - uses OAuth" } else { "Not installed" })
+        .build();
+    if gemini_cli_available {
+        gemini_cli_row.add_suffix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));
+    }
+    cli_group.add(&gemini_cli_row);
+
+    ai_page.add(&cli_group);
+
+    // Claude group (API - optional if using Claude Code CLI)
     let claude_group = libadwaita::PreferencesGroup::builder()
-        .title("Claude (Anthropic)")
+        .title("Claude API (Optional)")
+        .description("Only needed if not using Claude Code CLI. The CLI uses your OAuth login.")
         .build();
 
     let claude_key_row = libadwaita::PasswordEntryRow::builder()
@@ -1094,9 +1133,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     ai_page.add(&claude_group);
 
-    // OpenAI group
+    // OpenAI group (API)
     let openai_group = libadwaita::PreferencesGroup::builder()
-        .title("OpenAI")
+        .title("OpenAI API (Optional)")
+        .description("Direct API access requires an API key from platform.openai.com")
         .build();
 
     let openai_key_row = libadwaita::PasswordEntryRow::builder()
@@ -1135,9 +1175,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     ai_page.add(&openai_group);
 
-    // Gemini group
+    // Gemini group (API - optional if using Gemini CLI)
     let gemini_group = libadwaita::PreferencesGroup::builder()
-        .title("Google Gemini")
+        .title("Gemini API (Optional)")
+        .description("Only needed if not using Gemini CLI. The CLI uses your Google OAuth login.")
         .build();
 
     let gemini_key_row = libadwaita::PasswordEntryRow::builder()
@@ -1176,15 +1217,15 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     ai_page.add(&gemini_group);
 
-    // Local LLM group
+    // Ollama group
     let local_group = libadwaita::PreferencesGroup::builder()
-        .title("Local LLM")
-        .description("Use a local language model (e.g., Ollama)")
+        .title("Ollama")
+        .description("Connect to local Ollama server for AI inference")
         .build();
 
     let local_enabled_row = libadwaita::SwitchRow::builder()
-        .title("Enable Local LLM")
-        .subtitle("Use local AI instead of cloud providers")
+        .title("Enable Ollama")
+        .subtitle("Use local Ollama server instead of cloud providers")
         .active(local_enabled)
         .build();
     local_group.add(&local_enabled_row);

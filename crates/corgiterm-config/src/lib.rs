@@ -458,7 +458,7 @@ impl Default for AiConfig {
             local: LocalLlmConfig::default(),
             natural_language: true,
             auto_suggest: true,
-            show_panel: false,
+            show_panel: true, // Show panel by default for discoverability
             panel_position: AiPanelPosition::Right,
             learning: LearningConfig::default(),
         }
@@ -604,7 +604,7 @@ pub struct SafeModeConfig {
 impl Default for SafeModeConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true, // Enable by default for CLI-intimidated users
             preview_all: false,
             preview_dangerous_only: true,
             ai_explanations: true,

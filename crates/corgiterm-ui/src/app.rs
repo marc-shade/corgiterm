@@ -268,14 +268,52 @@ fn detect_ai_providers() {
             }
 
             // Set default provider (auto = first available)
-            let default = if config.ai.default_provider == "auto" {
+            let config_default = config.ai.default_provider.clone();
+            let default = if config_default == "auto" {
                 first_provider.clone().unwrap_or_default()
             } else {
-                config.ai.default_provider.clone()
+                config_default.clone()
             };
 
-            if !default.is_empty() && ai_manager.set_default(&default) {
-                tracing::info!("Default AI provider: {}", default);
+            if !default.is_empty() {
+                // First try exact match
+                if ai_manager.set_default(&default) {
+                    tracing::info!("Default AI provider set to: {}", default);
+                } else {
+                    // Try smart matching: "claude" -> "claude-cli", "gemini" -> "gemini-cli"
+                    let cli_variant = format!("{}-cli", default);
+                    let providers = ai_manager.list_providers();
+                    tracing::debug!(
+                        "Provider '{}' not found, trying '{}'. Available: {:?}",
+                        default,
+                        cli_variant,
+                        providers
+                    );
+
+                    if ai_manager.set_default(&cli_variant) {
+                        tracing::info!(
+                            "Default AI provider set to: {} (matched from config '{}')",
+                            cli_variant,
+                            config_default
+                        );
+                    } else {
+                        // Fall back to first available provider
+                        if let Some(first) = first_provider.as_ref() {
+                            if ai_manager.set_default(first) {
+                                tracing::warn!(
+                                    "Config default '{}' not found, falling back to: {}",
+                                    config_default,
+                                    first
+                                );
+                            }
+                        } else {
+                            tracing::warn!(
+                                "Could not set default provider '{}' - no matching provider found",
+                                config_default
+                            );
+                        }
+                    }
+                }
             }
 
             let provider_count = ai_manager.list_providers().len();
