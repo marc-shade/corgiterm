@@ -138,7 +138,18 @@ cargo build --release
 ./target/release/corgiterm
 ```
 
-### Install (macOS)
+### Install (macOS) - Recommended
+
+Download the latest DMG from [Releases](https://github.com/marc-shade/corgiterm/releases):
+
+1. Download `CorgiTerm-x.x.x-macos-apple-silicon.dmg` (Apple Silicon) or `CorgiTerm-x.x.x-macos-intel.dmg` (Intel)
+2. Open the DMG and drag CorgiTerm to Applications
+3. Install runtime dependencies: `brew install gtk4 libadwaita`
+4. Launch CorgiTerm from Applications
+
+**First run:** If macOS shows "app cannot be opened", right-click and select "Open".
+
+### Build from Source (macOS)
 
 ```bash
 # Install dependencies via Homebrew
@@ -152,6 +163,12 @@ git clone https://github.com/marc-shade/corgiterm
 cd corgiterm
 cargo build --release
 ./target/release/corgiterm
+
+# Or create a proper app bundle:
+./macos/build-app.sh
+
+# Or create a DMG installer:
+./macos/create-dmg.sh
 ```
 
 ### First Steps
