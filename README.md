@@ -40,7 +40,7 @@ Every command is previewed before execution. See exactly what will happen, with 
 |                                                                  |
 |  Command: rm -rf ./node_modules                                  |
 |                                                                  |
-|  CAUTION - This will permanently delete files                   |
+|  CAUTION - This will permanently delete files                    |
 |                                                                  |
 |  What it does:                                                   |
 |  - Recursively removes the 'node_modules' directory              |
