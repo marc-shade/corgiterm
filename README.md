@@ -145,9 +145,18 @@ Download the latest DMG from [Releases](https://github.com/marc-shade/corgiterm/
 1. Download `CorgiTerm-x.x.x-macos-apple-silicon.dmg` (Apple Silicon) or `CorgiTerm-x.x.x-macos-intel.dmg` (Intel)
 2. Open the DMG and drag CorgiTerm to Applications
 3. Install runtime dependencies: `brew install gtk4 libadwaita`
-4. Launch CorgiTerm from Applications
+4. **Important:** Remove the quarantine flag before first launch:
+   ```bash
+   xattr -cr /Applications/CorgiTerm.app
+   ```
+5. Launch CorgiTerm from Applications
 
-**First run:** If macOS shows "app cannot be opened", right-click and select "Open".
+**Gatekeeper note:** CorgiTerm is not notarized with Apple. If macOS says the app is "damaged" or "cannot be opened":
+```bash
+# Remove quarantine attribute (required after downloading)
+xattr -cr /Applications/CorgiTerm.app
+```
+Then right-click the app and select "Open" to bypass Gatekeeper.
 
 ### Build from Source (macOS)
 

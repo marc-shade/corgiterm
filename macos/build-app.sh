@@ -84,6 +84,13 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 # Set executable permissions
 chmod +x "$APP_BUNDLE/Contents/MacOS/corgiterm"
 
+# Ad-hoc code sign the app bundle (prevents "corrupted" error on other Macs)
+echo "Code signing app bundle..."
+codesign --force --deep --sign - "$APP_BUNDLE"
+
+# Verify signature
+codesign --verify --verbose "$APP_BUNDLE" && echo "Code signature verified" || echo "Warning: Code signature verification failed"
+
 echo ""
 echo "=== Build Complete ==="
 echo "App bundle created at: $APP_BUNDLE"
