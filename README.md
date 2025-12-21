@@ -1,3 +1,6 @@
+
+![corgiterm](https://github.com/user-attachments/assets/a444f023-d409-4434-911e-03f40089f81c)
+
 # CorgiTerm
 
 **The terminal that teaches you as you go.**
