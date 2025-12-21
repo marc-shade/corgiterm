@@ -1073,7 +1073,11 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     let claude_cli_row = libadwaita::ActionRow::builder()
         .title("Claude Code")
-        .subtitle(if claude_cli_available { "Installed - uses OAuth" } else { "Not installed" })
+        .subtitle(if claude_cli_available {
+            "Installed - uses OAuth"
+        } else {
+            "Not installed"
+        })
         .build();
     if claude_cli_available {
         claude_cli_row.add_suffix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));
@@ -1082,7 +1086,11 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
 
     let gemini_cli_row = libadwaita::ActionRow::builder()
         .title("Gemini CLI")
-        .subtitle(if gemini_cli_available { "Installed - uses OAuth" } else { "Not installed" })
+        .subtitle(if gemini_cli_available {
+            "Installed - uses OAuth"
+        } else {
+            "Not installed"
+        })
         .build();
     if gemini_cli_available {
         gemini_cli_row.add_suffix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));

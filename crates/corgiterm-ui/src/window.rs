@@ -113,7 +113,9 @@ impl MainWindow {
 
         // AI panel toggle button - more visible for beginners
         let ai_toggle_btn = Button::from_icon_name("dialog-question-symbolic");
-        ai_toggle_btn.set_tooltip_text(Some("AI Assistant - Get help with commands! (Ctrl+Shift+A)"));
+        ai_toggle_btn.set_tooltip_text(Some(
+            "AI Assistant - Get help with commands! (Ctrl+Shift+A)",
+        ));
         ai_toggle_btn.add_css_class("suggested-action"); // Make it stand out
         header.pack_end(&ai_toggle_btn);
 
@@ -124,11 +126,13 @@ impl MainWindow {
         let safe_mode_indicator = Button::new();
         if safe_mode_enabled {
             safe_mode_indicator.set_icon_name("security-high-symbolic");
-            safe_mode_indicator.set_tooltip_text(Some("Safe Mode ON - Commands are reviewed before running"));
+            safe_mode_indicator
+                .set_tooltip_text(Some("Safe Mode ON - Commands are reviewed before running"));
             safe_mode_indicator.add_css_class("success");
         } else {
             safe_mode_indicator.set_icon_name("security-medium-symbolic");
-            safe_mode_indicator.set_tooltip_text(Some("Safe Mode OFF - Click to enable command review"));
+            safe_mode_indicator
+                .set_tooltip_text(Some("Safe Mode OFF - Click to enable command review"));
         }
         safe_mode_indicator.add_css_class("flat");
         let win_for_safe = window.clone();
@@ -311,7 +315,7 @@ impl MainWindow {
         content_paned.set_start_child(Some(&sidebar_widget));
         content_paned.set_end_child(Some(&terminal_area));
         content_paned.set_resize_start_child(false);
-        content_paned.set_shrink_start_child(true);  // Allow sidebar to shrink to 0
+        content_paned.set_shrink_start_child(true); // Allow sidebar to shrink to 0
         content_paned.set_resize_end_child(true);
         content_paned.set_shrink_end_child(false);
         content_paned.set_position(220);
@@ -327,7 +331,7 @@ impl MainWindow {
             // Read current paned position to determine actual state
             // This handles manual dragging by the user
             let current_pos = paned_for_btn.position();
-            let is_visible = current_pos > 50;  // Threshold: >50px = visible
+            let is_visible = current_pos > 50; // Threshold: >50px = visible
 
             if is_visible {
                 paned_for_btn.set_position(0);
@@ -741,7 +745,7 @@ impl MainWindow {
             if shortcuts_for_keys.matches(ShortcutAction::ToggleSidebar, key, modifier) {
                 // Read current paned position to determine actual state
                 let current_pos = paned_for_keys.position();
-                let is_visible = current_pos > 50;  // Threshold: >50px = visible
+                let is_visible = current_pos > 50; // Threshold: >50px = visible
 
                 if is_visible {
                     paned_for_keys.set_position(0);
@@ -867,134 +871,148 @@ impl MainWindow {
 
     pub fn present(&self) {
         // On X11/libadwaita, show() helps ensure proper realization before present()
+        // Note: show() is deprecated since GTK 4.10, but still needed for X11 compatibility
+        #[allow(deprecated)]
         self.window.show();
         self.window.present();
 
         // WORKAROUND: On X11/Budgie, GTK4/libadwaita sometimes fails to set initial window size/position
         // Use xdotool as a fallback to force window to be visible and properly sized.
         // Spawn thread directly (GTK timeout callbacks don't reliably fire on some X11 setups)
-        let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
-        if session_type != "wayland" {
-            std::thread::spawn(move || {
-                // Wait for window to be fully mapped by X11/WM
-                std::thread::sleep(std::time::Duration::from_millis(500));
+        // Note: This only applies to Linux X11, not macOS or Wayland
+        #[cfg(target_os = "linux")]
+        {
+            let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+            if session_type != "wayland" {
+                std::thread::spawn(move || {
+                    // Wait for window to be fully mapped by X11/WM
+                    std::thread::sleep(std::time::Duration::from_millis(500));
 
-                // Get OUR process PID to find only our windows
-                // NOTE: Only use --pid filter (NOT --name) to avoid stale window cache issues
-                let our_pid = std::process::id();
+                    // Get OUR process PID to find only our windows
+                    // NOTE: Only use --pid filter (NOT --name) to avoid stale window cache issues
+                    let our_pid = std::process::id();
 
-                if let Ok(output) = std::process::Command::new("xdotool")
-                    .args(["search", "--pid", &our_pid.to_string()])
-                    .output()
-                {
-                    let window_ids: Vec<String> = String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
+                    if let Ok(output) = std::process::Command::new("xdotool")
+                        .args(["search", "--pid", &our_pid.to_string()])
+                        .output()
+                    {
+                        let window_ids: Vec<String> = String::from_utf8_lossy(&output.stdout)
+                            .lines()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect();
 
-                    eprintln!(
-                        "X11 workaround: found {} windows for pid {}",
-                        window_ids.len(),
-                        our_pid
-                    );
+                        eprintln!(
+                            "X11 workaround: found {} windows for pid {}",
+                            window_ids.len(),
+                            our_pid
+                        );
 
-                    // First pass: find the main window (larger than 1x1) and any small placeholder windows
-                    let mut main_window: Option<String> = None;
-                    let mut small_windows: Vec<String> = Vec::new();
+                        // First pass: find the main window (larger than 1x1) and any small placeholder windows
+                        let mut main_window: Option<String> = None;
+                        let mut small_windows: Vec<String> = Vec::new();
 
-                    for wid in &window_ids {
-                        if let Ok(geo_output) = std::process::Command::new("xdotool")
-                            .args(["getwindowgeometry", wid])
-                            .output()
-                        {
-                            if geo_output.status.success() {
-                                let geo_str = String::from_utf8_lossy(&geo_output.stdout);
-                                // Parse geometry to check if it's a tiny placeholder window
-                                // Format: "Window XXXXX\n  Position: X,Y\n  Geometry: WxH"
-                                let is_small = geo_str.lines().any(|line| {
-                                    if line.trim().starts_with("Geometry:") {
-                                        let size = line.trim().strip_prefix("Geometry:").unwrap_or("").trim();
-                                        // Consider windows <= 10x10 as placeholders
-                                        if let Some((w, h)) = size.split_once('x') {
-                                            if let (Ok(width), Ok(height)) = (w.parse::<u32>(), h.parse::<u32>()) {
-                                                return width <= 10 || height <= 10;
+                        for wid in &window_ids {
+                            if let Ok(geo_output) = std::process::Command::new("xdotool")
+                                .args(["getwindowgeometry", wid])
+                                .output()
+                            {
+                                if geo_output.status.success() {
+                                    let geo_str = String::from_utf8_lossy(&geo_output.stdout);
+                                    // Parse geometry to check if it's a tiny placeholder window
+                                    // Format: "Window XXXXX\n  Position: X,Y\n  Geometry: WxH"
+                                    let is_small = geo_str.lines().any(|line| {
+                                        if line.trim().starts_with("Geometry:") {
+                                            let size = line
+                                                .trim()
+                                                .strip_prefix("Geometry:")
+                                                .unwrap_or("")
+                                                .trim();
+                                            // Consider windows <= 10x10 as placeholders
+                                            if let Some((w, h)) = size.split_once('x') {
+                                                if let (Ok(width), Ok(height)) =
+                                                    (w.parse::<u32>(), h.parse::<u32>())
+                                                {
+                                                    return width <= 10 || height <= 10;
+                                                }
                                             }
                                         }
+                                        false
+                                    });
+
+                                    if is_small {
+                                        small_windows.push(wid.clone());
+                                    } else if main_window.is_none() {
+                                        main_window = Some(wid.clone());
                                     }
-                                    false
-                                });
-
-                                if is_small {
-                                    small_windows.push(wid.clone());
-                                } else if main_window.is_none() {
-                                    main_window = Some(wid.clone());
-                                }
-                            }
-                        }
-                    }
-
-                    // Minimize small placeholder windows to get them out of the way
-                    for wid in &small_windows {
-                        eprintln!("X11 workaround: minimizing placeholder window {}", wid);
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowminimize", wid])
-                            .output();
-                    }
-
-                    // Fix and show the main window
-                    if let Some(wid) = main_window {
-                        // Detect primary monitor offset using xrandr
-                        let mut primary_x = 0;
-                        if let Ok(xrandr_output) = std::process::Command::new("xrandr")
-                            .arg("--query")
-                            .output()
-                        {
-                            let xrandr_str = String::from_utf8_lossy(&xrandr_output.stdout);
-                            // Look for "primary WIDTHxHEIGHT+X+Y" pattern
-                            for line in xrandr_str.lines() {
-                                if line.contains(" primary ") {
-                                    // Parse: "DVI-D-0 connected primary 1920x1200+1920+0"
-                                    if let Some(pos) = line.find('+') {
-                                        let after_plus = &line[pos + 1..];
-                                        if let Some(end) = after_plus.find('+') {
-                                            if let Ok(x) = after_plus[..end].parse::<i32>() {
-                                                primary_x = x;
-                                                eprintln!("X11 workaround: primary monitor at x={}", primary_x);
-                                            }
-                                        }
-                                    }
-                                    break;
                                 }
                             }
                         }
 
-                        eprintln!("X11 workaround: fixing main window {} via xdotool", wid);
-                        // Move to visible position on PRIMARY monitor
-                        let target_x = (primary_x + 100).to_string();
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowmove", "--sync", &wid, &target_x, "100"])
-                            .output();
-                        // Set proper size
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowsize", "--sync", &wid, "1200", "800"])
-                            .output();
-                        // Activate, focus, and raise the window
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowactivate", "--sync", &wid])
-                            .output();
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowfocus", &wid])
-                            .output();
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowraise", &wid])
-                            .output();
-                    } else {
-                        eprintln!("X11 workaround: no main window found to fix");
+                        // Minimize small placeholder windows to get them out of the way
+                        for wid in &small_windows {
+                            eprintln!("X11 workaround: minimizing placeholder window {}", wid);
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowminimize", wid])
+                                .output();
+                        }
+
+                        // Fix and show the main window
+                        if let Some(wid) = main_window {
+                            // Detect primary monitor offset using xrandr
+                            let mut primary_x = 0;
+                            if let Ok(xrandr_output) =
+                                std::process::Command::new("xrandr").arg("--query").output()
+                            {
+                                let xrandr_str = String::from_utf8_lossy(&xrandr_output.stdout);
+                                // Look for "primary WIDTHxHEIGHT+X+Y" pattern
+                                for line in xrandr_str.lines() {
+                                    if line.contains(" primary ") {
+                                        // Parse: "DVI-D-0 connected primary 1920x1200+1920+0"
+                                        if let Some(pos) = line.find('+') {
+                                            let after_plus = &line[pos + 1..];
+                                            if let Some(end) = after_plus.find('+') {
+                                                if let Ok(x) = after_plus[..end].parse::<i32>() {
+                                                    primary_x = x;
+                                                    eprintln!(
+                                                        "X11 workaround: primary monitor at x={}",
+                                                        primary_x
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+
+                            eprintln!("X11 workaround: fixing main window {} via xdotool", wid);
+                            // Move to visible position on PRIMARY monitor
+                            let target_x = (primary_x + 100).to_string();
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowmove", "--sync", &wid, &target_x, "100"])
+                                .output();
+                            // Set proper size
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowsize", "--sync", &wid, "1200", "800"])
+                                .output();
+                            // Activate, focus, and raise the window
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowactivate", "--sync", &wid])
+                                .output();
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowfocus", &wid])
+                                .output();
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowraise", &wid])
+                                .output();
+                        } else {
+                            eprintln!("X11 workaround: no main window found to fix");
+                        }
                     }
-                }
-            });
-        }
+                });
+            }
+        } // end #[cfg(target_os = "linux")]
     }
 
     pub fn widget(&self) -> &ApplicationWindow {

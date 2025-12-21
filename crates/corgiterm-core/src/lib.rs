@@ -43,10 +43,10 @@ pub use learning::{
     UserPreference,
 };
 pub use pty::{Pty, PtySize};
-pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
 pub use recording::{
     EventType, PlaybackState, Recording, RecordingEvent, RecordingId, RecordingMeta, RecordingStore,
 };
+pub use safe_mode::{CommandPreview, RiskLevel, SafeMode};
 pub use session::{Session, SessionId, SessionManager};
 pub use terminal::{Terminal, TerminalEvent, TerminalHealth, TerminalSize};
 

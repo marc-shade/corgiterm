@@ -6,18 +6,16 @@
 //! - Playback controls (play, pause, speed, seek)
 
 use chrono::Local;
-use corgiterm_core::{
-    PlaybackState, Recording, RecordingEvent, RecordingId, RecordingStore,
-};
+use corgiterm_core::{PlaybackState, Recording, RecordingEvent, RecordingId, RecordingStore};
 use gtk4::prelude::*;
 use gtk4::{
     Box, Button, Label, ListBox, ListBoxRow, Orientation, ProgressBar, Scale, ScrolledWindow,
     Separator, ToggleButton,
 };
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
-use std::path::PathBuf;
 
 /// Recording state shared between UI and terminal
 pub struct RecordingState {
@@ -419,7 +417,8 @@ impl RecordingPanel {
 
             let current = format_duration(playback.position_ms);
             let total = format_duration(playback.recording.meta.duration_ms);
-            self.progress_bar.set_text(Some(&format!("{} / {}", current, total)));
+            self.progress_bar
+                .set_text(Some(&format!("{} / {}", current, total)));
         }
     }
 }
@@ -452,7 +451,10 @@ pub fn show_recording_dialog(parent: &impl gtk4::prelude::IsA<gtk4::Widget>) {
         .build();
 
     // Set transient for parent window
-    if let Some(parent_window) = parent.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+    if let Some(parent_window) = parent
+        .root()
+        .and_then(|r| r.downcast::<gtk4::Window>().ok())
+    {
         window.set_transient_for(Some(&parent_window));
     }
 

@@ -4,9 +4,7 @@
 
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{
-    Box, Entry, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, Window,
-};
+use gtk4::{Box, Entry, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, Window};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -62,7 +60,8 @@ impl HistorySearch {
         container.append(&help);
 
         let selected_command = Rc::new(RefCell::new(None));
-        let on_select: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>> = Rc::new(RefCell::new(None));
+        let on_select: Rc<RefCell<Option<std::boxed::Box<dyn Fn(&str)>>>> =
+            Rc::new(RefCell::new(None));
 
         let search = Self {
             container,
@@ -102,7 +101,9 @@ impl HistorySearch {
             let on_select_cb = on_select_cb.clone();
             move |entry| {
                 if let Some(row) = results_list.selected_row() {
-                    if let Some(label) = row.child().and_then(|c| c.downcast::<Box>().ok())
+                    if let Some(label) = row
+                        .child()
+                        .and_then(|c| c.downcast::<Box>().ok())
                         .and_then(|b| b.first_child())
                         .and_then(|c| c.downcast::<Label>().ok())
                     {
@@ -112,7 +113,8 @@ impl HistorySearch {
                             cb(&cmd);
                         }
                         // Close the popup (will be handled by parent)
-                        if let Some(window) = entry.root().and_then(|r| r.downcast::<Window>().ok()) {
+                        if let Some(window) = entry.root().and_then(|r| r.downcast::<Window>().ok())
+                        {
                             window.close();
                         }
                     }
@@ -124,7 +126,9 @@ impl HistorySearch {
         self.results_list.connect_row_activated({
             let on_select_cb = on_select_cb.clone();
             move |_list, row| {
-                if let Some(label) = row.child().and_then(|c| c.downcast::<Box>().ok())
+                if let Some(label) = row
+                    .child()
+                    .and_then(|c| c.downcast::<Box>().ok())
                     .and_then(|b| b.first_child())
                     .and_then(|c| c.downcast::<Label>().ok())
                 {
@@ -258,7 +262,9 @@ impl HistorySearch {
     }
 
     fn update_selected_from_row(&self, row: &ListBoxRow) {
-        if let Some(label) = row.child().and_then(|c| c.downcast::<Box>().ok())
+        if let Some(label) = row
+            .child()
+            .and_then(|c| c.downcast::<Box>().ok())
             .and_then(|b| b.first_child())
             .and_then(|c| c.downcast::<Label>().ok())
         {
@@ -291,7 +297,10 @@ where
         .build();
 
     // Set transient for parent window
-    if let Some(parent_window) = parent.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
+    if let Some(parent_window) = parent
+        .root()
+        .and_then(|r| r.downcast::<gtk4::Window>().ok())
+    {
         window.set_transient_for(Some(&parent_window));
     }
 
@@ -312,7 +321,8 @@ where
                 }
                 gtk4::gdk::Key::Up => {
                     // Navigate up in list
-                    if let Some(list) = search_widget.last_child()
+                    if let Some(list) = search_widget
+                        .last_child()
                         .and_then(|c| c.first_child())
                         .and_then(|c| c.downcast::<ListBox>().ok())
                     {
@@ -329,7 +339,8 @@ where
                 }
                 gtk4::gdk::Key::Down => {
                     // Navigate down in list
-                    if let Some(list) = search_widget.last_child()
+                    if let Some(list) = search_widget
+                        .last_child()
                         .and_then(|c| c.first_child())
                         .and_then(|c| c.downcast::<ListBox>().ok())
                     {
@@ -345,12 +356,14 @@ where
                 }
                 gtk4::gdk::Key::Return => {
                     // Select current and close
-                    if let Some(list) = search_widget.last_child()
+                    if let Some(list) = search_widget
+                        .last_child()
                         .and_then(|c| c.first_child())
                         .and_then(|c| c.downcast::<ListBox>().ok())
                     {
                         if let Some(row) = list.selected_row() {
-                            if let Some(label) = row.child()
+                            if let Some(label) = row
+                                .child()
                                 .and_then(|c| c.downcast::<Box>().ok())
                                 .and_then(|b| b.first_child())
                                 .and_then(|c| c.downcast::<Label>().ok())

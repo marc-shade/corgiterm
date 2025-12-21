@@ -1321,7 +1321,10 @@ impl TerminalView {
                                     }
                                 }
                                 Err(e) => {
-                                    tracing::debug!("PTY read error: {} (may be normal on close)", e);
+                                    tracing::debug!(
+                                        "PTY read error: {} (may be normal on close)",
+                                        e
+                                    );
                                     break;
                                 }
                             }
@@ -1781,14 +1784,51 @@ impl TerminalView {
             // If that fails, fall back to the shell PID
             let pid = pty.foreground_pid().unwrap_or_else(|| pty.pid());
 
-            // Read /proc/<pid>/cwd symlink
-            let proc_cwd = format!("/proc/{}/cwd", pid);
-            match std::fs::read_link(&proc_cwd) {
-                Ok(path) => Some(path),
-                Err(e) => {
-                    tracing::debug!("Failed to read {}: {}", proc_cwd, e);
-                    None
+            #[cfg(target_os = "linux")]
+            {
+                // Linux: Read /proc/<pid>/cwd symlink
+                let proc_cwd = format!("/proc/{}/cwd", pid);
+                match std::fs::read_link(&proc_cwd) {
+                    Ok(path) => Some(path),
+                    Err(e) => {
+                        tracing::debug!("Failed to read {}: {}", proc_cwd, e);
+                        None
+                    }
                 }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                // macOS: Use lsof to get the cwd of the process
+                use std::process::Command;
+                match Command::new("lsof")
+                    .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+                    .output()
+                {
+                    Ok(output) => {
+                        if output.status.success() {
+                            // Parse lsof output: lines starting with 'n' contain the path
+                            let output_str = String::from_utf8_lossy(&output.stdout);
+                            for line in output_str.lines() {
+                                if let Some(path) = line.strip_prefix('n') {
+                                    return Some(std::path::PathBuf::from(path));
+                                }
+                            }
+                        }
+                        None
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to run lsof for pid {}: {}", pid, e);
+                        None
+                    }
+                }
+            }
+
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            {
+                // Fallback for other platforms (Windows, etc.)
+                tracing::debug!("Working directory detection not implemented for this platform");
+                None
             }
         } else {
             None

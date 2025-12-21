@@ -601,10 +601,14 @@ impl ClaudeCliProvider {
         let lower = raw_error.to_lowercase();
 
         if lower.contains("credit balance") || lower.contains("credits") {
-            "Claude Code: Insufficient credits. Check your subscription at claude.ai/settings".to_string()
+            "Claude Code: Insufficient credits. Check your subscription at claude.ai/settings"
+                .to_string()
         } else if lower.contains("rate limit") {
             "Claude Code: Rate limited. Please wait a moment and try again.".to_string()
-        } else if lower.contains("unauthorized") || lower.contains("authentication") || lower.contains("not logged in") {
+        } else if lower.contains("unauthorized")
+            || lower.contains("authentication")
+            || lower.contains("not logged in")
+        {
             "Claude Code: Not authenticated. Run 'claude' in terminal to log in.".to_string()
         } else if lower.contains("network") || lower.contains("connection") {
             "Claude Code: Network error. Check your internet connection.".to_string()
@@ -742,8 +746,12 @@ impl GeminiCliProvider {
 
         if lower.contains("quota") || lower.contains("limit") {
             "Gemini CLI: Quota exceeded. Try again later or check your Google account.".to_string()
-        } else if lower.contains("unauthorized") || lower.contains("authentication") || lower.contains("not logged in") {
-            "Gemini CLI: Not authenticated. Run 'gemini' in terminal to log in with Google.".to_string()
+        } else if lower.contains("unauthorized")
+            || lower.contains("authentication")
+            || lower.contains("not logged in")
+        {
+            "Gemini CLI: Not authenticated. Run 'gemini' in terminal to log in with Google."
+                .to_string()
         } else if lower.contains("network") || lower.contains("connection") {
             "Gemini CLI: Network error. Check your internet connection.".to_string()
         } else if raw_error.len() > 200 {

@@ -646,7 +646,10 @@ impl AiPanel {
                         tracing::info!("Using AI provider for chat: {}", provider.name());
                         match provider.complete(&messages).await {
                             Ok(resp) => {
-                                tracing::debug!("AI response received: {} chars", resp.content.len());
+                                tracing::debug!(
+                                    "AI response received: {} chars",
+                                    resp.content.len()
+                                );
                                 let _ = sender.send(Ok(resp.content));
                             }
                             Err(e) => {
@@ -662,39 +665,40 @@ impl AiPanel {
             });
 
             tracing::debug!("Setting up response poller");
-            glib::timeout_add_local(std::time::Duration::from_millis(100), move || match receiver
-                .try_recv()
-            {
-                Ok(result) => {
-                    tracing::debug!("Received AI response from channel");
-                    let mut iter = buffer.end_iter();
-                    match result {
-                        Ok(content) => {
-                            buffer.insert(&mut iter, &format!("Assistant: {}\n\n", content));
+            glib::timeout_add_local(
+                std::time::Duration::from_millis(100),
+                move || match receiver.try_recv() {
+                    Ok(result) => {
+                        tracing::debug!("Received AI response from channel");
+                        let mut iter = buffer.end_iter();
+                        match result {
+                            Ok(content) => {
+                                buffer.insert(&mut iter, &format!("Assistant: {}\n\n", content));
 
-                            // Save assistant response to conversation store
-                            if let Some(store) = conversation_store() {
-                                let mut store = store.write();
-                                store.add_message("chat", Role::Assistant, &content);
+                                // Save assistant response to conversation store
+                                if let Some(store) = conversation_store() {
+                                    let mut store = store.write();
+                                    store.add_message("chat", Role::Assistant, &content);
+                                }
+                                // Auto-save conversations periodically
+                                save_conversations();
                             }
-                            // Auto-save conversations periodically
-                            save_conversations();
+                            Err(error) => {
+                                buffer.insert(&mut iter, &format!("Error: {}\n\n", error));
+                            }
                         }
-                        Err(error) => {
-                            buffer.insert(&mut iter, &format!("Error: {}\n\n", error));
-                        }
+                        *is_processing.borrow_mut() = false;
+                        glib::ControlFlow::Break
                     }
-                    *is_processing.borrow_mut() = false;
-                    glib::ControlFlow::Break
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    let mut iter = buffer.end_iter();
-                    buffer.insert(&mut iter, "Error: Request failed\n\n");
-                    *is_processing.borrow_mut() = false;
-                    glib::ControlFlow::Break
-                }
-            });
+                    Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        let mut iter = buffer.end_iter();
+                        buffer.insert(&mut iter, "Error: Request failed\n\n");
+                        *is_processing.borrow_mut() = false;
+                        glib::ControlFlow::Break
+                    }
+                },
+            );
         } else {
             tracing::error!("AI manager not available - chat cannot work");
             let mut iter = buffer.end_iter();
@@ -829,37 +833,38 @@ impl AiPanel {
                 });
             });
 
-            glib::timeout_add_local(std::time::Duration::from_millis(100), move || match receiver
-                .try_recv()
-            {
-                Ok(result) => {
-                    let start = buffer.start_iter();
-                    let end = buffer.end_iter();
-                    buffer.delete(&mut start.clone(), &mut end.clone());
+            glib::timeout_add_local(
+                std::time::Duration::from_millis(100),
+                move || match receiver.try_recv() {
+                    Ok(result) => {
+                        let start = buffer.start_iter();
+                        let end = buffer.end_iter();
+                        buffer.delete(&mut start.clone(), &mut end.clone());
 
-                    let mut iter = buffer.end_iter();
-                    match result {
-                        Ok(explanation) => {
-                            buffer.insert(&mut iter, &explanation);
+                        let mut iter = buffer.end_iter();
+                        match result {
+                            Ok(explanation) => {
+                                buffer.insert(&mut iter, &explanation);
+                            }
+                            Err(error) => {
+                                buffer.insert(&mut iter, &format!("Error: {}", error));
+                            }
                         }
-                        Err(error) => {
-                            buffer.insert(&mut iter, &format!("Error: {}", error));
-                        }
+                        *is_processing.borrow_mut() = false;
+                        glib::ControlFlow::Break
                     }
-                    *is_processing.borrow_mut() = false;
-                    glib::ControlFlow::Break
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    let start = buffer.start_iter();
-                    let end = buffer.end_iter();
-                    buffer.delete(&mut start.clone(), &mut end.clone());
-                    let mut iter = buffer.end_iter();
-                    buffer.insert(&mut iter, "Request failed");
-                    *is_processing.borrow_mut() = false;
-                    glib::ControlFlow::Break
-                }
-            });
+                    Err(crossbeam_channel::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        let start = buffer.start_iter();
+                        let end = buffer.end_iter();
+                        buffer.delete(&mut start.clone(), &mut end.clone());
+                        let mut iter = buffer.end_iter();
+                        buffer.insert(&mut iter, "Request failed");
+                        *is_processing.borrow_mut() = false;
+                        glib::ControlFlow::Break
+                    }
+                },
+            );
         }
     }
 

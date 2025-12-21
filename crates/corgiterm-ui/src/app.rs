@@ -32,8 +32,9 @@ static HISTORY_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::history::Comm
     std::sync::OnceLock::new();
 
 /// Global conversation store for AI chat persistence
-static CONVERSATION_STORE: std::sync::OnceLock<Arc<RwLock<corgiterm_ai::conversation::ConversationStore>>> =
-    std::sync::OnceLock::new();
+static CONVERSATION_STORE: std::sync::OnceLock<
+    Arc<RwLock<corgiterm_ai::conversation::ConversationStore>>,
+> = std::sync::OnceLock::new();
 
 /// Get the global config manager
 pub fn config_manager() -> Option<Arc<RwLock<corgiterm_config::ConfigManager>>> {

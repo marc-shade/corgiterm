@@ -116,7 +116,7 @@ Warp is great, but:
 - **Cloud-dependent** - AI features don't work offline
 - **macOS only** (Linux in beta)
 
-CorgiTerm is **open source, runs AI locally with Ollama, requires no account**, and works on Linux today.
+CorgiTerm is **open source, runs AI locally with Ollama, requires no account**, and works on Linux and macOS today.
 
 ---
 
@@ -126,13 +126,29 @@ CorgiTerm is **open source, runs AI locally with Ollama, requires no account**, 
 
 ```bash
 # Fedora
-sudo dnf install gtk4-devel libadwaita-devel
+sudo dnf install gtk4-devel libadwaita-devel lua-devel
 
 # Ubuntu/Debian
-sudo apt install libgtk-4-dev libadwaita-1-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev liblua5.4-dev
 
 # Build and run
-git clone https://github.com/corgiterm/corgiterm
+git clone https://github.com/marc-shade/corgiterm
+cd corgiterm
+cargo build --release
+./target/release/corgiterm
+```
+
+### Install (macOS)
+
+```bash
+# Install dependencies via Homebrew
+brew install gtk4 libadwaita lua@5.4
+
+# Set up pkg-config path for Lua
+export PKG_CONFIG_PATH="/opt/homebrew/opt/lua@5.4/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+# Build and run
+git clone https://github.com/marc-shade/corgiterm
 cd corgiterm
 cargo build --release
 ./target/release/corgiterm
@@ -223,20 +239,28 @@ Already comfortable with the terminal? CorgiTerm has you covered:
 - [x] SSH Manager
 - [x] Split panes
 - [x] Theme creator
+- [x] Session recording and playback
+- [x] WASM and Lua plugin system
+- [x] macOS support (Apple Silicon & Intel)
+- [x] Cross-platform PTY (via portable-pty)
+- [x] GPU-accelerated rendering (wgpu/glyphon)
 
 ### Coming Soon
-- [ ] Session recording and playback
-- [ ] Plugin marketplace
+- [ ] Windows support (ConPTY integration)
+- [ ] Plugin marketplace / repository
 - [ ] Collaborative terminals (pair programming)
-- [ ] Windows and macOS releases
+- [ ] Tmux/screen session integration
+- [ ] AI-powered command history search
+- [ ] Custom keybinding profiles
 
 ---
 
 ## Built With
 
 - [Rust](https://www.rust-lang.org/) - Fast and safe
-- [GTK4](https://gtk.org/) + [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) - Modern Linux UI
-- [VTE](https://gitlab.gnome.org/GNOME/vte) - Terminal emulation
+- [GTK4](https://gtk.org/) + [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) - Modern cross-platform UI
+- [portable-pty](https://github.com/wez/wezterm/tree/main/pty) - Cross-platform PTY (Linux, macOS, Windows)
+- [wgpu](https://wgpu.rs/) + [glyphon](https://github.com/grovesNL/glyphon) - GPU-accelerated text rendering
 
 ---
 

@@ -322,7 +322,8 @@ impl RecordingStore {
         }
 
         // Sort by date, newest first
-        self.recordings.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        self.recordings
+            .sort_by(|a, b| b.started_at.cmp(&a.started_at));
 
         Ok(())
     }
@@ -380,7 +381,9 @@ impl RecordingStore {
                         .as_ref()
                         .map(|d| d.to_lowercase().contains(&query_lower))
                         .unwrap_or(false)
-                    || r.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                    || r.tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .collect()
     }
@@ -403,12 +406,7 @@ mod tests {
 
     #[test]
     fn test_recording_creation() {
-        let mut recording = Recording::new(
-            "Test Recording",
-            PathBuf::from("/home/user"),
-            24,
-            80,
-        );
+        let mut recording = Recording::new("Test Recording", PathBuf::from("/home/user"), 24, 80);
 
         recording.add_output(b"Hello, ");
         recording.add_input(b"World");

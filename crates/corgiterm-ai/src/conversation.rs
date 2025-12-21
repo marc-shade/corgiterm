@@ -407,7 +407,11 @@ impl ConversationStore {
     pub fn stats(&self) -> ConversationStats {
         ConversationStats {
             total_conversations: self.conversations.len(),
-            chat_count: self.conversations.iter().filter(|c| c.mode == "chat").count(),
+            chat_count: self
+                .conversations
+                .iter()
+                .filter(|c| c.mode == "chat")
+                .count(),
             command_count: self
                 .conversations
                 .iter()

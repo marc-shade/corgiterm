@@ -334,7 +334,13 @@ impl CommandHistoryStore {
         let query_chars: Vec<char> = query_lower.chars().collect();
 
         if query_chars.is_empty() {
-            return self.entries.iter().rev().take(limit).map(|e| (e, 1.0)).collect();
+            return self
+                .entries
+                .iter()
+                .rev()
+                .take(limit)
+                .map(|e| (e, 1.0))
+                .collect();
         }
 
         let mut scored: Vec<(&HistoryEntry, f32)> = self
