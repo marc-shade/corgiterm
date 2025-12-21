@@ -109,11 +109,13 @@ fi
 # Mount DMG
 print_step "Installing CorgiTerm..."
 MOUNT_OUTPUT=$(hdiutil attach "$DOWNLOAD_PATH" -nobrowse 2>&1)
-MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^	]*' | head -1 | xargs)
+# Extract mount point: find line with /Volumes/, take everything after last tab
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep '/Volumes/' | sed 's/.*	//' | tr -d '\n')
 
 if [[ -z "$MOUNT_POINT" ]] || [[ ! -d "$MOUNT_POINT" ]]; then
+    echo "Mount output:"
     echo "$MOUNT_OUTPUT"
-    print_error "Failed to mount DMG"
+    print_error "Failed to mount DMG - could not find mount point"
 fi
 print_success "Mounted at $MOUNT_POINT"
 
