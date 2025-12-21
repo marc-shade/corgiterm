@@ -38,7 +38,7 @@ impl Sidebar {
     pub fn new() -> Self {
         let container = gtk4::Box::new(Orientation::Vertical, 0);
         container.add_css_class("sidebar");
-        container.set_width_request(220);
+        // Don't set width_request - it prevents the paned from shrinking the sidebar
         // Add padding to prevent clipping at edges
         container.set_margin_start(4);
         container.set_margin_end(4);
