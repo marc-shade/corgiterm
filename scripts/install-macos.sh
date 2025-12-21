@@ -108,11 +108,14 @@ fi
 
 # Mount DMG
 print_step "Installing CorgiTerm..."
-MOUNT_POINT=$(hdiutil attach "$DOWNLOAD_PATH" -nobrowse -quiet | grep -o '/Volumes/.*' | head -1)
+MOUNT_OUTPUT=$(hdiutil attach "$DOWNLOAD_PATH" -nobrowse 2>&1)
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^	]*' | head -1 | xargs)
 
-if [[ -z "$MOUNT_POINT" ]]; then
+if [[ -z "$MOUNT_POINT" ]] || [[ ! -d "$MOUNT_POINT" ]]; then
+    echo "$MOUNT_OUTPUT"
     print_error "Failed to mount DMG"
 fi
+print_success "Mounted at $MOUNT_POINT"
 
 # Copy to Applications (remove old version first)
 if [[ -d "/Applications/CorgiTerm.app" ]]; then
@@ -124,7 +127,7 @@ cp -R "${MOUNT_POINT}/CorgiTerm.app" /Applications/
 print_success "Installed to /Applications"
 
 # Unmount
-hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+hdiutil detach "$MOUNT_POINT" -force 2>/dev/null || true
 rm -f "$DOWNLOAD_PATH"
 
 # Clear quarantine (macOS Gatekeeper)
@@ -150,10 +153,14 @@ echo "    • Ctrl+Shift+S  →  Open snippets library"
 echo "    • Safe Mode is ON by default"
 echo ""
 
-# Ask to launch
-read -p "Launch CorgiTerm now? [Y/n] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
-    open -a CorgiTerm
-    print_success "CorgiTerm launched!"
+# Ask to launch (only in interactive mode)
+if [[ -t 0 ]]; then
+    read -p "Launch CorgiTerm now? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+        open -a CorgiTerm
+        print_success "CorgiTerm launched!"
+    fi
+else
+    echo "Run 'open -a CorgiTerm' to launch."
 fi
