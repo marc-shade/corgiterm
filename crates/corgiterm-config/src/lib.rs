@@ -562,6 +562,8 @@ pub struct LocalLlmConfig {
     pub enabled: bool,
     pub endpoint: String,
     pub model: String,
+    /// Optional API key for Ollama Cloud (not needed for local Ollama)
+    pub api_key: Option<String>,
 }
 
 impl Default for LocalLlmConfig {
@@ -570,6 +572,7 @@ impl Default for LocalLlmConfig {
             enabled: true, // Enable by default - auto-detects if Ollama is running
             endpoint: "http://localhost:11434".to_string(), // Standard Ollama port
             model: "codellama".to_string(), // Common model for command generation
+            api_key: None, // Only needed for Ollama Cloud
         }
     }
 }

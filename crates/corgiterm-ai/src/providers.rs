@@ -531,14 +531,17 @@ pub struct OllamaProvider {
     client: Client,
     endpoint: String,
     model: String,
+    /// Optional API key for Ollama Cloud
+    api_key: Option<String>,
 }
 
 impl OllamaProvider {
-    pub fn new(endpoint: String, model: String) -> Self {
+    pub fn new(endpoint: String, model: String, api_key: Option<String>) -> Self {
         Self {
             client: Client::new(),
             endpoint,
             model,
+            api_key,
         }
     }
 }
@@ -586,7 +589,12 @@ impl AiProvider for OllamaProvider {
 
     async fn is_available(&self) -> bool {
         let url = format!("{}/api/tags", self.endpoint);
-        self.client.get(&url).send().await.is_ok()
+        let mut req = self.client.get(&url);
+        // Add Authorization header for Ollama Cloud if API key is set
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        req.send().await.is_ok()
     }
 
     async fn complete(&self, messages: &[Message]) -> Result<AiResponse> {
@@ -610,7 +618,12 @@ impl AiProvider for OllamaProvider {
         };
 
         let url = format!("{}/api/generate", self.endpoint);
-        let response = self.client.post(&url).json(&request).send().await?;
+        let mut req = self.client.post(&url).json(&request);
+        // Add Authorization header for Ollama Cloud if API key is set
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let response = req.send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1101,7 +1114,7 @@ mod tests {
     #[test]
     fn test_ollama_provider_name() {
         let provider =
-            OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string());
+            OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string(), None);
         assert_eq!(provider.name(), "ollama");
     }
 

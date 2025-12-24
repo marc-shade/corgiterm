@@ -1129,6 +1129,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         local_enabled,
         local_endpoint,
         local_model,
+        local_api_key,
         auto_suggest,
     ) = if let Some(config_manager) = get_config() {
         let config = config_manager.read().config();
@@ -1143,6 +1144,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
             config.ai.local.enabled,
             config.ai.local.endpoint.clone(),
             config.ai.local.model.clone(),
+            config.ai.local.api_key.clone().unwrap_or_default(),
             config.ai.auto_suggest,
         )
     } else {
@@ -1157,6 +1159,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
             false,
             "http://localhost:11434".to_string(),
             "llama3".to_string(),
+            String::new(),
             true,
         )
     };
@@ -1482,6 +1485,23 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                 });
                 let _ = config_manager.read().save();
             }
+        }
+    });
+
+    // API key for Ollama Cloud (optional - not needed for local Ollama)
+    let api_key_row = libadwaita::PasswordEntryRow::builder()
+        .title("API Key (Cloud only)")
+        .text(&local_api_key)
+        .build();
+    local_group.add(&api_key_row);
+
+    api_key_row.connect_changed(move |row| {
+        let key = row.text().to_string();
+        if let Some(config_manager) = get_config() {
+            config_manager.read().update(|config| {
+                config.ai.local.api_key = if key.is_empty() { None } else { Some(key) };
+            });
+            let _ = config_manager.read().save();
         }
     });
 

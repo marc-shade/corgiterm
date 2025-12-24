@@ -181,6 +181,7 @@ fn detect_ai_providers() {
                     let provider = corgiterm_ai::providers::OllamaProvider::new(
                         endpoint.clone(),
                         config.ai.local.model.clone(),
+                        config.ai.local.api_key.clone(),
                     );
                     if first_provider.is_none() {
                         first_provider = Some("ollama".to_string());
