@@ -321,22 +321,32 @@ impl ModelRegistry {
 
     /// Fetch models from OpenAI API
     async fn fetch_openai_models(&self) -> Result<Vec<ModelInfo>> {
-        let api_key = self.config.openai_api_key.as_ref().ok_or_else(|| {
-            AiError::NotConfigured("OpenAI API key not set".to_string())
-        })?;
+        let api_key = match self.config.openai_api_key.as_ref() {
+            Some(key) if !key.is_empty() => key,
+            _ => {
+                // No API key - use known models fallback
+                warn!("OpenAI API key not set, using known models");
+                return Ok(self.get_openai_known_models());
+            }
+        };
 
-        let response = self
+        let response = match self
             .client
             .get("https://api.openai.com/v1/models")
             .header("Authorization", format!("Bearer {}", api_key))
             .send()
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                warn!("OpenAI API request failed: {}, using known models", e);
+                return Ok(self.get_openai_known_models());
+            }
+        };
 
         if !response.status().is_success() {
-            return Err(AiError::ApiError(format!(
-                "OpenAI API error: {}",
-                response.status()
-            )));
+            warn!("OpenAI API error: {}, using known models", response.status());
+            return Ok(self.get_openai_known_models());
         }
 
         #[derive(Deserialize)]
@@ -489,24 +499,57 @@ impl ModelRegistry {
         ]
     }
 
+    /// Get known OpenAI models (fallback when API key not set)
+    fn get_openai_known_models(&self) -> Vec<ModelInfo> {
+        vec![
+            create_openai_model("gpt-4o", "GPT-4o", 128_000, true),
+            create_openai_model("gpt-4o-mini", "GPT-4o Mini", 128_000, true),
+            create_openai_model("o1", "o1", 128_000, true),
+            create_openai_model("o1-mini", "o1 Mini", 128_000, false),
+            create_openai_model("o3-mini", "o3 Mini", 128_000, true),
+            create_openai_model("gpt-4-turbo", "GPT-4 Turbo", 128_000, false),
+            create_openai_model("gpt-4", "GPT-4", 8_192, false),
+            create_openai_model("gpt-3.5-turbo", "GPT-3.5 Turbo", 16_384, false),
+        ]
+    }
+
+    /// Get known Gemini models (fallback when API key not set)
+    fn get_gemini_known_models(&self) -> Vec<ModelInfo> {
+        vec![
+            create_gemini_model("gemini-2.0-flash-exp", "Gemini 2.0 Flash", 1_000_000, true),
+            create_gemini_model("gemini-2.0-flash-thinking-exp", "Gemini 2.0 Flash Thinking", 1_000_000, true),
+            create_gemini_model("gemini-1.5-pro", "Gemini 1.5 Pro", 2_000_000, true),
+            create_gemini_model("gemini-1.5-flash", "Gemini 1.5 Flash", 1_000_000, false),
+            create_gemini_model("gemini-1.5-flash-8b", "Gemini 1.5 Flash 8B", 1_000_000, false),
+        ]
+    }
+
     /// Fetch models from Google Gemini API
     async fn fetch_gemini_models(&self) -> Result<Vec<ModelInfo>> {
-        let api_key = self.config.google_api_key.as_ref().ok_or_else(|| {
-            AiError::NotConfigured("Google API key not set".to_string())
-        })?;
+        let api_key = match self.config.google_api_key.as_ref() {
+            Some(key) if !key.is_empty() => key,
+            _ => {
+                warn!("Google API key not set, using known models");
+                return Ok(self.get_gemini_known_models());
+            }
+        };
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models?key={}",
             api_key
         );
 
-        let response = self.client.get(&url).send().await?;
+        let response = match self.client.get(&url).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                warn!("Gemini API request failed: {}, using known models", e);
+                return Ok(self.get_gemini_known_models());
+            }
+        };
 
         if !response.status().is_success() {
-            return Err(AiError::ApiError(format!(
-                "Gemini API error: {}",
-                response.status()
-            )));
+            warn!("Gemini API error: {}, using known models", response.status());
+            return Ok(self.get_gemini_known_models());
         }
 
         #[derive(Deserialize)]
@@ -758,6 +801,28 @@ fn create_claude_model(id: &str, name: &str, recommended: bool) -> ModelInfo {
     info.family = Some("Claude".to_string());
     info.context_window = Some(200_000);
     info.max_output = Some(8_192);
+    info.supports_tools = true;
+    info.supports_vision = true;
+    info.recommended = recommended;
+    info
+}
+
+fn create_openai_model(id: &str, name: &str, context_window: u32, recommended: bool) -> ModelInfo {
+    let mut info = ModelInfo::new(id, "openai");
+    info.name = name.to_string();
+    info.family = extract_model_family(id);
+    info.context_window = Some(context_window);
+    info.supports_tools = true;
+    info.supports_vision = id.contains("gpt-4o") || id.contains("gpt-4-turbo");
+    info.recommended = recommended;
+    info
+}
+
+fn create_gemini_model(id: &str, name: &str, context_window: u32, recommended: bool) -> ModelInfo {
+    let mut info = ModelInfo::new(id, "gemini");
+    info.name = name.to_string();
+    info.family = Some("Gemini".to_string());
+    info.context_window = Some(context_window);
     info.supports_tools = true;
     info.supports_vision = true;
     info.recommended = recommended;
