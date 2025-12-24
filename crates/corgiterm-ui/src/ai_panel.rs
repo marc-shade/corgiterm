@@ -9,7 +9,7 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, DropDown, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack,
+    Box, Button, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack,
     StackSwitcher, TextBuffer, TextView,
 };
 use std::cell::RefCell;
@@ -152,21 +152,6 @@ impl AiPanel {
         title.add_css_class("title-4");
         header.append(&title);
 
-        // Spacer to push dropdowns to the right
-        let spacer = Box::new(Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        header.append(&spacer);
-
-        // Model selector dropdown (models for current provider)
-        let model_dropdown = Self::build_model_dropdown();
-        model_dropdown.set_halign(gtk4::Align::End);
-        header.append(&model_dropdown);
-
-        // Provider selector dropdown
-        let provider_dropdown = Self::build_provider_dropdown(model_dropdown.clone());
-        provider_dropdown.set_halign(gtk4::Align::End);
-        header.append(&provider_dropdown);
-
         container.append(&header);
 
         // Stack switcher for modes (like Cursor's Cmd+K/L/I)
@@ -237,153 +222,6 @@ impl AiPanel {
         panel.setup_mode_switching();
 
         panel
-    }
-
-    /// Build model dropdown for switching models within the current provider
-    fn build_model_dropdown() -> DropDown {
-        let models = Self::get_model_list_for_current_provider();
-        let current_model = Self::get_current_model();
-
-        let string_list =
-            gtk4::StringList::new(&models.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-        let dropdown = DropDown::new(Some(string_list), Option::<gtk4::Expression>::None);
-
-        // Find the current model in the list
-        let default_idx = models
-            .iter()
-            .position(|m| m == &current_model)
-            .unwrap_or(0) as u32;
-        dropdown.set_selected(default_idx);
-        dropdown.add_css_class("flat");
-        dropdown.set_tooltip_text(Some("Select model"));
-
-        // Handle model change
-        dropdown.connect_selected_notify(move |dd| {
-            let selected = dd.selected();
-            if let Some(item) = dd.model().and_then(|m| m.item(selected)) {
-                if let Ok(string_obj) = item.downcast::<gtk4::StringObject>() {
-                    let model_name = string_obj.string().to_string();
-                    Self::set_model_for_current_provider(&model_name);
-                }
-            }
-        });
-
-        dropdown
-    }
-
-    /// Build provider dropdown for switching AI providers
-    fn build_provider_dropdown(model_dropdown: DropDown) -> DropDown {
-        let providers = Self::get_provider_list();
-        let default_idx = Self::get_default_provider_index(&providers);
-
-        let string_list =
-            gtk4::StringList::new(&providers.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-        let dropdown = DropDown::new(Some(string_list), Option::<gtk4::Expression>::None);
-        dropdown.set_selected(default_idx);
-        dropdown.add_css_class("flat");
-        dropdown.set_tooltip_text(Some("Select AI provider"));
-
-        // Handle provider change - also update model dropdown
-        dropdown.connect_selected_notify(move |dd| {
-            let selected = dd.selected();
-            if let Some(item) = dd.model().and_then(|m| m.item(selected)) {
-                if let Ok(string_obj) = item.downcast::<gtk4::StringObject>() {
-                    let provider_name = string_obj.string().to_string();
-                    Self::switch_provider(&provider_name);
-
-                    // Update model dropdown with models for the new provider
-                    let models = Self::get_model_list_for_current_provider();
-                    let new_model_list = gtk4::StringList::new(
-                        &models.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                    );
-                    model_dropdown.set_model(Some(&new_model_list));
-                    model_dropdown.set_selected(0);
-                }
-            }
-        });
-
-        dropdown
-    }
-
-    /// Get list of available provider names
-    fn get_provider_list() -> Vec<String> {
-        if let Some(am) = ai_manager() {
-            let ai_mgr = am.read();
-            ai_mgr.list_providers().iter().map(|s| s.to_string()).collect()
-        } else {
-            vec!["No providers".to_string()]
-        }
-    }
-
-    /// Get index of current default provider
-    fn get_default_provider_index(providers: &[String]) -> u32 {
-        if let Some(am) = ai_manager() {
-            let ai_mgr = am.read();
-            if let Some(default) = ai_mgr.default_provider() {
-                let default_name = default.name();
-                for (i, name) in providers.iter().enumerate() {
-                    if name == default_name {
-                        return i as u32;
-                    }
-                }
-            }
-        }
-        0
-    }
-
-    /// Switch to a different AI provider
-    fn switch_provider(provider_name: &str) {
-        if let Some(am) = ai_manager() {
-            let mut ai_mgr = am.write();
-            // Convert display name to internal name
-            let internal_name = match provider_name {
-                "Claude CLI" => "claude-cli",
-                "Gemini CLI" => "gemini-cli",
-                "Claude API" => "claude",
-                "OpenAI API" => "openai",
-                "Gemini API" => "gemini",
-                name if name.starts_with("Ollama") => "ollama",
-                name => name,
-            };
-            if ai_mgr.set_default(internal_name) {
-                tracing::info!("Switched AI provider to: {}", provider_name);
-            } else {
-                tracing::warn!("Failed to switch to provider: {}", provider_name);
-            }
-        }
-    }
-
-    /// Get list of available models for the current default provider
-    fn get_model_list_for_current_provider() -> Vec<String> {
-        if let Some(am) = ai_manager() {
-            let ai_mgr = am.read();
-            if let Some(provider) = ai_mgr.default_provider() {
-                return provider.available_models();
-            }
-        }
-        vec!["default".to_string()]
-    }
-
-    /// Get the current model for the default provider
-    fn get_current_model() -> String {
-        if let Some(am) = ai_manager() {
-            let ai_mgr = am.read();
-            if let Some(provider) = ai_mgr.default_provider() {
-                return provider.model().to_string();
-            }
-        }
-        String::new()
-    }
-
-    /// Set the model for the current default provider
-    fn set_model_for_current_provider(model_name: &str) {
-        if let Some(am) = ai_manager() {
-            let mut ai_mgr = am.write();
-            if let Some(provider) = ai_mgr.default_provider_mut() {
-                provider.set_model(model_name);
-                tracing::info!("Switched model to: {}", model_name);
-            }
-        }
     }
 
     /// Build Command mode UI (Warp-style)

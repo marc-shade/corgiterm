@@ -9,6 +9,8 @@ use libadwaita::prelude::*;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
+use crate::app::ai_manager;
+
 /// Global config manager (initialized by app)
 static CONFIG: std::sync::OnceLock<Arc<RwLock<ConfigManager>>> = std::sync::OnceLock::new();
 
@@ -1290,12 +1292,20 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                     if let Some(model_str) = string_list.string(selected as u32) {
                         let model = model_str.to_string();
                         if !model.is_empty() && !model.starts_with("(no models") {
+                            // Update config
                             if let Some(config_manager) = get_config() {
                                 config_manager.read().update(|config| {
                                     config.ai.claude.model = model.clone();
                                 });
                                 let _ = config_manager.read().save();
                                 tracing::info!("Claude model changed to: {}", model);
+                            }
+                            // Also update runtime provider
+                            if let Some(am) = ai_manager() {
+                                let mut ai_mgr = am.write();
+                                if let Some(provider) = ai_mgr.get_provider_mut("anthropic") {
+                                    provider.set_model(&model);
+                                }
                             }
                         }
                     }
@@ -1346,12 +1356,20 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                     if let Some(model_str) = string_list.string(selected as u32) {
                         let model = model_str.to_string();
                         if !model.is_empty() && !model.starts_with("(no models") {
+                            // Update config
                             if let Some(config_manager) = get_config() {
                                 config_manager.read().update(|config| {
                                     config.ai.openai.model = model.clone();
                                 });
                                 let _ = config_manager.read().save();
                                 tracing::info!("OpenAI model changed to: {}", model);
+                            }
+                            // Also update runtime provider
+                            if let Some(am) = ai_manager() {
+                                let mut ai_mgr = am.write();
+                                if let Some(provider) = ai_mgr.get_provider_mut("openai") {
+                                    provider.set_model(&model);
+                                }
                             }
                         }
                     }
@@ -1402,12 +1420,20 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                     if let Some(model_str) = string_list.string(selected as u32) {
                         let model = model_str.to_string();
                         if !model.is_empty() && !model.starts_with("(no models") {
+                            // Update config
                             if let Some(config_manager) = get_config() {
                                 config_manager.read().update(|config| {
                                     config.ai.gemini.model = model.clone();
                                 });
                                 let _ = config_manager.read().save();
                                 tracing::info!("Gemini model changed to: {}", model);
+                            }
+                            // Also update runtime provider
+                            if let Some(am) = ai_manager() {
+                                let mut ai_mgr = am.write();
+                                if let Some(provider) = ai_mgr.get_provider_mut("gemini") {
+                                    provider.set_model(&model);
+                                }
                             }
                         }
                     }
@@ -1477,12 +1503,22 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                     if let Some(model_str) = string_list.string(selected as u32) {
                         let model = model_str.to_string();
                         if !model.is_empty() && !model.starts_with("(no models") {
+                            // Update config
                             if let Some(config_manager) = get_config() {
                                 config_manager.read().update(|config| {
                                     config.ai.local.model = model.clone();
                                 });
                                 let _ = config_manager.read().save();
                                 tracing::info!("Ollama model changed to: {}", model);
+                            }
+                            // Also update the runtime provider
+                            if let Some(am) = ai_manager() {
+                                let mut ai_mgr = am.write();
+                                // Find the ollama provider and update its model
+                                if let Some(provider) = ai_mgr.get_provider_mut("ollama") {
+                                    provider.set_model(&model);
+                                    tracing::info!("Runtime Ollama provider model updated to: {}", model);
+                                }
                             }
                         }
                     }

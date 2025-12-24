@@ -644,6 +644,15 @@ impl ModelRegistry {
         let models: Vec<ModelInfo> = tag_list
             .models
             .into_iter()
+            // Filter out embedding models - they don't support text generation
+            .filter(|m| {
+                let name_lower = m.name.to_lowercase();
+                !name_lower.contains("embed")
+                    && !name_lower.contains("nomic")
+                    && !name_lower.contains("bge")
+                    && !name_lower.contains("mxbai")
+                    && !name_lower.contains("all-minilm")
+            })
             .map(|m| {
                 let mut info = ModelInfo::new(&m.name, "ollama");
                 info.name = format_ollama_name(&m.name);

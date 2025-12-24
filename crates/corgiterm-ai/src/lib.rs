@@ -291,6 +291,13 @@ impl AiManager {
             .map(|p| p.as_ref())
     }
 
+    /// Get provider by name mutably (for changing model, etc.)
+    pub fn get_provider_mut(&mut self, name: &str) -> Option<&mut Box<dyn AiProvider>> {
+        self.providers
+            .iter_mut()
+            .find(|p| p.name() == name)
+    }
+
     /// List available providers
     pub fn list_providers(&self) -> Vec<&str> {
         self.providers.iter().map(|p| p.name()).collect()
