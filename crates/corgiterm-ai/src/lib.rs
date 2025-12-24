@@ -98,6 +98,15 @@ pub trait AiProvider: Send + Sync {
     /// Provider name
     fn name(&self) -> &str;
 
+    /// Get current model ID
+    fn model(&self) -> &str;
+
+    /// Set the model to use
+    fn set_model(&mut self, model: &str);
+
+    /// Get list of available models for this provider
+    fn available_models(&self) -> Vec<String>;
+
     /// Check if provider is available
     async fn is_available(&self) -> bool;
 
@@ -267,6 +276,11 @@ impl AiManager {
         self.providers
             .get(self.default_provider)
             .map(|p| p.as_ref())
+    }
+
+    /// Get default provider mutably (for changing model, etc.)
+    pub fn default_provider_mut(&mut self) -> Option<&mut Box<dyn AiProvider>> {
+        self.providers.get_mut(self.default_provider)
     }
 
     /// Get provider by name

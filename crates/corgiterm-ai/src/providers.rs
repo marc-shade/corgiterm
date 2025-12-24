@@ -80,6 +80,25 @@ impl AiProvider for ClaudeProvider {
         "claude"
     }
 
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        vec![
+            "claude-sonnet-4-20250514".to_string(),
+            "claude-opus-4-20250514".to_string(),
+            "claude-3-5-sonnet-20241022".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
+            "claude-3-opus-20240229".to_string(),
+            "claude-3-haiku-20240307".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         !self.api_key.is_empty()
     }
@@ -336,6 +355,27 @@ impl AiProvider for OpenAiProvider {
         "openai"
     }
 
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        vec![
+            "gpt-4o".to_string(),
+            "gpt-4o-mini".to_string(),
+            "o1".to_string(),
+            "o1-mini".to_string(),
+            "o3-mini".to_string(),
+            "gpt-4-turbo".to_string(),
+            "gpt-4".to_string(),
+            "gpt-3.5-turbo".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         !self.api_key.is_empty()
     }
@@ -521,6 +561,29 @@ impl AiProvider for OllamaProvider {
         "ollama"
     }
 
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        // Attempt to fetch from Ollama API synchronously
+        // Since this is a sync method, we'll return common models as fallback
+        // The UI can call the async API directly for dynamic model list
+        vec![
+            "llama3.2".to_string(),
+            "llama3.1".to_string(),
+            "mistral".to_string(),
+            "codellama".to_string(),
+            "gemma2".to_string(),
+            "phi3".to_string(),
+            "qwen2.5".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         let url = format!("{}/api/tags", self.endpoint);
         self.client.get(&url).send().await.is_ok()
@@ -625,6 +688,26 @@ impl ClaudeCliProvider {
 impl AiProvider for ClaudeCliProvider {
     fn name(&self) -> &str {
         "claude-cli"
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        // Same models as Claude API - CLI uses the same backend
+        vec![
+            "claude-sonnet-4-20250514".to_string(),
+            "claude-opus-4-20250514".to_string(),
+            "claude-3-5-sonnet-20241022".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
+            "claude-3-opus-20240229".to_string(),
+            "claude-3-haiku-20240307".to_string(),
+        ]
     }
 
     async fn is_available(&self) -> bool {
@@ -768,6 +851,25 @@ impl AiProvider for GeminiCliProvider {
         "gemini-cli"
     }
 
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        // Same models as Gemini API - CLI uses the same backend
+        vec![
+            "gemini-2.0-flash".to_string(),
+            "gemini-2.0-flash-thinking".to_string(),
+            "gemini-1.5-pro".to_string(),
+            "gemini-1.5-flash".to_string(),
+            "gemini-1.5-flash-8b".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         Self::is_cli_available()
     }
@@ -886,6 +988,24 @@ struct GeminiPartResponse {
 impl AiProvider for GeminiProvider {
     fn name(&self) -> &str {
         "gemini"
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    fn available_models(&self) -> Vec<String> {
+        vec![
+            "gemini-2.0-flash".to_string(),
+            "gemini-2.0-flash-thinking".to_string(),
+            "gemini-1.5-pro".to_string(),
+            "gemini-1.5-flash".to_string(),
+            "gemini-1.5-flash-8b".to_string(),
+        ]
     }
 
     async fn is_available(&self) -> bool {
