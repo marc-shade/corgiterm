@@ -1,5 +1,7 @@
 //! Dialog windows (settings, about, etc.)
 
+use chrono::Duration;
+use corgiterm_ai::{ModelInfo, ModelRegistry, ModelRegistryConfig};
 use corgiterm_config::ConfigManager;
 use gtk4::prelude::*;
 use gtk4::Window;
@@ -10,6 +12,9 @@ use std::sync::Arc;
 /// Global config manager (initialized by app)
 static CONFIG: std::sync::OnceLock<Arc<RwLock<ConfigManager>>> = std::sync::OnceLock::new();
 
+/// Global model registry for dynamic model discovery
+static MODEL_REGISTRY: std::sync::OnceLock<Arc<RwLock<ModelRegistry>>> = std::sync::OnceLock::new();
+
 /// Initialize the global config manager
 pub fn init_config(config: Arc<RwLock<ConfigManager>>) {
     let _ = CONFIG.set(config);
@@ -18,6 +23,152 @@ pub fn init_config(config: Arc<RwLock<ConfigManager>>) {
 /// Get the global config manager
 pub fn get_config() -> Option<Arc<RwLock<ConfigManager>>> {
     CONFIG.get().cloned()
+}
+
+/// Initialize the global model registry
+pub fn init_model_registry() {
+    // Build config from environment variables for API keys
+    let config = ModelRegistryConfig {
+        anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
+        openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+        google_api_key: std::env::var("GOOGLE_API_KEY")
+            .or_else(|_| std::env::var("GEMINI_API_KEY"))
+            .ok(),
+        ollama_endpoint: std::env::var("OLLAMA_HOST")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+        api_cache_ttl: Duration::hours(1),     // 1 hour for cloud APIs
+        local_cache_ttl: Duration::minutes(5), // 5 min for Ollama
+        ..ModelRegistryConfig::default()       // Use defaults for cache_path
+    };
+
+    let registry = ModelRegistry::with_config(config);
+    let _ = MODEL_REGISTRY.set(Arc::new(RwLock::new(registry)));
+}
+
+/// Get the global model registry
+pub fn get_model_registry() -> Option<Arc<RwLock<ModelRegistry>>> {
+    MODEL_REGISTRY.get().cloned()
+}
+
+/// Get cached models for a provider (synchronous - uses cache only)
+fn get_cached_models(provider: &str) -> Vec<ModelInfo> {
+    if let Some(registry) = get_model_registry() {
+        let registry = registry.read();
+        if let Some(models) = registry.get_cached(provider) {
+            return models;
+        }
+    }
+    Vec::new()
+}
+
+/// Create a model selection ComboRow with dynamic model list
+fn create_model_combo_row(
+    title: &str,
+    current_model: &str,
+    provider: &str,
+) -> (libadwaita::ComboRow, gtk4::StringList) {
+    let combo_row = libadwaita::ComboRow::builder()
+        .title(title)
+        .subtitle("Select from available models")
+        .build();
+
+    // Get cached models
+    let models = get_cached_models(provider);
+
+    // Build model list - include current model even if not in fetched list
+    let mut model_names: Vec<String> = models.iter()
+        .map(|m| m.id.clone())
+        .collect();
+
+    // If current model isn't in the list, add it at the top
+    if !current_model.is_empty() && !model_names.contains(&current_model.to_string()) {
+        model_names.insert(0, current_model.to_string());
+    }
+
+    // If no models at all, just add the current model or a placeholder
+    if model_names.is_empty() {
+        if current_model.is_empty() {
+            model_names.push("(no models found)".to_string());
+        } else {
+            model_names.push(current_model.to_string());
+        }
+    }
+
+    // Create StringList
+    let model_strs: Vec<&str> = model_names.iter().map(|s| s.as_str()).collect();
+    let string_list = gtk4::StringList::new(&model_strs);
+    combo_row.set_model(Some(&string_list));
+
+    // Set current selection
+    if let Some(pos) = model_names.iter().position(|m| m == current_model) {
+        combo_row.set_selected(pos as u32);
+    }
+
+    (combo_row, string_list)
+}
+
+/// Refresh models for a provider asynchronously and update the ComboRow
+fn refresh_provider_models(
+    provider: &'static str,
+    string_list: gtk4::StringList,
+    current_model: String,
+) {
+    let (tx, rx) = crossbeam_channel::unbounded::<Vec<ModelInfo>>();
+
+    // Spawn async task to fetch models
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            if let Some(registry) = get_model_registry() {
+                // Use the public fetch_provider_models method
+                let result = {
+                    let registry = registry.read();
+                    registry.fetch_provider_models(provider).await
+                };
+
+                if let Ok(models) = result {
+                    let _ = tx.send(models);
+                } else {
+                    let _ = tx.send(Vec::new());
+                }
+            }
+        });
+    });
+
+    // Poll for result in GTK main loop
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        if let Ok(models) = rx.try_recv() {
+            // Update the StringList
+            // First, clear existing items
+            while string_list.n_items() > 0 {
+                string_list.remove(0);
+            }
+
+            // Build new model list
+            let mut model_names: Vec<String> = models.iter()
+                .map(|m| m.id.clone())
+                .collect();
+
+            // Ensure current model is in the list
+            if !current_model.is_empty() && !model_names.contains(&current_model) {
+                model_names.insert(0, current_model.clone());
+            }
+
+            if model_names.is_empty() {
+                model_names.push("(no models available)".to_string());
+            }
+
+            // Add new items
+            for name in &model_names {
+                string_list.append(name);
+            }
+
+            tracing::info!("Loaded {} models for {}", model_names.len(), provider);
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
 }
 
 /// Show the about dialog
@@ -1121,20 +1272,34 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let claude_model_row = libadwaita::EntryRow::builder()
-        .title("Model")
-        .text(&claude_model)
-        .build();
+    let (claude_model_row, claude_model_list) = create_model_combo_row(
+        "Model",
+        &claude_model,
+        "anthropic",
+    );
     claude_group.add(&claude_model_row);
 
-    claude_model_row.connect_changed(move |row| {
-        let model = row.text().to_string();
-        if !model.is_empty() {
-            if let Some(config_manager) = get_config() {
-                config_manager.read().update(|config| {
-                    config.ai.claude.model = model;
-                });
-                let _ = config_manager.read().save();
+    // Trigger async refresh of models
+    refresh_provider_models("anthropic", claude_model_list.clone(), claude_model.clone());
+
+    claude_model_row.connect_selected_notify(move |row| {
+        if let Some(model_obj) = row.model() {
+            if let Some(string_list) = model_obj.downcast_ref::<gtk4::StringList>() {
+                let selected = row.selected() as usize;
+                if selected < string_list.n_items() as usize {
+                    if let Some(model_str) = string_list.string(selected as u32) {
+                        let model = model_str.to_string();
+                        if !model.is_empty() && !model.starts_with("(no models") {
+                            if let Some(config_manager) = get_config() {
+                                config_manager.read().update(|config| {
+                                    config.ai.claude.model = model.clone();
+                                });
+                                let _ = config_manager.read().save();
+                                tracing::info!("Claude model changed to: {}", model);
+                            }
+                        }
+                    }
+                }
             }
         }
     });
@@ -1163,20 +1328,34 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let openai_model_row = libadwaita::EntryRow::builder()
-        .title("Model")
-        .text(&openai_model)
-        .build();
+    let (openai_model_row, openai_model_list) = create_model_combo_row(
+        "Model",
+        &openai_model,
+        "openai",
+    );
     openai_group.add(&openai_model_row);
 
-    openai_model_row.connect_changed(move |row| {
-        let model = row.text().to_string();
-        if !model.is_empty() {
-            if let Some(config_manager) = get_config() {
-                config_manager.read().update(|config| {
-                    config.ai.openai.model = model;
-                });
-                let _ = config_manager.read().save();
+    // Trigger async refresh of models
+    refresh_provider_models("openai", openai_model_list.clone(), openai_model.clone());
+
+    openai_model_row.connect_selected_notify(move |row| {
+        if let Some(model_obj) = row.model() {
+            if let Some(string_list) = model_obj.downcast_ref::<gtk4::StringList>() {
+                let selected = row.selected() as usize;
+                if selected < string_list.n_items() as usize {
+                    if let Some(model_str) = string_list.string(selected as u32) {
+                        let model = model_str.to_string();
+                        if !model.is_empty() && !model.starts_with("(no models") {
+                            if let Some(config_manager) = get_config() {
+                                config_manager.read().update(|config| {
+                                    config.ai.openai.model = model.clone();
+                                });
+                                let _ = config_manager.read().save();
+                                tracing::info!("OpenAI model changed to: {}", model);
+                            }
+                        }
+                    }
+                }
             }
         }
     });
@@ -1205,20 +1384,34 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let gemini_model_row = libadwaita::EntryRow::builder()
-        .title("Model")
-        .text(&gemini_model)
-        .build();
+    let (gemini_model_row, gemini_model_list) = create_model_combo_row(
+        "Model",
+        &gemini_model,
+        "gemini",
+    );
     gemini_group.add(&gemini_model_row);
 
-    gemini_model_row.connect_changed(move |row| {
-        let model = row.text().to_string();
-        if !model.is_empty() {
-            if let Some(config_manager) = get_config() {
-                config_manager.read().update(|config| {
-                    config.ai.gemini.model = model;
-                });
-                let _ = config_manager.read().save();
+    // Trigger async refresh of models
+    refresh_provider_models("gemini", gemini_model_list.clone(), gemini_model.clone());
+
+    gemini_model_row.connect_selected_notify(move |row| {
+        if let Some(model_obj) = row.model() {
+            if let Some(string_list) = model_obj.downcast_ref::<gtk4::StringList>() {
+                let selected = row.selected() as usize;
+                if selected < string_list.n_items() as usize {
+                    if let Some(model_str) = string_list.string(selected as u32) {
+                        let model = model_str.to_string();
+                        if !model.is_empty() && !model.starts_with("(no models") {
+                            if let Some(config_manager) = get_config() {
+                                config_manager.read().update(|config| {
+                                    config.ai.gemini.model = model.clone();
+                                });
+                                let _ = config_manager.read().save();
+                                tracing::info!("Gemini model changed to: {}", model);
+                            }
+                        }
+                    }
+                }
             }
         }
     });
@@ -1266,20 +1459,34 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let local_model_row = libadwaita::EntryRow::builder()
-        .title("Model Name")
-        .text(&local_model)
-        .build();
+    let (local_model_row, local_model_list) = create_model_combo_row(
+        "Model Name",
+        &local_model,
+        "ollama",
+    );
     local_group.add(&local_model_row);
 
-    local_model_row.connect_changed(move |row| {
-        let model = row.text().to_string();
-        if !model.is_empty() {
-            if let Some(config_manager) = get_config() {
-                config_manager.read().update(|config| {
-                    config.ai.local.model = model;
-                });
-                let _ = config_manager.read().save();
+    // Trigger async refresh of models (Ollama refreshes more frequently)
+    refresh_provider_models("ollama", local_model_list.clone(), local_model.clone());
+
+    local_model_row.connect_selected_notify(move |row| {
+        if let Some(model_obj) = row.model() {
+            if let Some(string_list) = model_obj.downcast_ref::<gtk4::StringList>() {
+                let selected = row.selected() as usize;
+                if selected < string_list.n_items() as usize {
+                    if let Some(model_str) = string_list.string(selected as u32) {
+                        let model = model_str.to_string();
+                        if !model.is_empty() && !model.starts_with("(no models") {
+                            if let Some(config_manager) = get_config() {
+                                config_manager.read().update(|config| {
+                                    config.ai.local.model = model.clone();
+                                });
+                                let _ = config_manager.read().save();
+                                tracing::info!("Ollama model changed to: {}", model);
+                            }
+                        }
+                    }
+                }
             }
         }
     });

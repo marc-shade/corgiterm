@@ -38,6 +38,9 @@ dirs = "5.0"
 # Timestamps
 chrono = { version = "0.4", features = ["serde"] }
 
+# Thread-safe caching with sync locks
+parking_lot = "0.12"
+
 [dev-dependencies]
-wiremock = "0.6"
+wiremock = "=0.6.2"
 tokio-test = "0.4"

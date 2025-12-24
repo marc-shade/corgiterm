@@ -18,8 +18,12 @@ pub mod conversation;
 pub mod history;
 pub mod learning;
 pub mod mcp;
+pub mod models;
 pub mod natural_language;
 pub mod providers;
+
+// Re-export commonly used types from models module
+pub use models::{ModelInfo, ModelRegistry, ModelRegistryConfig, CachedModelList};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
