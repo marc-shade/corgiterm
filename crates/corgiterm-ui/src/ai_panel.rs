@@ -9,8 +9,8 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack, StackSwitcher,
-    TextBuffer, TextView,
+    Box, Button, DropDown, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack,
+    StackSwitcher, TextBuffer, TextView,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -152,13 +152,11 @@ impl AiPanel {
         title.add_css_class("title-4");
         header.append(&title);
 
-        // Provider indicator
-        let provider_label = Label::new(None);
-        provider_label.add_css_class("dim-label");
-        provider_label.set_hexpand(true);
-        provider_label.set_halign(gtk4::Align::End);
-        Self::update_provider_label(&provider_label);
-        header.append(&provider_label);
+        // Provider selector dropdown
+        let provider_dropdown = Self::build_provider_dropdown();
+        provider_dropdown.set_hexpand(true);
+        provider_dropdown.set_halign(gtk4::Align::End);
+        header.append(&provider_dropdown);
 
         container.append(&header);
 
@@ -232,16 +230,75 @@ impl AiPanel {
         panel
     }
 
-    fn update_provider_label(label: &Label) {
+    /// Build provider dropdown for switching AI providers
+    fn build_provider_dropdown() -> DropDown {
+        let providers = Self::get_provider_list();
+        let default_idx = Self::get_default_provider_index(&providers);
+
+        let model = gtk4::StringList::new(&providers.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        let dropdown = DropDown::new(Some(model), Option::<gtk4::Expression>::None);
+        dropdown.set_selected(default_idx);
+        dropdown.add_css_class("flat");
+
+        // Handle provider change
+        dropdown.connect_selected_notify(move |dd| {
+            let selected = dd.selected();
+            if let Some(item) = dd.model().and_then(|m| m.item(selected)) {
+                if let Ok(string_obj) = item.downcast::<gtk4::StringObject>() {
+                    let provider_name = string_obj.string().to_string();
+                    Self::switch_provider(&provider_name);
+                }
+            }
+        });
+
+        dropdown
+    }
+
+    /// Get list of available provider names
+    fn get_provider_list() -> Vec<String> {
         if let Some(am) = ai_manager() {
             let ai_mgr = am.read();
-            if let Some(provider) = ai_mgr.default_provider() {
-                label.set_text(&format!("via {}", provider.name()));
-            } else {
-                label.set_text("No AI configured");
-            }
+            ai_mgr.list_providers().iter().map(|s| s.to_string()).collect()
         } else {
-            label.set_text("AI not ready");
+            vec!["No providers".to_string()]
+        }
+    }
+
+    /// Get index of current default provider
+    fn get_default_provider_index(providers: &[String]) -> u32 {
+        if let Some(am) = ai_manager() {
+            let ai_mgr = am.read();
+            if let Some(default) = ai_mgr.default_provider() {
+                let default_name = default.name();
+                for (i, name) in providers.iter().enumerate() {
+                    if name == default_name {
+                        return i as u32;
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Switch to a different AI provider
+    fn switch_provider(provider_name: &str) {
+        if let Some(am) = ai_manager() {
+            let mut ai_mgr = am.write();
+            // Convert display name to internal name
+            let internal_name = match provider_name {
+                "Claude CLI" => "claude-cli",
+                "Gemini CLI" => "gemini-cli",
+                "Claude API" => "claude",
+                "OpenAI API" => "openai",
+                "Gemini API" => "gemini",
+                name if name.starts_with("Ollama") => "ollama",
+                name => name,
+            };
+            if ai_mgr.set_default(internal_name) {
+                tracing::info!("Switched AI provider to: {}", provider_name);
+            } else {
+                tracing::warn!("Failed to switch to provider: {}", provider_name);
+            }
         }
     }
 

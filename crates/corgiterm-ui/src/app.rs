@@ -168,40 +168,7 @@ fn detect_ai_providers() {
         if let Some(cm) = config_manager() {
             let config = cm.read().config();
 
-            // Priority 1: CLI-based providers (OAuth, no API key needed)
-            // Claude CLI (claude command)
-            if std::process::Command::new("which")
-                .arg("claude")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-            {
-                let provider = corgiterm_ai::providers::ClaudeCliProvider::new(Some(
-                    config.ai.claude.model.clone(),
-                ));
-                if first_provider.is_none() {
-                    first_provider = Some("claude-cli".to_string());
-                }
-                providers.push(("Claude CLI".to_string(), Box::new(provider)));
-            }
-
-            // Gemini CLI (gemini command)
-            if std::process::Command::new("which")
-                .arg("gemini")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-            {
-                let provider = corgiterm_ai::providers::GeminiCliProvider::new(Some(
-                    config.ai.gemini.model.clone(),
-                ));
-                if first_provider.is_none() {
-                    first_provider = Some("gemini-cli".to_string());
-                }
-                providers.push(("Gemini CLI".to_string(), Box::new(provider)));
-            }
-
-            // Priority 2: Local Ollama (check if reachable)
+            // Priority 1: Local Ollama (free, no subscription needed)
             if config.ai.local.enabled && !config.ai.local.endpoint.is_empty() {
                 let endpoint = config.ai.local.endpoint.clone();
                 let ollama_available = std::process::Command::new("curl")
@@ -220,6 +187,39 @@ fn detect_ai_providers() {
                     }
                     providers.push((format!("Ollama at {}", endpoint), Box::new(provider)));
                 }
+            }
+
+            // Priority 2: CLI-based providers (may require subscription)
+            // Claude CLI (claude command)
+            if std::process::Command::new("which")
+                .arg("claude")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                let provider = corgiterm_ai::providers::ClaudeCliProvider::new(Some(
+                    config.ai.claude.model.clone(),
+                ));
+                if first_provider.is_none() {
+                    first_provider = Some("claude-cli".to_string());
+                }
+                providers.push(("Claude CLI".to_string(), Box::new(provider)));
+            }
+
+            // Gemini CLI (gemini command) - free tier available
+            if std::process::Command::new("which")
+                .arg("gemini")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                let provider = corgiterm_ai::providers::GeminiCliProvider::new(Some(
+                    config.ai.gemini.model.clone(),
+                ));
+                if first_provider.is_none() {
+                    first_provider = Some("gemini-cli".to_string());
+                }
+                providers.push(("Gemini CLI".to_string(), Box::new(provider)));
             }
 
             // Priority 3: API key providers (instant, no network check needed)
