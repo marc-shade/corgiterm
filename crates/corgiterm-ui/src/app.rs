@@ -118,6 +118,7 @@ fn init_config() {
             let config_arc = Arc::new(RwLock::new(config_manager));
             let _ = CONFIG_MANAGER.set(config_arc.clone());
             dialogs::init_config(config_arc);
+            dialogs::init_model_registry();
             tracing::info!("Configuration loaded");
         }
         Err(e) => {
