@@ -28,6 +28,11 @@ coverage/
 
 # Local configuration
 .env
-.env.local
+.env.*
+!.env.example
 config.local.toml
 .swarm/
+
+# Databases
+*.db
+*.sqlite
