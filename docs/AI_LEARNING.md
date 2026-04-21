@@ -162,13 +162,15 @@ This disables all learning and deletes existing data.
 ### What's Stored
 
 CorgiTerm stores:
-- ✅ Command names and patterns
-- ✅ Directories where commands were used
-- ✅ Success/failure rates
-- ✅ Timestamps
-- ❌ **NOT stored**: Command arguments with sensitive data
-- ❌ **NOT stored**: Output or error messages
-- ❌ **NOT stored**: Environment variables
+- Command names and patterns
+- Directories where commands were used
+- Success/failure rates
+- Timestamps
+
+**NOT stored:**
+- Command arguments with sensitive data
+- Output or error messages
+- Environment variables
 
 **Example stored data:**
 ```json

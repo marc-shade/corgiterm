@@ -65,11 +65,11 @@ fn main() {
     add_command(&mut manager, "yarn dev", &project_dir);
 
     // Detect preferences
-    println!("🔍 Detecting user preferences...");
+    println!("Detecting user preferences...");
     manager.detect_preferences();
 
     // Display learning results
-    println!("\n📊 Learning Results:\n");
+    println!("\nLearning Results:\n");
 
     let context = manager.get_learning_context();
 
@@ -84,7 +84,7 @@ fn main() {
         );
     }
 
-    println!("\n🎨 User Preferences Detected:");
+    println!("\nUser Preferences Detected:");
     for pref in &context.preferences {
         println!(
             "  • Prefers '{}' over '{}' ({}% of the time)",
@@ -94,7 +94,7 @@ fn main() {
         );
     }
 
-    println!("\n🔗 Command Patterns Learned:");
+    println!("\nCommand Patterns Learned:");
     for (i, pattern) in context.patterns.iter().take(5).enumerate() {
         println!(
             "  {}. {} → (seen {} times, confidence: {:.1}%)",
@@ -106,7 +106,7 @@ fn main() {
     }
 
     // Demonstrate AI integration
-    println!("\n🤖 AI Integration Demo:\n");
+    println!("\nAI Integration Demo:\n");
 
     // Create learning context for AI
     let ai_context = LearningContext {
@@ -149,7 +149,7 @@ fn main() {
     println!("  • {} learned patterns", ai_context.patterns.len());
 
     // Predict next command
-    println!("\n🔮 Pattern Prediction:");
+    println!("\nPattern Prediction:");
     if let Some(suggestion) = manager.learning().predict_next_command("git add") {
         println!(
             "  After 'git add', you usually run: '{}' ({}% confidence)",
@@ -159,7 +159,7 @@ fn main() {
     }
 
     // Directory-specific suggestions
-    println!("\n📁 Directory-Specific Suggestions:");
+    println!("\nDirectory-Specific Suggestions:");
     let dir_cmds = manager.learning().directory_commands(&project_dir, 5);
     for (i, stat) in dir_cmds.iter().enumerate() {
         println!(
@@ -170,8 +170,8 @@ fn main() {
         );
     }
 
-    println!("\n✅ Demo complete!");
-    println!("\n💡 This data would be used to:");
+    println!("\nDemo complete.");
+    println!("\nThis data would be used to:");
     println!("  • Suggest commands as you type");
     println!("  • Predict next command in sequences");
     println!("  • Provide directory-specific completions");
