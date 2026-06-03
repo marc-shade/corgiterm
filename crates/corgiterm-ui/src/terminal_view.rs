@@ -14,6 +14,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::config_manager;
+use crate::keyboard::{KeyboardShortcuts, ShortcutAction};
 use corgiterm_config::themes::ThemeManager;
 use corgiterm_core::{
     AlacrittyEngine, CellColor, HintDetector, HintModeState, Pty, PtySize, RenderCell,
@@ -774,10 +775,7 @@ impl TerminalView {
         let hint_detector_for_key = hint_detector.clone();
         let drawing_area_for_hint = drawing_area.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
-            use gtk4::gdk::{Key, ModifierType};
-
-            let ctrl = modifier.contains(ModifierType::CONTROL_MASK);
-            let shift = modifier.contains(ModifierType::SHIFT_MASK);
+            use gtk4::gdk::Key;
 
             // Handle hint mode keyboard interaction
             {
@@ -845,8 +843,9 @@ impl TerminalView {
                 }
             }
 
-            // Ctrl+Shift+U activates hint mode (foot-style URL hints)
-            if ctrl && shift && matches!(key, Key::U | Key::u) {
+            let shortcuts = KeyboardShortcuts::current();
+
+            if shortcuts.matches(ShortcutAction::ActivateHints, key, modifier) {
                 // Collect visible lines as strings
                 let lines: Vec<String> = terminal_for_key.borrow().rows_text();
 
@@ -864,8 +863,7 @@ impl TerminalView {
                 return glib::Propagation::Stop;
             }
 
-            // Check for Ctrl+Shift+C (copy)
-            if ctrl && shift && matches!(key, Key::C | Key::c) {
+            if shortcuts.matches(ShortcutAction::Copy, key, modifier) {
                 // Copy visible terminal content to clipboard
                 let clipboard = drawing_area_for_clipboard.clipboard();
                 let lines = terminal_for_copy.borrow().rows_text();
@@ -875,8 +873,7 @@ impl TerminalView {
                 return glib::Propagation::Stop;
             }
 
-            // Check for Ctrl+Shift+A (select all)
-            if ctrl && shift && matches!(key, Key::A | Key::a) {
+            if shortcuts.matches(ShortcutAction::SelectAll, key, modifier) {
                 // Copy all content (scrollback + visible) to clipboard
                 let clipboard = drawing_area_for_clipboard.clipboard();
                 // Full buffer: scrollback history plus the visible screen.
@@ -888,8 +885,7 @@ impl TerminalView {
                 return glib::Propagation::Stop;
             }
 
-            // Check for Ctrl+Shift+V (paste)
-            if ctrl && shift && matches!(key, Key::V | Key::v) {
+            if shortcuts.matches(ShortcutAction::Paste, key, modifier) {
                 // Handle paste from clipboard
                 let clipboard = drawing_area_for_clipboard.clipboard();
                 let pty_clone = pty_for_input.clone();
@@ -906,48 +902,44 @@ impl TerminalView {
                 return glib::Propagation::Stop;
             }
 
-            // Check for zoom shortcuts (Ctrl+Plus/Minus/0)
-            if ctrl && !shift {
-                // Ctrl+Plus or Ctrl+= (zoom in)
-                if matches!(key, Key::plus | Key::equal | Key::KP_Add) {
-                    if let Some(config_manager) = crate::app::config_manager() {
-                        let current_size = config_manager.read().config().appearance.font_size;
-                        let new_size = (current_size + 1.0).min(24.0);
-                        config_manager.read().update(|config| {
-                            config.appearance.font_size = new_size;
-                        });
-                        let _ = config_manager.read().save();
-                        drawing_area_for_clipboard.queue_draw();
-                        tracing::info!("Zoom in: font size {}", new_size);
-                    }
-                    return glib::Propagation::Stop;
+            if shortcuts.matches(ShortcutAction::ZoomIn, key, modifier) {
+                if let Some(config_manager) = crate::app::config_manager() {
+                    let current_size = config_manager.read().config().appearance.font_size;
+                    let new_size = (current_size + 1.0).min(24.0);
+                    config_manager.read().update(|config| {
+                        config.appearance.font_size = new_size;
+                    });
+                    let _ = config_manager.read().save();
+                    drawing_area_for_clipboard.queue_draw();
+                    tracing::info!("Zoom in: font size {}", new_size);
                 }
-                // Ctrl+Minus (zoom out)
-                if matches!(key, Key::minus | Key::KP_Subtract) {
-                    if let Some(config_manager) = crate::app::config_manager() {
-                        let current_size = config_manager.read().config().appearance.font_size;
-                        let new_size = (current_size - 1.0).max(8.0);
-                        config_manager.read().update(|config| {
-                            config.appearance.font_size = new_size;
-                        });
-                        let _ = config_manager.read().save();
-                        drawing_area_for_clipboard.queue_draw();
-                        tracing::info!("Zoom out: font size {}", new_size);
-                    }
-                    return glib::Propagation::Stop;
+                return glib::Propagation::Stop;
+            }
+
+            if shortcuts.matches(ShortcutAction::ZoomOut, key, modifier) {
+                if let Some(config_manager) = crate::app::config_manager() {
+                    let current_size = config_manager.read().config().appearance.font_size;
+                    let new_size = (current_size - 1.0).max(8.0);
+                    config_manager.read().update(|config| {
+                        config.appearance.font_size = new_size;
+                    });
+                    let _ = config_manager.read().save();
+                    drawing_area_for_clipboard.queue_draw();
+                    tracing::info!("Zoom out: font size {}", new_size);
                 }
-                // Ctrl+0 (reset zoom)
-                if matches!(key, Key::_0 | Key::KP_0) {
-                    if let Some(config_manager) = crate::app::config_manager() {
-                        config_manager.read().update(|config| {
-                            config.appearance.font_size = 11.0; // Default size
-                        });
-                        let _ = config_manager.read().save();
-                        drawing_area_for_clipboard.queue_draw();
-                        tracing::info!("Zoom reset: font size 11");
-                    }
-                    return glib::Propagation::Stop;
+                return glib::Propagation::Stop;
+            }
+
+            if shortcuts.matches(ShortcutAction::ResetZoom, key, modifier) {
+                if let Some(config_manager) = crate::app::config_manager() {
+                    config_manager.read().update(|config| {
+                        config.appearance.font_size = 11.0; // Default size
+                    });
+                    let _ = config_manager.read().save();
+                    drawing_area_for_clipboard.queue_draw();
+                    tracing::info!("Zoom reset: font size 11");
                 }
+                return glib::Propagation::Stop;
             }
 
             if let Some(ref pty) = *pty_for_input.borrow() {
@@ -1438,12 +1430,8 @@ impl TerminalView {
         let search_revealer_for_toggle = search_revealer_rc.clone();
         let search_entry_for_focus = search_entry_rc.clone();
         search_key_controller2.connect_key_pressed(move |_, key, _, modifier| {
-            use gtk4::gdk::{Key, ModifierType};
-
-            let ctrl = modifier.contains(ModifierType::CONTROL_MASK);
-            let shift = modifier.contains(ModifierType::SHIFT_MASK);
-
-            if ctrl && shift && matches!(key, Key::F | Key::f) {
+            let shortcuts = KeyboardShortcuts::current();
+            if shortcuts.matches(ShortcutAction::FindTerminal, key, modifier) {
                 let is_revealed = search_revealer_for_toggle.reveals_child();
                 search_revealer_for_toggle.set_reveal_child(!is_revealed);
                 if !is_revealed {

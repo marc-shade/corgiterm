@@ -183,6 +183,9 @@ pub fn matches_shortcut(parsed: &ParsedShortcut, key: Key, modifiers: ModifierTy
             Key::x => key == Key::x || key == Key::X,
             Key::y => key == Key::y || key == Key::Y,
             Key::z => key == Key::z || key == Key::Z,
+            Key::plus => key == Key::plus || key == Key::equal || key == Key::KP_Add,
+            Key::minus => key == Key::minus || key == Key::KP_Subtract,
+            Key::_0 => key == Key::_0 || key == Key::KP_0,
             _ => false,
         }
     };

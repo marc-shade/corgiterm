@@ -8,7 +8,7 @@ The goal is not "100% code coverage" as a vanity metric. The goal is confidence 
 
 ## Current Baseline
 
-Current automated coverage is strongest in core/config/AI unit logic and weakest in GTK UI workflows. `corgiterm-ui` currently has only one trivial test, so the product needs an end-to-end and UI-model test layer.
+Current automated coverage is strongest in core/config/AI unit logic and weakest in GTK UI workflows. `corgiterm-ui` now has basic keyboard shortcut coverage, but the product still needs an end-to-end and UI-model test layer.
 
 ## Test Layers
 
@@ -23,6 +23,7 @@ Examples:
 - SSH config parsing.
 - Terminal engine VT behavior.
 - Theme contrast calculation.
+- Keyboard shortcut parsing, defaults, and accelerator conversion.
 - AI provider request formatting.
 
 Gate:

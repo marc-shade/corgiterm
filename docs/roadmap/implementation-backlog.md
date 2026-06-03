@@ -208,6 +208,7 @@ Purpose: make customization reliable and accessible.
 
 Tasks:
 
+- [x] Add in-app keyboard shortcut editor and keep shortcut help in sync with configured bindings.
 - [ ] Add theme save/load tests.
 - [ ] Add theme apply/reload tests for terminal colors.
 - [ ] Add contrast warning tests.

@@ -56,7 +56,7 @@ impl DocumentView {
 
         // Save button (only visible in edit mode)
         let save_btn = Button::from_icon_name("document-save-symbolic");
-        save_btn.set_tooltip_text(Some("Save (Ctrl+S)"));
+        save_btn.set_tooltip_text(Some("Save"));
         save_btn.add_css_class("flat");
         save_btn.set_visible(false);
         toolbar.append(&save_btn);

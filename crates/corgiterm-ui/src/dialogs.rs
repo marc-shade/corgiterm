@@ -7,9 +7,12 @@ use gtk4::prelude::*;
 use gtk4::Window;
 use libadwaita::prelude::*;
 use parking_lot::RwLock;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::app::ai_manager;
+use crate::keyboard::{KeyboardShortcuts, SHORTCUT_DEFINITIONS, SHORTCUT_GROUPS};
 
 /// Global config manager (initialized by app)
 static CONFIG: std::sync::OnceLock<Arc<RwLock<ConfigManager>>> = std::sync::OnceLock::new();
@@ -105,6 +108,66 @@ fn create_model_combo_row(
     }
 
     (combo_row, string_list)
+}
+
+fn add_shortcut_editor_row(
+    group: &libadwaita::PreferencesGroup,
+    definition: crate::keyboard::ShortcutDefinition,
+) -> libadwaita::EntryRow {
+    let current_shortcut = KeyboardShortcuts::label_for(definition.action);
+    let row = libadwaita::EntryRow::builder()
+        .title(definition.title)
+        .text(&current_shortcut)
+        .show_apply_button(true)
+        .build();
+    row.set_tooltip_text(Some(definition.description));
+
+    let reset_btn = gtk4::Button::from_icon_name("edit-undo-symbolic");
+    reset_btn.set_tooltip_text(Some("Reset to default"));
+    reset_btn.add_css_class("flat");
+    reset_btn.set_valign(gtk4::Align::Center);
+    row.add_suffix(&reset_btn);
+
+    row.connect_changed(move |row| {
+        if KeyboardShortcuts::validate(&row.text()) {
+            row.remove_css_class("error");
+            row.set_tooltip_text(Some(definition.description));
+        } else {
+            row.add_css_class("error");
+            row.set_tooltip_text(Some("Invalid shortcut. Use labels like Ctrl+Shift+A."));
+        }
+    });
+
+    row.connect_apply(move |row| {
+        match KeyboardShortcuts::save_shortcut(definition.action, &row.text()) {
+            Ok(()) => {
+                row.remove_css_class("error");
+                row.set_tooltip_text(Some("Saved"));
+            }
+            Err(error) => {
+                row.add_css_class("error");
+                row.set_tooltip_text(Some(&error));
+                tracing::warn!("Failed to save shortcut '{}': {}", definition.title, error);
+            }
+        }
+    });
+
+    let row_for_reset = row.clone();
+    reset_btn.connect_clicked(move |_| {
+        let default_shortcut = KeyboardShortcuts::default_label_for(definition.action);
+        row_for_reset.set_text(&default_shortcut);
+        if let Err(error) = KeyboardShortcuts::save_shortcut(definition.action, &default_shortcut) {
+            row_for_reset.add_css_class("error");
+            row_for_reset.set_tooltip_text(Some(&error));
+            tracing::warn!("Failed to reset shortcut '{}': {}", definition.title, error);
+        } else {
+            row_for_reset.remove_css_class("error");
+            row_for_reset.set_tooltip_text(Some(definition.description));
+        }
+    });
+
+    group.add(&row);
+    row
 }
 
 /// Refresh models for a provider asynchronously and update the ComboRow
@@ -1976,79 +2039,55 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         .title("Keybindings")
         .icon_name("input-keyboard-symbolic")
         .build();
+    let shortcut_rows: Rc<
+        RefCell<Vec<(libadwaita::EntryRow, crate::keyboard::ShortcutDefinition)>>,
+    > = Rc::new(RefCell::new(Vec::new()));
 
-    let keybindings_group = libadwaita::PreferencesGroup::builder()
+    let reset_group = libadwaita::PreferencesGroup::builder()
         .title("Keyboard Shortcuts")
-        .description("View and customize keyboard shortcuts")
+        .description("Edit shortcuts using labels like Ctrl+Shift+A, Ctrl+Tab, or Ctrl+1")
         .build();
 
-    // Show current shortcuts as informational rows
-    let shortcuts_info = [
-        ("New Tab", "Ctrl+T", "Create a new terminal tab"),
-        ("Close Tab", "Ctrl+W", "Close the current tab"),
-        ("Next Tab", "Ctrl+Tab", "Switch to next tab"),
-        ("Previous Tab", "Ctrl+Shift+Tab", "Switch to previous tab"),
-        ("Quick Switcher", "Ctrl+K", "Open the quick switcher"),
-        ("Toggle AI Panel", "Ctrl+Shift+A", "Show/hide AI assistant"),
-        ("New Document", "Ctrl+O", "Open a new document tab"),
-        ("Open File", "Ctrl+Shift+O", "Open a file in a new tab"),
-        ("Quit", "Ctrl+Q", "Close the application"),
-    ];
+    let reset_row = libadwaita::ActionRow::builder()
+        .title("Reset All Shortcuts")
+        .subtitle("Restore every shortcut to the CorgiTerm defaults")
+        .build();
+    let reset_btn = gtk4::Button::from_icon_name("edit-undo-symbolic");
+    reset_btn.set_tooltip_text(Some("Reset all shortcuts"));
+    reset_btn.add_css_class("flat");
+    reset_btn.set_valign(gtk4::Align::Center);
+    let shortcut_rows_for_reset = shortcut_rows.clone();
+    reset_btn.connect_clicked(move |_| {
+        if let Err(error) = KeyboardShortcuts::reset_all_to_defaults() {
+            tracing::error!("Failed to reset shortcuts: {}", error);
+        } else {
+            for (row, definition) in shortcut_rows_for_reset.borrow().iter() {
+                row.set_text(&KeyboardShortcuts::default_label_for(definition.action));
+                row.remove_css_class("error");
+                row.set_tooltip_text(Some(definition.description));
+            }
+        }
+    });
+    reset_row.add_suffix(&reset_btn);
+    reset_group.add(&reset_row);
+    keybindings_page.add(&reset_group);
 
-    for (name, shortcut, description) in shortcuts_info {
-        let row = libadwaita::ActionRow::builder()
-            .title(name)
-            .subtitle(description)
+    for group_name in SHORTCUT_GROUPS {
+        let group = libadwaita::PreferencesGroup::builder()
+            .title(*group_name)
             .build();
 
-        // Add shortcut label as suffix
-        let shortcut_label = gtk4::Label::new(Some(shortcut));
-        shortcut_label.add_css_class("dim-label");
-        shortcut_label.add_css_class("monospace");
-        row.add_suffix(&shortcut_label);
+        for definition in SHORTCUT_DEFINITIONS
+            .iter()
+            .filter(|definition| definition.group == *group_name)
+        {
+            let row = add_shortcut_editor_row(&group, *definition);
+            shortcut_rows.borrow_mut().push((row, *definition));
+        }
 
-        keybindings_group.add(&row);
+        keybindings_page.add(&group);
     }
 
-    // Terminal shortcuts
-    let terminal_keybindings_group = libadwaita::PreferencesGroup::builder()
-        .title("Terminal Shortcuts")
-        .build();
-
-    let terminal_shortcuts = [
-        ("Copy", "Ctrl+Shift+C", "Copy selection to clipboard"),
-        ("Paste", "Ctrl+Shift+V", "Paste from clipboard"),
-        ("Select All", "Ctrl+Shift+A", "Select all terminal content"),
-        ("Zoom In", "Ctrl++", "Increase font size"),
-        ("Zoom Out", "Ctrl+-", "Decrease font size"),
-        ("Reset Zoom", "Ctrl+0", "Reset to default font size"),
-    ];
-
-    for (name, shortcut, description) in terminal_shortcuts {
-        let row = libadwaita::ActionRow::builder()
-            .title(name)
-            .subtitle(description)
-            .build();
-
-        let shortcut_label = gtk4::Label::new(Some(shortcut));
-        shortcut_label.add_css_class("dim-label");
-        shortcut_label.add_css_class("monospace");
-        row.add_suffix(&shortcut_label);
-
-        terminal_keybindings_group.add(&row);
-    }
-
-    // Custom keybindings note
-    let custom_note = libadwaita::PreferencesGroup::builder()
-        .title("Custom Keybindings")
-        .description(
-            "Custom keybindings can be set in ~/.config/corgiterm/config.toml under [keybindings]",
-        )
-        .build();
-
-    keybindings_page.add(&keybindings_group);
-    keybindings_page.add(&terminal_keybindings_group);
-    keybindings_page.add(&custom_note);
     dialog.add(&keybindings_page);
 
     // Plugins page
@@ -2235,87 +2274,31 @@ pub fn show_shortcuts_dialog<W: IsA<Window> + IsA<gtk4::Widget>>(parent: &W) {
         .modal(true)
         .build();
 
-    // Create shortcuts section for terminal
-    let terminal_section = gtk4::ShortcutsSection::builder()
-        .section_name("terminal")
-        .title("Terminal")
+    let section = gtk4::ShortcutsSection::builder()
+        .section_name("shortcuts")
+        .title("Keyboard Shortcuts")
         .build();
 
-    // Tab management group
-    let tab_group = gtk4::ShortcutsGroup::builder().title("Tabs").build();
+    for group_name in SHORTCUT_GROUPS {
+        let group = gtk4::ShortcutsGroup::builder().title(*group_name).build();
 
-    let shortcuts = [
-        ("New Tab", "<Ctrl>t"),
-        ("Close Tab", "<Ctrl>w"),
-        ("Next Tab", "<Ctrl>Tab"),
-        ("Previous Tab", "<Ctrl><Shift>Tab"),
-        ("Switch to Tab 1-9", "<Ctrl>1...9"),
-    ];
+        for definition in SHORTCUT_DEFINITIONS
+            .iter()
+            .filter(|definition| definition.group == *group_name)
+        {
+            if let Some(accelerator) = KeyboardShortcuts::accelerator_for(definition.action) {
+                let shortcut = gtk4::ShortcutsShortcut::builder()
+                    .title(definition.title)
+                    .accelerator(&accelerator)
+                    .build();
+                group.append(&shortcut);
+            }
+        }
 
-    for (title, accel) in shortcuts {
-        let shortcut = gtk4::ShortcutsShortcut::builder()
-            .title(title)
-            .accelerator(accel)
-            .build();
-        tab_group.append(&shortcut);
+        section.append(&group);
     }
-    terminal_section.append(&tab_group);
 
-    // Window group
-    let window_group = gtk4::ShortcutsGroup::builder().title("Window").build();
-
-    let window_shortcuts = [
-        ("Quick Switcher", "<Ctrl>k"),
-        ("Toggle AI Panel", "<Ctrl><Shift>a"),
-        ("Quit", "<Ctrl>q"),
-    ];
-
-    for (title, accel) in window_shortcuts {
-        let shortcut = gtk4::ShortcutsShortcut::builder()
-            .title(title)
-            .accelerator(accel)
-            .build();
-        window_group.append(&shortcut);
-    }
-    terminal_section.append(&window_group);
-
-    // Terminal group
-    let term_group = gtk4::ShortcutsGroup::builder().title("Terminal").build();
-
-    let term_shortcuts = [
-        ("Copy", "<Ctrl><Shift>c"),
-        ("Paste", "<Ctrl><Shift>v"),
-        ("Select All", "<Ctrl><Shift>a"),
-        ("Find in Terminal", "<Ctrl><Shift>f"),
-        ("Zoom In", "<Ctrl>plus"),
-        ("Zoom Out", "<Ctrl>minus"),
-        ("Reset Zoom", "<Ctrl>0"),
-    ];
-
-    for (title, accel) in term_shortcuts {
-        let shortcut = gtk4::ShortcutsShortcut::builder()
-            .title(title)
-            .accelerator(accel)
-            .build();
-        term_group.append(&shortcut);
-    }
-    terminal_section.append(&term_group);
-
-    // Documents group
-    let doc_group = gtk4::ShortcutsGroup::builder().title("Documents").build();
-
-    let doc_shortcuts = [("New Document", "<Ctrl>o"), ("Open File", "<Ctrl><Shift>o")];
-
-    for (title, accel) in doc_shortcuts {
-        let shortcut = gtk4::ShortcutsShortcut::builder()
-            .title(title)
-            .accelerator(accel)
-            .build();
-        doc_group.append(&shortcut);
-    }
-    terminal_section.append(&doc_group);
-
-    dialog.add_section(&terminal_section);
+    dialog.add_section(&section);
     dialog.present();
 }
 

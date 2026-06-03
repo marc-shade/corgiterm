@@ -20,9 +20,9 @@ Current `cargo test --workspace -- --list` inventory:
 | `corgiterm-core` | 50 | Terminal engine/model, Safe Mode analyzer, PTY size, recording model, hints, history, sessions. |
 | `corgiterm-plugins` | 4 | Runtime creation and serialization basics. |
 | `corgiterm-terminal` | 26 | Legacy/secondary terminal parser, grid, renderer model tests. |
-| `corgiterm-ui` | 1 | App ID only. No workflow UI coverage yet. |
+| `corgiterm-ui` | 3 | App ID plus keyboard shortcut default/accelerator coverage. No workflow UI coverage yet. |
 
-Current gap: most user-facing features live in `corgiterm-ui`, but UI has only one trivial test.
+Current gap: most user-facing features live in `corgiterm-ui`, but UI still lacks workflow automation.
 
 ## Feature Status
 
@@ -43,6 +43,7 @@ Current gap: most user-facing features live in `corgiterm-ui`, but UI has only o
 | Search/copy/paste | Implemented, not automated | `terminal_view.rs`. | Medium | Add terminal buffer and clipboard workflow tests. |
 | Broadcast mode | Implemented, limited tests | `broadcast.rs`, `split_pane.rs`. | Medium | Add per-pane broadcast tests. |
 | Theme creator | Implemented, not automated | `theme_creator.rs`, theme config tests. | Medium | Add save/apply/contrast tests. |
+| Keyboard shortcuts | Implemented, partially unit tested | Preferences editor, shortcut help modal, parser/default/accelerator tests. | Medium | Add persistence and live UI workflow tests. |
 | Session recording model | Implemented, unit tested | `recording.rs` tests. | High | Prove end-to-end PTY I/O capture and playback UI. |
 | Recording panel UI | Implemented, not automated | `recording_panel.rs`. | High | Add start/stop/playback integration tests. |
 | Lua/WASM plugin runtimes | Implemented, basic tests | Runtime creation tests. | High | Define plugin API contract and execute sample plugins in tests. |

@@ -75,12 +75,15 @@ impl MainWindow {
 
         // Sidebar toggle button
         let sidebar_toggle_btn = Button::from_icon_name("sidebar-hide-symbolic");
-        sidebar_toggle_btn.set_tooltip_text(Some("Hide Sidebar (Ctrl+Shift+B)"));
+        sidebar_toggle_btn.set_tooltip_text(Some(&shortcut_tooltip(
+            "Hide Sidebar",
+            ShortcutAction::ToggleSidebar,
+        )));
         header.pack_start(&sidebar_toggle_btn);
 
         // New tab button
         let new_tab_btn = Button::from_icon_name("tab-new-symbolic");
-        new_tab_btn.set_tooltip_text(Some("New Tab (Ctrl+T)"));
+        new_tab_btn.set_tooltip_text(Some(&shortcut_tooltip("New Tab", ShortcutAction::NewTab)));
         let tabs_for_btn = tabs.clone();
         new_tab_btn.connect_clicked(move |_| {
             tabs_for_btn.add_terminal_tab("Terminal", None);
@@ -113,9 +116,10 @@ impl MainWindow {
 
         // AI panel toggle button - more visible for beginners
         let ai_toggle_btn = Button::from_icon_name("dialog-question-symbolic");
-        ai_toggle_btn.set_tooltip_text(Some(
-            "AI Assistant - Get help with commands! (Ctrl+Shift+A)",
-        ));
+        ai_toggle_btn.set_tooltip_text(Some(&shortcut_tooltip(
+            "AI Assistant - Get help with commands!",
+            ShortcutAction::ToggleAi,
+        )));
         ai_toggle_btn.add_css_class("suggested-action"); // Make it stand out
         header.pack_end(&ai_toggle_btn);
 
@@ -322,7 +326,10 @@ impl MainWindow {
         content_paned.set_vexpand(true);
 
         let sidebar_reopen_btn = Button::from_icon_name("sidebar-show-symbolic");
-        sidebar_reopen_btn.set_tooltip_text(Some("Show Sidebar (Ctrl+Shift+B)"));
+        sidebar_reopen_btn.set_tooltip_text(Some(&shortcut_tooltip(
+            "Show Sidebar",
+            ShortcutAction::ToggleSidebar,
+        )));
         sidebar_reopen_btn.add_css_class("flat");
         sidebar_reopen_btn.set_valign(gtk4::Align::Start);
         sidebar_reopen_btn.set_margin_top(8);
@@ -645,15 +652,6 @@ impl MainWindow {
             tracing::info!("Opened file: {}", path);
         });
 
-        // Load keyboard shortcuts from configuration
-        let shortcuts = if let Some(cm) = crate::app::config_manager() {
-            let config = cm.read().config();
-            KeyboardShortcuts::from_config(&config.keybindings.shortcuts)
-        } else {
-            KeyboardShortcuts::default()
-        };
-        let shortcuts = Rc::new(shortcuts);
-
         // Set up keyboard shortcuts
         let key_controller = EventControllerKey::new();
         let tabs_for_keys = tabs.clone();
@@ -664,7 +662,6 @@ impl MainWindow {
         let sidebar_toggle_for_keys = sidebar_toggle_btn.clone();
         let sidebar_reopen_for_keys = sidebar_reopen_btn.clone();
         let safe_mode_preview_for_keys = safe_mode_preview.clone();
-        let shortcuts_for_keys = shortcuts.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
             use gtk4::gdk::Key;
 
@@ -674,97 +671,99 @@ impl MainWindow {
                 return gtk4::glib::Propagation::Stop;
             }
 
+            let shortcuts_for_event = KeyboardShortcuts::current();
+
             // Check configured shortcuts
 
             // Tab management
-            if shortcuts_for_keys.matches(ShortcutAction::NewTab, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::NewTab, key, modifier) {
                 tabs_for_keys.add_terminal_tab("Terminal", None);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::CloseTab, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::CloseTab, key, modifier) {
                 tabs_for_keys.close_current_tab();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::NextTab, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::NextTab, key, modifier) {
                 tabs_for_keys.select_next_tab();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::PrevTab, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::PrevTab, key, modifier) {
                 tabs_for_keys.select_previous_tab();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::NewDocumentTab, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::NewDocumentTab, key, modifier) {
                 tabs_for_keys.add_document_tab("Document", None);
                 return gtk4::glib::Propagation::Stop;
             }
 
             // Tab switching
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab1, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab1, key, modifier) {
                 tabs_for_keys.select_tab_by_index(0);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab2, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab2, key, modifier) {
                 tabs_for_keys.select_tab_by_index(1);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab3, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab3, key, modifier) {
                 tabs_for_keys.select_tab_by_index(2);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab4, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab4, key, modifier) {
                 tabs_for_keys.select_tab_by_index(3);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab5, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab5, key, modifier) {
                 tabs_for_keys.select_tab_by_index(4);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab6, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab6, key, modifier) {
                 tabs_for_keys.select_tab_by_index(5);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab7, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab7, key, modifier) {
                 tabs_for_keys.select_tab_by_index(6);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab8, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab8, key, modifier) {
                 tabs_for_keys.select_tab_by_index(7);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SwitchToTab9, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SwitchToTab9, key, modifier) {
                 tabs_for_keys.select_tab_by_index(8);
                 return gtk4::glib::Propagation::Stop;
             }
 
             // Pane management
-            if shortcuts_for_keys.matches(ShortcutAction::SplitHorizontal, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SplitHorizontal, key, modifier) {
                 tabs_for_keys.split_current_horizontal();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SplitVertical, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SplitVertical, key, modifier) {
                 tabs_for_keys.split_current_vertical();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::ClosePane, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::ClosePane, key, modifier) {
                 tabs_for_keys.close_focused_pane();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::FocusNextPane, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::FocusNextPane, key, modifier) {
                 tabs_for_keys.focus_next_pane();
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::FocusPrevPane, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::FocusPrevPane, key, modifier) {
                 tabs_for_keys.focus_prev_pane();
                 return gtk4::glib::Propagation::Stop;
             }
 
             // UI features
-            if shortcuts_for_keys.matches(ShortcutAction::ToggleAi, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::ToggleAi, key, modifier) {
                 let currently_revealed = ai_revealer_for_keys.reveals_child();
                 ai_revealer_for_keys.set_reveal_child(!currently_revealed);
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::ToggleSidebar, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::ToggleSidebar, key, modifier) {
                 toggle_sidebar(
                     &paned_for_keys,
                     &sidebar_toggle_for_keys,
@@ -773,11 +772,11 @@ impl MainWindow {
                 );
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::QuickSwitcher, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::QuickSwitcher, key, modifier) {
                 dialogs::show_quick_switcher(&window_for_keys, tabs_for_keys.tab_view_widget());
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::SshManager, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::SshManager, key, modifier) {
                 gtk4::prelude::ActionGroupExt::activate_action(
                     &window_for_keys,
                     "ssh_manager",
@@ -785,7 +784,7 @@ impl MainWindow {
                 );
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::Snippets, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::Snippets, key, modifier) {
                 let win = window_for_keys.clone();
                 let tabs = tabs_for_keys.clone();
                 crate::snippets::show_snippets_dialog(&win, move |snippet| {
@@ -793,7 +792,7 @@ impl MainWindow {
                 });
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::AsciiArt, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::AsciiArt, key, modifier) {
                 let win = window_for_keys.clone();
                 let tabs = tabs_for_keys.clone();
                 dialogs::show_ascii_art_dialog(&win, move |art| {
@@ -801,7 +800,7 @@ impl MainWindow {
                 });
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::HistorySearch, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::HistorySearch, key, modifier) {
                 let win = window_for_keys.clone();
                 let tabs = tabs_for_keys.clone();
                 crate::history_search::show_history_search_dialog(&win, move |cmd| {
@@ -811,7 +810,7 @@ impl MainWindow {
                 });
                 return gtk4::glib::Propagation::Stop;
             }
-            if shortcuts_for_keys.matches(ShortcutAction::OpenFile, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::OpenFile, key, modifier) {
                 let tabs = tabs_for_keys.clone();
                 let win = window_for_keys.clone();
 
@@ -856,7 +855,7 @@ impl MainWindow {
             }
 
             // Application
-            if shortcuts_for_keys.matches(ShortcutAction::Quit, key, modifier) {
+            if shortcuts_for_event.matches(ShortcutAction::Quit, key, modifier) {
                 window_for_keys.close();
                 return gtk4::glib::Propagation::Stop;
             }
@@ -1064,16 +1063,31 @@ fn set_sidebar_visible(
     if visible {
         content_paned.set_position(220);
         header_button.set_icon_name("sidebar-hide-symbolic");
-        header_button.set_tooltip_text(Some("Hide Sidebar (Ctrl+Shift+B)"));
+        header_button.set_tooltip_text(Some(&shortcut_tooltip(
+            "Hide Sidebar",
+            ShortcutAction::ToggleSidebar,
+        )));
         reopen_button.set_visible(false);
     } else {
         content_paned.set_position(0);
         header_button.set_icon_name("sidebar-show-symbolic");
-        header_button.set_tooltip_text(Some("Show Sidebar (Ctrl+Shift+B)"));
+        header_button.set_tooltip_text(Some(&shortcut_tooltip(
+            "Show Sidebar",
+            ShortcutAction::ToggleSidebar,
+        )));
         reopen_button.set_visible(true);
     }
 
     *sidebar_visible.borrow_mut() = visible;
+}
+
+fn shortcut_tooltip(label: &str, action: ShortcutAction) -> String {
+    let shortcut = KeyboardShortcuts::label_for(action);
+    if shortcut.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label} ({shortcut})")
+    }
 }
 
 /// Execute a command with safe mode checking

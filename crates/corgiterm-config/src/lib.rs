@@ -365,6 +365,16 @@ pub struct ShortcutsConfig {
     pub focus_next_pane: Option<String>,
     pub focus_prev_pane: Option<String>,
 
+    // Terminal actions
+    pub copy: Option<String>,
+    pub paste: Option<String>,
+    pub select_all: Option<String>,
+    pub find_terminal: Option<String>,
+    pub activate_hints: Option<String>,
+    pub zoom_in: Option<String>,
+    pub zoom_out: Option<String>,
+    pub reset_zoom: Option<String>,
+
     // UI features
     pub toggle_ai: Option<String>,
     pub toggle_sidebar: Option<String>,
@@ -406,6 +416,16 @@ impl Default for ShortcutsConfig {
             close_pane: Some("Ctrl+Shift+W".to_string()),
             focus_next_pane: Some("Ctrl+Shift+]".to_string()),
             focus_prev_pane: Some("Ctrl+Shift+[".to_string()),
+
+            // Terminal actions
+            copy: Some("Ctrl+Shift+C".to_string()),
+            paste: Some("Ctrl+Shift+V".to_string()),
+            select_all: Some("Ctrl+Shift+A".to_string()),
+            find_terminal: Some("Ctrl+Shift+F".to_string()),
+            activate_hints: Some("Ctrl+Shift+U".to_string()),
+            zoom_in: Some("Ctrl+Plus".to_string()),
+            zoom_out: Some("Ctrl+Minus".to_string()),
+            reset_zoom: Some("Ctrl+0".to_string()),
 
             // UI features
             toggle_ai: Some("Ctrl+Shift+A".to_string()),
