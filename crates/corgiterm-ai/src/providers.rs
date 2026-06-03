@@ -1119,8 +1119,11 @@ mod tests {
     #[test]
     #[cfg_attr(target_os = "macos", ignore)]
     fn test_ollama_provider_name() {
-        let provider =
-            OllamaProvider::new("http://localhost:11434".to_string(), "llama3".to_string(), None);
+        let provider = OllamaProvider::new(
+            "http://localhost:11434".to_string(),
+            "llama3".to_string(),
+            None,
+        );
         assert_eq!(provider.name(), "ollama");
     }
 

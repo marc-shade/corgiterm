@@ -164,7 +164,9 @@ impl ModelRegistry {
         if self.config.cache_path.exists() {
             match std::fs::read_to_string(&self.config.cache_path) {
                 Ok(data) => {
-                    if let Ok(cached) = serde_json::from_str::<HashMap<String, CachedModelList>>(&data) {
+                    if let Ok(cached) =
+                        serde_json::from_str::<HashMap<String, CachedModelList>>(&data)
+                    {
                         let mut cache = self.cache.write();
                         *cache = cached;
                         info!("Loaded model cache from {:?}", self.config.cache_path);
@@ -256,7 +258,14 @@ impl ModelRegistry {
     /// Get all models from all configured providers
     pub async fn get_all_models(&self) -> HashMap<String, Vec<ModelInfo>> {
         let mut results = HashMap::new();
-        let providers = ["openai", "anthropic", "gemini", "ollama", "claude-cli", "gemini-cli"];
+        let providers = [
+            "openai",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "claude-cli",
+            "gemini-cli",
+        ];
 
         for provider in providers {
             match self.get_models(provider).await {
@@ -345,7 +354,10 @@ impl ModelRegistry {
         };
 
         if !response.status().is_success() {
-            warn!("OpenAI API error: {}, using known models", response.status());
+            warn!(
+                "OpenAI API error: {}, using known models",
+                response.status()
+            );
             return Ok(self.get_openai_known_models());
         }
 
@@ -378,21 +390,25 @@ impl ModelRegistry {
             .map(|m| {
                 let mut info = ModelInfo::new(&m.id, "openai");
                 info.name = format_openai_name(&m.id);
-                info.created_at = m.created.map(|ts| {
-                    DateTime::from_timestamp(ts, 0).unwrap_or_else(Utc::now)
-                });
+                info.created_at = m
+                    .created
+                    .map(|ts| DateTime::from_timestamp(ts, 0).unwrap_or_else(Utc::now));
                 info.family = extract_model_family(&m.id);
 
                 // Set capabilities based on model name
                 if m.id.contains("gpt-4") || m.id.contains("o1") || m.id.contains("o3") {
                     info.supports_tools = true;
                 }
-                if m.id.contains("vision") || m.id.contains("gpt-4o") || m.id.contains("gpt-4-turbo") {
+                if m.id.contains("vision")
+                    || m.id.contains("gpt-4o")
+                    || m.id.contains("gpt-4-turbo")
+                {
                     info.supports_vision = true;
                 }
 
                 // Mark recommended models
-                info.recommended = m.id == "gpt-4o" || m.id == "gpt-4o-mini" || m.id == "o1" || m.id == "o3-mini";
+                info.recommended =
+                    m.id == "gpt-4o" || m.id == "gpt-4o-mini" || m.id == "o1" || m.id == "o3-mini";
 
                 // Set context windows for known models
                 info.context_window = match m.id.as_str() {
@@ -412,9 +428,7 @@ impl ModelRegistry {
             .collect();
 
         // Sort by recommended first, then by name
-        models.sort_by(|a, b| {
-            b.recommended.cmp(&a.recommended).then(a.name.cmp(&b.name))
-        });
+        models.sort_by(|a, b| b.recommended.cmp(&a.recommended).then(a.name.cmp(&b.name)));
 
         info!("Fetched {} OpenAI models", models.len());
         Ok(models)
@@ -422,9 +436,11 @@ impl ModelRegistry {
 
     /// Fetch models from Anthropic API
     async fn fetch_anthropic_models(&self) -> Result<Vec<ModelInfo>> {
-        let api_key = self.config.anthropic_api_key.as_ref().ok_or_else(|| {
-            AiError::NotConfigured("Anthropic API key not set".to_string())
-        })?;
+        let api_key = self
+            .config
+            .anthropic_api_key
+            .as_ref()
+            .ok_or_else(|| AiError::NotConfigured("Anthropic API key not set".to_string()))?;
 
         let response = self
             .client
@@ -462,7 +478,8 @@ impl ModelRegistry {
                         let mut info = ModelInfo::new(&m.id, "anthropic");
                         info.name = m.display_name.unwrap_or_else(|| format_claude_name(&m.id));
                         info.supports_tools = true;
-                        info.supports_vision = m.id.contains("claude-3") || m.id.contains("claude-4");
+                        info.supports_vision =
+                            m.id.contains("claude-3") || m.id.contains("claude-4");
                         info.family = Some("Claude".to_string());
 
                         // Set context windows
@@ -517,10 +534,20 @@ impl ModelRegistry {
     fn get_gemini_known_models(&self) -> Vec<ModelInfo> {
         vec![
             create_gemini_model("gemini-2.0-flash-exp", "Gemini 2.0 Flash", 1_000_000, true),
-            create_gemini_model("gemini-2.0-flash-thinking-exp", "Gemini 2.0 Flash Thinking", 1_000_000, true),
+            create_gemini_model(
+                "gemini-2.0-flash-thinking-exp",
+                "Gemini 2.0 Flash Thinking",
+                1_000_000,
+                true,
+            ),
             create_gemini_model("gemini-1.5-pro", "Gemini 1.5 Pro", 2_000_000, true),
             create_gemini_model("gemini-1.5-flash", "Gemini 1.5 Flash", 1_000_000, false),
-            create_gemini_model("gemini-1.5-flash-8b", "Gemini 1.5 Flash 8B", 1_000_000, false),
+            create_gemini_model(
+                "gemini-1.5-flash-8b",
+                "Gemini 1.5 Flash 8B",
+                1_000_000,
+                false,
+            ),
         ]
     }
 
@@ -548,7 +575,10 @@ impl ModelRegistry {
         };
 
         if !response.status().is_success() {
-            warn!("Gemini API error: {}, using known models", response.status());
+            warn!(
+                "Gemini API error: {}, using known models",
+                response.status()
+            );
             return Ok(self.get_gemini_known_models());
         }
 
@@ -582,7 +612,11 @@ impl ModelRegistry {
             })
             .map(|m| {
                 // Extract model ID from "models/gemini-xxx" format
-                let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_string();
+                let id = m
+                    .name
+                    .strip_prefix("models/")
+                    .unwrap_or(&m.name)
+                    .to_string();
 
                 let mut info = ModelInfo::new(&id, "gemini");
                 info.name = m.display_name.unwrap_or_else(|| format_gemini_name(&id));
@@ -590,7 +624,8 @@ impl ModelRegistry {
                 info.context_window = m.input_token_limit;
                 info.max_output = m.output_token_limit;
                 info.supports_tools = true;
-                info.supports_vision = id.contains("vision") || id.contains("pro") || id.contains("flash");
+                info.supports_vision =
+                    id.contains("vision") || id.contains("pro") || id.contains("flash");
                 info.family = Some("Gemini".to_string());
 
                 // Mark recommended
@@ -608,9 +643,12 @@ impl ModelRegistry {
     async fn fetch_ollama_models(&self) -> Result<Vec<ModelInfo>> {
         let url = format!("{}/api/tags", self.config.ollama_endpoint);
 
-        let response = self.client.get(&url).send().await.map_err(|e| {
-            AiError::ApiError(format!("Ollama not reachable: {}", e))
-        })?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| AiError::ApiError(format!("Ollama not reachable: {}", e)))?;
 
         if !response.status().is_success() {
             return Err(AiError::ApiError(format!(
@@ -664,7 +702,8 @@ impl ModelRegistry {
                         info.description = Some(format!(
                             "{} parameters{}",
                             param_size,
-                            details.quantization_level
+                            details
+                                .quantization_level
                                 .map(|q| format!(", {}", q))
                                 .unwrap_or_default()
                         ));
@@ -694,10 +733,30 @@ impl ModelRegistry {
     /// Get known Claude CLI models
     fn get_claude_cli_models(&self) -> Vec<ModelInfo> {
         vec![
-            create_cli_model("claude-opus-4-20250514", "Claude Opus 4", "claude-cli", true),
-            create_cli_model("claude-sonnet-4-20250514", "Claude Sonnet 4", "claude-cli", true),
-            create_cli_model("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet", "claude-cli", false),
-            create_cli_model("claude-3-5-haiku-20241022", "Claude 3.5 Haiku", "claude-cli", false),
+            create_cli_model(
+                "claude-opus-4-20250514",
+                "Claude Opus 4",
+                "claude-cli",
+                true,
+            ),
+            create_cli_model(
+                "claude-sonnet-4-20250514",
+                "Claude Sonnet 4",
+                "claude-cli",
+                true,
+            ),
+            create_cli_model(
+                "claude-3-5-sonnet-20241022",
+                "Claude 3.5 Sonnet",
+                "claude-cli",
+                false,
+            ),
+            create_cli_model(
+                "claude-3-5-haiku-20241022",
+                "Claude 3.5 Haiku",
+                "claude-cli",
+                false,
+            ),
         ]
     }
 
@@ -705,12 +764,16 @@ impl ModelRegistry {
     fn get_gemini_cli_models(&self) -> Vec<ModelInfo> {
         vec![
             create_cli_model("gemini-2.0-flash", "Gemini 2.0 Flash", "gemini-cli", true),
-            create_cli_model("gemini-2.0-flash-thinking", "Gemini 2.0 Flash Thinking", "gemini-cli", true),
+            create_cli_model(
+                "gemini-2.0-flash-thinking",
+                "Gemini 2.0 Flash Thinking",
+                "gemini-cli",
+                true,
+            ),
             create_cli_model("gemini-1.5-pro", "Gemini 1.5 Pro", "gemini-cli", false),
             create_cli_model("gemini-1.5-flash", "Gemini 1.5 Flash", "gemini-cli", false),
         ]
     }
-
 }
 
 impl Default for ModelRegistry {

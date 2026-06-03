@@ -38,9 +38,9 @@ pub fn init_model_registry() {
             .ok(),
         ollama_endpoint: std::env::var("OLLAMA_HOST")
             .unwrap_or_else(|_| "http://localhost:11434".to_string()),
-        api_cache_ttl: Duration::hours(1),     // 1 hour for cloud APIs
+        api_cache_ttl: Duration::hours(1), // 1 hour for cloud APIs
         local_cache_ttl: Duration::minutes(5), // 5 min for Ollama
-        ..ModelRegistryConfig::default()       // Use defaults for cache_path
+        ..ModelRegistryConfig::default()   // Use defaults for cache_path
     };
 
     let registry = ModelRegistry::with_config(config);
@@ -78,9 +78,7 @@ fn create_model_combo_row(
     let models = get_cached_models(provider);
 
     // Build model list - include current model even if not in fetched list
-    let mut model_names: Vec<String> = models.iter()
-        .map(|m| m.id.clone())
-        .collect();
+    let mut model_names: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
 
     // If current model isn't in the list, add it at the top
     if !current_model.is_empty() && !model_names.contains(&current_model.to_string()) {
@@ -147,9 +145,7 @@ fn refresh_provider_models(
             }
 
             // Build new model list
-            let mut model_names: Vec<String> = models.iter()
-                .map(|m| m.id.clone())
-                .collect();
+            let mut model_names: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
 
             // Ensure current model is in the list
             if !current_model.is_empty() && !model_names.contains(&current_model) {
@@ -1277,11 +1273,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let (claude_model_row, claude_model_list) = create_model_combo_row(
-        "Model",
-        &claude_model,
-        "anthropic",
-    );
+    let (claude_model_row, claude_model_list) =
+        create_model_combo_row("Model", &claude_model, "anthropic");
     claude_group.add(&claude_model_row);
 
     // Trigger async refresh of models
@@ -1341,11 +1334,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let (openai_model_row, openai_model_list) = create_model_combo_row(
-        "Model",
-        &openai_model,
-        "openai",
-    );
+    let (openai_model_row, openai_model_list) =
+        create_model_combo_row("Model", &openai_model, "openai");
     openai_group.add(&openai_model_row);
 
     // Trigger async refresh of models
@@ -1405,11 +1395,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let (gemini_model_row, gemini_model_list) = create_model_combo_row(
-        "Model",
-        &gemini_model,
-        "gemini",
-    );
+    let (gemini_model_row, gemini_model_list) =
+        create_model_combo_row("Model", &gemini_model, "gemini");
     gemini_group.add(&gemini_model_row);
 
     // Trigger async refresh of models
@@ -1505,11 +1492,8 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
         }
     });
 
-    let (local_model_row, local_model_list) = create_model_combo_row(
-        "Model Name",
-        &local_model,
-        "ollama",
-    );
+    let (local_model_row, local_model_list) =
+        create_model_combo_row("Model Name", &local_model, "ollama");
     local_group.add(&local_model_row);
 
     // Trigger async refresh of models (Ollama refreshes more frequently)
@@ -1537,7 +1521,10 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
                                 // Find the ollama provider and update its model
                                 if let Some(provider) = ai_mgr.get_provider_mut("ollama") {
                                     provider.set_model(&model);
-                                    tracing::info!("Runtime Ollama provider model updated to: {}", model);
+                                    tracing::info!(
+                                        "Runtime Ollama provider model updated to: {}",
+                                        model
+                                    );
                                 }
                             }
                         }

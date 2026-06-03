@@ -23,7 +23,7 @@ pub mod natural_language;
 pub mod providers;
 
 // Re-export commonly used types from models module
-pub use models::{ModelInfo, ModelRegistry, ModelRegistryConfig, CachedModelList};
+pub use models::{CachedModelList, ModelInfo, ModelRegistry, ModelRegistryConfig};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -293,9 +293,7 @@ impl AiManager {
 
     /// Get provider by name mutably (for changing model, etc.)
     pub fn get_provider_mut(&mut self, name: &str) -> Option<&mut Box<dyn AiProvider>> {
-        self.providers
-            .iter_mut()
-            .find(|p| p.name() == name)
+        self.providers.iter_mut().find(|p| p.name() == name)
     }
 
     /// List available providers

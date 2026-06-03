@@ -9,8 +9,8 @@
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack,
-    StackSwitcher, TextBuffer, TextView,
+    Box, Button, Entry, Frame, Label, Orientation, ScrolledWindow, Separator, Stack, StackSwitcher,
+    TextBuffer, TextView,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
