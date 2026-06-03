@@ -488,6 +488,21 @@ mod tests {
     }
 
     #[test]
+    fn emoji_occupies_two_columns_and_preserves_text() {
+        let mut e = engine(24, 80);
+        e.feed("😀".as_bytes());
+        let cells = e.render_cells();
+        let emoji = at(&cells, 0, 0).expect("emoji cell present");
+        assert_eq!(emoji.text, "😀");
+        assert_eq!(emoji.width, 2, "emoji cell must be width 2");
+        assert!(
+            at(&cells, 0, 1).is_none(),
+            "emoji spacer cell must not be emitted"
+        );
+        assert_eq!(e.cursor().col, 2);
+    }
+
+    #[test]
     fn truecolor_sgr_resolves_to_rgb() {
         let mut e = engine(24, 80);
         // SGR 38;2;10;20;30 sets a 24-bit foreground.

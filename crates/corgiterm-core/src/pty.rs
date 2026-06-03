@@ -115,6 +115,7 @@ impl Pty {
         {
             let term_value = term.unwrap_or("xterm-256color");
             cmd.env("TERM", term_value);
+            apply_utf8_locale_env(&mut cmd);
         }
 
         // Spawn child process
@@ -277,6 +278,60 @@ impl Drop for Pty {
     }
 }
 
+#[cfg(unix)]
+fn apply_utf8_locale_env(cmd: &mut CommandBuilder) {
+    let locale = preferred_utf8_locale();
+
+    if locale_env_value("LANG").is_none_or(|value| !is_utf8_locale(&value)) {
+        cmd.env("LANG", locale.as_str());
+    }
+
+    if locale_env_value("LC_ALL").is_some_and(|value| !is_utf8_locale(&value)) {
+        cmd.env("LC_ALL", locale.as_str());
+    }
+
+    if locale_env_value("LC_CTYPE").is_none_or(|value| !is_utf8_locale(&value)) {
+        cmd.env("LC_CTYPE", locale.as_str());
+    }
+}
+
+#[cfg(unix)]
+fn locale_env_value(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(unix)]
+fn preferred_utf8_locale() -> String {
+    ["LC_ALL", "LC_CTYPE", "LANG"]
+        .into_iter()
+        .filter_map(locale_env_value)
+        .find(|value| is_utf8_locale(value))
+        .unwrap_or_else(|| default_utf8_locale().to_string())
+}
+
+#[cfg(unix)]
+fn is_utf8_locale(value: &str) -> bool {
+    let normalized: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_uppercase();
+    normalized.contains("UTF8")
+}
+
+#[cfg(all(unix, target_os = "macos"))]
+fn default_utf8_locale() -> &'static str {
+    "en_US.UTF-8"
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn default_utf8_locale() -> &'static str {
+    "C.UTF-8"
+}
+
 // Ensure Pty is Send + Sync for async usage
 unsafe impl Send for Pty {}
 unsafe impl Sync for Pty {}
@@ -340,5 +395,21 @@ mod tests {
         let winsize = Winsize::from(size);
         assert_eq!(winsize.ws_row, 40);
         assert_eq!(winsize.ws_col, 120);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn utf8_locale_detection_accepts_common_spellings() {
+        assert!(is_utf8_locale("en_US.UTF-8"));
+        assert!(is_utf8_locale("C.utf8"));
+        assert!(is_utf8_locale("en_US.UTF_8"));
+        assert!(!is_utf8_locale("C"));
+        assert!(!is_utf8_locale("POSIX"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fallback_locale_is_utf8() {
+        assert!(is_utf8_locale(default_utf8_locale()));
     }
 }

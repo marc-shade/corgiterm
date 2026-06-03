@@ -361,6 +361,7 @@ impl TerminalView {
                 };
             let font_string = format!("{} {}", font_family, font_size as u32);
             let font_desc = pango::FontDescription::from_string(&font_string);
+            let emoji_font_desc = emoji_font_description(font_size);
 
             // Get font metrics for cell sizing. Use a measured monospace glyph
             // width for the grid pitch; approximate_char_width is an average and
@@ -415,7 +416,8 @@ impl TerminalView {
                              rcell: &RenderCell,
                              x: f64,
                              y: f64,
-                             font_desc: &pango::FontDescription| {
+                             font_desc: &pango::FontDescription,
+                             emoji_font_desc: &pango::FontDescription| {
                 let span_w = cell_w * rcell.width.max(1) as f64;
                 // Inverse swaps fg/bg.
                 let (fg_color, bg_color) = if rcell.flags.inverse {
@@ -450,11 +452,16 @@ impl TerminalView {
                 }
                 cr.set_source_rgb(r, g, b);
 
-                let mut styled_font = font_desc.clone();
-                if rcell.flags.italic {
+                let is_emoji = contains_emoji_presentation(&rcell.text);
+                let mut styled_font = if is_emoji {
+                    emoji_font_desc.clone()
+                } else {
+                    font_desc.clone()
+                };
+                if !is_emoji && rcell.flags.italic {
                     styled_font.set_style(pango::Style::Italic);
                 }
-                if rcell.flags.bold {
+                if !is_emoji && rcell.flags.bold {
                     styled_font.set_weight(pango::Weight::Bold);
                 }
                 layout.set_font_description(Some(&styled_font));
@@ -540,7 +547,7 @@ impl TerminalView {
                     }
                 }
 
-                draw_cell(cr, &layout, rcell, x, y, &font_desc);
+                draw_cell(cr, &layout, rcell, x, y, &font_desc, &emoji_font_desc);
 
                 // Underline a hovered URL.
                 let is_url_hovered = hover.is_some_and(|(hover_row, hover_col)| {
@@ -2014,6 +2021,39 @@ fn url_at_position(
         .map(|url| url.url.clone())
 }
 
+fn emoji_font_description(font_size: f32) -> pango::FontDescription {
+    let font_string = format!("{} {}", emoji_font_family_list(), font_size as u32);
+    pango::FontDescription::from_string(&font_string)
+}
+
+#[cfg(target_os = "macos")]
+fn emoji_font_family_list() -> &'static str {
+    "Apple Color Emoji, Noto Color Emoji, Segoe UI Emoji, emoji"
+}
+
+#[cfg(target_os = "windows")]
+fn emoji_font_family_list() -> &'static str {
+    "Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, emoji"
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn emoji_font_family_list() -> &'static str {
+    "Noto Color Emoji, Apple Color Emoji, Segoe UI Emoji, emoji"
+}
+
+fn contains_emoji_presentation(text: &str) -> bool {
+    text.chars().any(|ch| {
+        matches!(
+            ch,
+            '\u{1F000}'..='\u{1FAFF}'
+                | '\u{2600}'..='\u{27BF}'
+                | '\u{20E3}'
+                | '\u{200D}'
+                | '\u{FE0F}'
+        )
+    })
+}
+
 fn write_terminal_bytes(pty_handle: &Rc<RefCell<Option<Pty>>>, bytes: &[u8]) -> bool {
     if let Some(ref pty) = *pty_handle.borrow() {
         if let Err(error) = pty.write(bytes) {
@@ -2172,5 +2212,15 @@ mod tests {
             url_at_position(8.0 + 15.0 * 10.0, 8.0 + 2.0 * 20.0, 10.0, 20.0, &detected),
             None
         );
+    }
+
+    #[test]
+    fn emoji_presentation_detection_matches_picker_output() {
+        assert!(contains_emoji_presentation("😀"));
+        assert!(contains_emoji_presentation("👋🏽"));
+        assert!(contains_emoji_presentation("❤️"));
+        assert!(contains_emoji_presentation("☕"));
+        assert!(!contains_emoji_presentation("plain ascii"));
+        assert!(!contains_emoji_presentation("─│┌┐"));
     }
 }
