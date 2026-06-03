@@ -46,6 +46,10 @@ pub enum TerminalEvent {
     CursorMoved { row: usize, col: usize },
     /// Screen content changed
     Redraw,
+    /// The emulator needs to write a reply back to the PTY (DSR, bracketed-paste
+    /// acknowledgements, DA responses, etc.). The UI must forward these bytes to
+    /// the child process or interactive programs will hang waiting for the reply.
+    PtyWrite(Vec<u8>),
 }
 
 /// Clipboard actions from terminal

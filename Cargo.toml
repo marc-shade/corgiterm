@@ -61,7 +61,9 @@ toml = "0.8"
 
 # Terminal emulation
 vte = "0.13"
-alacritty_terminal = "0.24"
+# Battle-tested terminal model (grid, parser, scrollback, wide-char flags, reflow).
+# Replaces the hand-rolled corgiterm-core::Terminal. See docs/plans/terminal-rebuild-plan.md.
+alacritty_terminal = "0.26"
 
 # GTK4 UI (v4_14 for Ubuntu 24.04 CI compatibility)
 gtk4 = { version = "0.9", features = ["v4_14"] }

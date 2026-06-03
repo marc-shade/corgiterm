@@ -16,7 +16,8 @@ use std::rc::Rc;
 use crate::app::config_manager;
 use corgiterm_config::themes::ThemeManager;
 use corgiterm_core::{
-    terminal::Cell, HintDetector, HintModeState, Pty, PtySize, Terminal, TerminalSize,
+    AlacrittyEngine, CellColor, HintDetector, HintModeState, Pty, PtySize, RenderCell,
+    TerminalEngine, TerminalSize,
 };
 use std::path::Path;
 
@@ -79,6 +80,23 @@ const DEFAULT_COLORS: [(f64, f64, f64); 16] = [
     (0.969, 0.945, 0.910), // 15: Bright White
 ];
 
+/// Resolve a palette index (0-255) to RGB. Indices 0-15 use the active 16-color
+/// theme palette (where 0 is background and 7 is foreground, matching the theme
+/// layout); 16-231 use the standard xterm 6x6x6 color cube and 232-255 the
+/// grayscale ramp.
+fn index_to_rgb(idx: u8, palette: &[(f64, f64, f64); 16]) -> (f64, f64, f64) {
+    if (idx as usize) < 16 {
+        palette[idx as usize]
+    } else if idx < 232 {
+        let i = idx - 16;
+        let to = |v: u8| -> f64 { (if v == 0 { 0u16 } else { 55 + v as u16 * 40 }) as f64 / 255.0 };
+        (to((i / 36) % 6), to((i / 6) % 6), to(i % 6))
+    } else {
+        let level = (8u16 + (idx as u16 - 232) * 10) as f64 / 255.0;
+        (level, level, level)
+    }
+}
+
 /// Convert hex color string to RGB tuple
 fn hex_to_rgb(hex: &str) -> (f64, f64, f64) {
     let hex = hex.trim_start_matches('#');
@@ -130,7 +148,7 @@ fn load_theme_colors() -> [(f64, f64, f64); 16] {
 pub struct TerminalView {
     container: Box,
     drawing_area: DrawingArea,
-    terminal: Rc<RefCell<Terminal>>,
+    terminal: Rc<RefCell<AlacrittyEngine>>,
     pty: Rc<RefCell<Option<Pty>>>,
     /// Cell dimensions for resize calculations
     cell_width: Rc<RefCell<f64>>,
@@ -180,18 +198,16 @@ impl TerminalView {
         drawing_area.set_can_focus(true);
         drawing_area.set_focusable(true);
 
-        // Create terminal emulator
+        // Create terminal emulator (alacritty_terminal model behind TerminalEngine)
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
-        let terminal = Rc::new(RefCell::new(Terminal::new(
+        let scrollback_lines = crate::app::config_manager()
+            .map(|cm| cm.read().config().terminal.scrollback_lines)
+            .unwrap_or(10000);
+        let terminal = Rc::new(RefCell::new(AlacrittyEngine::new(
             TerminalSize { rows: 24, cols: 80 },
             event_tx,
+            scrollback_lines,
         )));
-
-        // Apply scrollback setting from config
-        if let Some(config_manager) = crate::app::config_manager() {
-            let scrollback = config_manager.read().config().terminal.scrollback_lines;
-            terminal.borrow_mut().set_max_scrollback(scrollback);
-        }
 
         let event_rx = Rc::new(event_rx);
 
@@ -273,11 +289,14 @@ impl TerminalView {
         drawing_area.set_draw_func(move |area, cr, _width, _height| {
             // Use cached theme colors (updated via reload_theme_colors())
             let current_colors = *colors_for_draw.borrow();
-            let term = term_for_draw.borrow();
-            let grid = term.grid();
-            let scrollback = term.scrollback();
-            let cursor = term.cursor();
-            let offset = *scroll_offset_for_draw.borrow();
+            let engine = term_for_draw.borrow();
+            // The engine owns the scroll position; render_cells()/cursor()/rows_text()
+            // already reflect the current display offset. No manual grid indexing.
+            let cells = engine.render_cells();
+            let rows_text = engine.rows_text();
+            let cursor = engine.cursor();
+            let at_bottom = engine.display_offset() == 0;
+            let _ = &scroll_offset_for_draw;
 
             // Get Pango context and create layout
             let pango_context = area.pango_context();
@@ -291,14 +310,23 @@ impl TerminalView {
                         config.appearance.font_size,
                     )
                 } else {
-                    ("Source Code Pro".to_string(), 11.0)
+                    // Generic monospace family (see corgiterm-config default); a named
+                    // font that is not installed falls back to a proportional face and
+                    // garbles the cell grid.
+                    ("monospace".to_string(), 11.0)
                 };
             let font_string = format!("{} {}", font_family, font_size as u32);
             let font_desc = pango::FontDescription::from_string(&font_string);
 
-            // Get font metrics for cell sizing
+            // Get font metrics for cell sizing. Use a measured monospace glyph
+            // width for the grid pitch; approximate_char_width is an average and
+            // drifts when the resolved fallback face changes.
             let metrics = pango_context.metrics(Some(&font_desc), None);
-            let cell_w = (metrics.approximate_char_width() as f64 / pango::SCALE as f64).ceil();
+            let measure_layout = pango::Layout::new(&pango_context);
+            measure_layout.set_font_description(Some(&font_desc));
+            measure_layout.set_text("M");
+            let (_, logical_rect) = measure_layout.pixel_extents();
+            let cell_w = (logical_rect.width().max(1) as f64).ceil();
             let cell_h =
                 ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64).ceil();
             let ascent = metrics.ascent() as f64 / pango::SCALE as f64;
@@ -323,125 +351,101 @@ impl TerminalView {
             let (fg_r, fg_g, fg_b) = current_colors[7];
             cr.set_source_rgb(fg_r, fg_g, fg_b);
 
-            // Helper to draw a cell
-            let draw_cell = |cr: &cairo::Context,
-                             layout: &pango::Layout,
-                             cell: &Cell,
-                             x: f64,
-                             y: f64,
-                             font_desc: &pango::FontDescription| {
-                // Handle inverse and hidden attributes
-                let cell_fg = if cell.attrs.inverse {
-                    cell.bg // Swap fg/bg for inverse
-                } else {
-                    cell.fg
-                };
-                let cell_bg_draw = if cell.attrs.inverse {
-                    cell.fg // Swap fg/bg for inverse
-                } else {
-                    cell.bg
-                };
-
-                if cell_bg_draw[0] != 30 || cell_bg_draw[1] != 27 || cell_bg_draw[2] != 22 {
-                    cr.set_source_rgba(
-                        cell_bg_draw[0] as f64 / 255.0,
-                        cell_bg_draw[1] as f64 / 255.0,
-                        cell_bg_draw[2] as f64 / 255.0,
-                        cell_bg_draw[3] as f64 / 255.0,
-                    );
-                    cr.rectangle(x, y, cell_w, cell_h);
-                    cr.fill().ok();
-                }
-
-                if !cell.content.is_empty() && !cell.attrs.hidden {
-                    let fg = cell_fg;
-                    let (r, g, b) = (
-                        fg[0] as f64 / 255.0,
-                        fg[1] as f64 / 255.0,
-                        fg[2] as f64 / 255.0,
-                    );
-
-                    // Apply color modifiers
-                    if cell.attrs.bold {
-                        cr.set_source_rgb(
-                            (r * 1.2).min(1.0),
-                            (g * 1.2).min(1.0),
-                            (b * 1.2).min(1.0),
-                        );
-                    } else if cell.attrs.dim {
-                        cr.set_source_rgb(r * 0.6, g * 0.6, b * 0.6);
-                    } else {
-                        cr.set_source_rgb(r, g, b);
+            // Resolve a logical cell color to RGB via the active theme palette.
+            let resolve_color = |c: CellColor| -> (f64, f64, f64) {
+                match c {
+                    CellColor::DefaultFg => current_colors[7],
+                    CellColor::DefaultBg => current_colors[0],
+                    CellColor::Rgb([r, g, b]) => {
+                        (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0)
                     }
-
-                    // Apply font styles (italic, bold weight)
-                    let mut styled_font = font_desc.clone();
-                    if cell.attrs.italic {
-                        styled_font.set_style(pango::Style::Italic);
-                    }
-                    if cell.attrs.bold {
-                        styled_font.set_weight(pango::Weight::Bold);
-                    }
-                    layout.set_font_description(Some(&styled_font));
-
-                    layout.set_text(&cell.content);
-                    let text_y = y + (cell_h - ascent) / 2.0;
-                    cr.move_to(x, text_y);
-                    pangocairo::functions::show_layout(cr, layout);
-
-                    // Draw underline
-                    if cell.attrs.underline {
-                        cr.set_line_width(1.0);
-                        let underline_y = y + cell_h - 2.0;
-                        cr.move_to(x, underline_y);
-                        cr.line_to(x + cell_w, underline_y);
-                        cr.stroke().ok();
-                    }
-
-                    // Draw strikethrough
-                    if cell.attrs.strikethrough {
-                        cr.set_line_width(1.0);
-                        let strike_y = y + cell_h / 2.0;
-                        cr.move_to(x, strike_y);
-                        cr.line_to(x + cell_w, strike_y);
-                        cr.stroke().ok();
-                    }
-
-                    // Reset font description for next cell
-                    layout.set_font_description(Some(font_desc));
+                    CellColor::Indexed(i) => index_to_rgb(i, &current_colors),
                 }
             };
 
-            // Calculate visible lines based on scroll offset
-            // offset=0 means we show the current grid (bottom)
-            // offset>0 means we show some scrollback
-            let visible_rows = grid.len();
-            let scrollback_len = scrollback.len();
-            let max_offset = scrollback_len;
-            let effective_offset = offset.min(max_offset);
+            // Helper to draw one render cell: background, glyph, decorations.
+            // Cells are snapped to a fixed grid; wide (2-column) cells span two
+            // cell widths and their trailing spacer is never emitted by the engine.
+            let draw_cell = |cr: &cairo::Context,
+                             layout: &pango::Layout,
+                             rcell: &RenderCell,
+                             x: f64,
+                             y: f64,
+                             font_desc: &pango::FontDescription| {
+                let span_w = cell_w * rcell.width.max(1) as f64;
+                // Inverse swaps fg/bg.
+                let (fg_color, bg_color) = if rcell.flags.inverse {
+                    (rcell.bg, rcell.fg)
+                } else {
+                    (rcell.fg, rcell.bg)
+                };
 
-            // Detect URLs in visible grid content
+                // Paint an explicit (non-default) background. Default-bg cells
+                // inherit the widget background painted earlier.
+                let has_explicit_bg = !matches!(bg_color, CellColor::DefaultBg);
+                if has_explicit_bg {
+                    let (br, bg, bb) = resolve_color(bg_color);
+                    cr.set_source_rgb(br, bg, bb);
+                    cr.rectangle(x, y, span_w, cell_h);
+                    cr.fill().ok();
+                }
+
+                if rcell.text.is_empty() || rcell.flags.hidden {
+                    return;
+                }
+
+                let (mut r, mut g, mut b) = resolve_color(fg_color);
+                if rcell.flags.bold {
+                    r = (r * 1.2).min(1.0);
+                    g = (g * 1.2).min(1.0);
+                    b = (b * 1.2).min(1.0);
+                } else if rcell.flags.dim {
+                    r *= 0.6;
+                    g *= 0.6;
+                    b *= 0.6;
+                }
+                cr.set_source_rgb(r, g, b);
+
+                let mut styled_font = font_desc.clone();
+                if rcell.flags.italic {
+                    styled_font.set_style(pango::Style::Italic);
+                }
+                if rcell.flags.bold {
+                    styled_font.set_weight(pango::Weight::Bold);
+                }
+                layout.set_font_description(Some(&styled_font));
+                layout.set_text(&rcell.text);
+                // Top-align: cell_h is ceil(ascent + descent), so the single-line
+                // layout fills the cell and sits on a correct baseline.
+                cr.move_to(x, y);
+                pangocairo::functions::show_layout(cr, layout);
+                layout.set_font_description(Some(font_desc));
+
+                if rcell.flags.underline {
+                    cr.set_line_width(1.0);
+                    let underline_y = y + cell_h - 2.0;
+                    cr.move_to(x, underline_y);
+                    cr.line_to(x + span_w, underline_y);
+                    cr.stroke().ok();
+                }
+                if rcell.flags.strikethrough {
+                    cr.set_line_width(1.0);
+                    let strike_y = y + cell_h / 2.0;
+                    cr.move_to(x, strike_y);
+                    cr.line_to(x + span_w, strike_y);
+                    cr.stroke().ok();
+                }
+            };
+
+            // Detect URLs in the visible rows (engine provides row text directly).
             let mut urls = Vec::new();
-            for (row_idx, row) in grid.iter().enumerate() {
-                // Build line text
-                let line_text: String = row
-                    .iter()
-                    .map(|c| {
-                        if c.content.is_empty() {
-                            ' '
-                        } else {
-                            c.content.chars().next().unwrap_or(' ')
-                        }
-                    })
-                    .collect();
-
-                // Find URLs in this line
-                for mat in URL_REGEX.find_iter(&line_text) {
+            for (row_idx, line_text) in rows_text.iter().enumerate() {
+                for mat in URL_REGEX.find_iter(line_text) {
                     urls.push(DetectedUrl {
                         url: mat.as_str().to_string(),
                         row: row_idx,
                         start_col: mat.start(),
-                        end_col: mat.end() - 1,
+                        end_col: mat.end().saturating_sub(1),
                     });
                 }
             }
@@ -453,125 +457,70 @@ impl TerminalView {
             // Get search state
             let search = search_state_for_draw.borrow();
 
-            for screen_row in 0..visible_rows {
-                // Calculate which line to show
-                // If offset=0, show grid[screen_row]
-                // If offset>0, show from scrollback (older lines)
-                let source_line = if effective_offset > 0 {
-                    // How many lines from scrollback to show
-                    let scrollback_lines_to_show = effective_offset.min(visible_rows);
+            let sel = selection_for_draw.borrow();
+            // Clip to the live PTY column count to avoid ghost columns mid-resize.
+            let max_cols = *pty_cols_for_draw.borrow();
+            for rcell in &cells {
+                if rcell.col >= max_cols {
+                    continue;
+                }
+                let x = padding + (rcell.col as f64 * cell_w);
+                let y = padding + (rcell.row as f64 * cell_h);
+                let span_w = cell_w * rcell.width.max(1) as f64;
 
-                    if screen_row < scrollback_lines_to_show {
-                        // This row comes from scrollback
-                        let scrollback_idx = scrollback_len - effective_offset + screen_row;
-                        if scrollback_idx < scrollback_len {
-                            Some(("scrollback", scrollback_idx))
-                        } else {
-                            None
-                        }
-                    } else {
-                        // This row comes from grid
-                        let grid_row = screen_row - scrollback_lines_to_show;
-                        if grid_row < grid.len() {
-                            Some(("grid", grid_row))
-                        } else {
-                            None
-                        }
-                    }
-                } else {
-                    Some(("grid", screen_row))
-                };
+                // Selection highlight (drawn under the glyph).
+                if is_cell_selected(rcell.row, rcell.col, &sel) {
+                    cr.set_source_rgba(0.467, 0.573, 0.702, 0.5);
+                    cr.rectangle(x, y, span_w, cell_h);
+                    cr.fill().ok();
+                }
 
-                let y = padding + (screen_row as f64 * cell_h);
-
-                if let Some((source, idx)) = source_line {
-                    let row = match source {
-                        "scrollback" => &scrollback[idx],
-                        "grid" => &grid[idx],
-                        _ => continue,
-                    };
-
-                    // Get actual row index for selection checking
-                    let actual_row = if source == "grid" { idx } else { screen_row };
-                    let sel = selection_for_draw.borrow();
-
-                    // Clip columns to PTY size to prevent ghost lines during resize
-                    // When grid is larger than PTY, don't draw the extra columns
-                    let max_cols = *pty_cols_for_draw.borrow();
-
-                    for (col_idx, cell) in row.iter().enumerate() {
-                        // Skip columns beyond PTY size to prevent stale content display
-                        if col_idx >= max_cols {
-                            break;
-                        }
-                        let x = padding + (col_idx as f64 * cell_w);
-
-                        // Check if this cell is selected (only for grid content)
-                        if source == "grid" && is_cell_selected(actual_row, col_idx, &sel) {
-                            // Draw selection highlight background
-                            cr.set_source_rgba(0.467, 0.573, 0.702, 0.5); // Blue with transparency
-                            cr.rectangle(x, y, cell_w, cell_h);
-                            cr.fill().ok();
-                        }
-
-                        // Check if this cell is part of a search match
-                        if source == "grid" && search.active {
-                            for (match_idx, (match_row, match_start, match_end)) in
-                                search.matches.iter().enumerate()
-                            {
-                                if actual_row == *match_row
-                                    && col_idx >= *match_start
-                                    && col_idx < *match_end
-                                {
-                                    // Different color for current match vs other matches
-                                    if match_idx == search.current_match {
-                                        // Current match: bright orange/yellow
-                                        cr.set_source_rgba(0.949, 0.792, 0.478, 0.7);
-                                    } else {
-                                        // Other matches: dimmer yellow
-                                        cr.set_source_rgba(0.898, 0.659, 0.294, 0.4);
-                                    }
-                                    cr.rectangle(x, y, cell_w, cell_h);
-                                    cr.fill().ok();
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Check if this cell is part of a URL that's being hovered
-                        let is_url_hovered = if source == "grid" {
-                            if let Some((hover_row, hover_col)) = hover {
-                                urls.iter().any(|url| {
-                                    url.row == actual_row
-                                        && col_idx >= url.start_col
-                                        && col_idx <= url.end_col
-                                        && hover_row == url.row
-                                        && hover_col >= url.start_col
-                                        && hover_col <= url.end_col
-                                })
+                // Search match highlight.
+                if search.active {
+                    for (match_idx, (match_row, match_start, match_end)) in
+                        search.matches.iter().enumerate()
+                    {
+                        if rcell.row == *match_row
+                            && rcell.col >= *match_start
+                            && rcell.col < *match_end
+                        {
+                            if match_idx == search.current_match {
+                                cr.set_source_rgba(0.949, 0.792, 0.478, 0.7);
                             } else {
-                                false
+                                cr.set_source_rgba(0.898, 0.659, 0.294, 0.4);
                             }
-                        } else {
-                            false
-                        };
-
-                        draw_cell(cr, &layout, cell, x, y, &font_desc);
-
-                        // Draw underline for hovered URLs
-                        if is_url_hovered {
-                            cr.set_source_rgba(0.467, 0.573, 0.702, 0.9); // Blue for links
-                            let underline_y = y + cell_h - 2.0;
-                            cr.move_to(x, underline_y);
-                            cr.line_to(x + cell_w, underline_y);
-                            cr.set_line_width(1.0);
-                            cr.stroke().ok();
+                            cr.rectangle(x, y, span_w, cell_h);
+                            cr.fill().ok();
+                            break;
                         }
                     }
                 }
+
+                draw_cell(cr, &layout, rcell, x, y, &font_desc);
+
+                // Underline a hovered URL.
+                let is_url_hovered = hover.is_some_and(|(hover_row, hover_col)| {
+                    urls.iter().any(|url| {
+                        url.row == rcell.row
+                            && rcell.col >= url.start_col
+                            && rcell.col <= url.end_col
+                            && hover_row == url.row
+                            && hover_col >= url.start_col
+                            && hover_col <= url.end_col
+                    })
+                });
+                if is_url_hovered {
+                    cr.set_source_rgba(0.467, 0.573, 0.702, 0.9);
+                    let underline_y = y + cell_h - 2.0;
+                    cr.move_to(x, underline_y);
+                    cr.line_to(x + span_w, underline_y);
+                    cr.set_line_width(1.0);
+                    cr.stroke().ok();
+                }
             }
 
-            // Only draw cursor if not scrolled up (offset == 0) and cursor is visible (for blink)
+            // Cursor. The engine reports visibility (DECTCEM hide, scrolled out of
+            // view); we additionally honor the blink phase from config.
             let cursor_is_visible = *cursor_visible_for_draw.borrow();
             let (cursor_blink_enabled, _blink_rate) = crate::app::config_manager()
                 .map(|cm| {
@@ -583,10 +532,9 @@ impl TerminalView {
                 })
                 .unwrap_or((true, 530));
 
-            // Show cursor if: not scrolled, and (blink disabled OR cursor is in visible phase)
-            if offset == 0 && (!cursor_blink_enabled || cursor_is_visible) {
-                let cursor_x = padding + (cursor.1 as f64 * cell_w);
-                let cursor_y = padding + (cursor.0 as f64 * cell_h);
+            if at_bottom && cursor.visible && (!cursor_blink_enabled || cursor_is_visible) {
+                let cursor_x = padding + (cursor.col as f64 * cell_w);
+                let cursor_y = padding + (cursor.row as f64 * cell_h);
 
                 // Get cursor style from config
                 let cursor_style = crate::app::config_manager()
@@ -600,13 +548,15 @@ impl TerminalView {
                     corgiterm_config::CursorStyle::Block => {
                         cr.rectangle(cursor_x, cursor_y, cell_w, cell_h);
                         cr.fill().ok();
-                        // Draw character in inverse color
-                        if cursor.0 < grid.len() && cursor.1 < grid[cursor.0].len() {
-                            let cell = &grid[cursor.0][cursor.1];
-                            if !cell.content.is_empty() {
+                        // Redraw the glyph beneath the block in the background color.
+                        if let Some(rcell) = cells
+                            .iter()
+                            .find(|c| c.row == cursor.row && c.col == cursor.col)
+                        {
+                            if !rcell.text.is_empty() {
                                 cr.set_source_rgb(bg_r, bg_g, bg_b);
-                                layout.set_text(&cell.content);
-                                cr.move_to(cursor_x, cursor_y + (cell_h - ascent) / 2.0);
+                                layout.set_text(&rcell.text);
+                                cr.move_to(cursor_x, cursor_y);
                                 pangocairo::functions::show_layout(cr, &layout);
                             }
                         }
@@ -692,7 +642,7 @@ impl TerminalView {
                 // Show input buffer if partially typed
                 if !hint_state.input_buffer.is_empty() {
                     // Draw status bar at bottom showing current input
-                    let status_y = padding + (visible_rows as f64 * cell_h) + 4.0;
+                    let status_y = padding + (engine.size().rows as f64 * cell_h) + 4.0;
                     cr.set_source_rgba(0.2, 0.2, 0.2, 0.9);
                     cr.rectangle(padding, status_y, cell_w * 20.0, cell_h);
                     cr.fill().ok();
@@ -897,14 +847,8 @@ impl TerminalView {
 
             // Ctrl+Shift+U activates hint mode (foot-style URL hints)
             if ctrl && shift && matches!(key, Key::U | Key::u) {
-                let term = terminal_for_key.borrow();
-                let grid = term.grid();
-
                 // Collect visible lines as strings
-                let lines: Vec<String> = grid
-                    .iter()
-                    .map(|row| row.iter().map(|cell| cell.content.as_str()).collect())
-                    .collect();
+                let lines: Vec<String> = terminal_for_key.borrow().rows_text();
 
                 // Scan for hints
                 let hints = hint_detector_for_key.scan(&lines);
@@ -924,21 +868,7 @@ impl TerminalView {
             if ctrl && shift && matches!(key, Key::C | Key::c) {
                 // Copy visible terminal content to clipboard
                 let clipboard = drawing_area_for_clipboard.clipboard();
-                let term = terminal_for_copy.borrow();
-                let grid = term.grid();
-
-                // Collect all visible lines
-                let mut lines = Vec::new();
-                for row in grid.iter() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    // Trim trailing whitespace from each line
-                    lines.push(line.trim_end().to_string());
-                }
-
-                // Join lines and set clipboard
+                let lines = terminal_for_copy.borrow().rows_text();
                 let text = lines.join("\n");
                 clipboard.set_text(&text);
 
@@ -949,28 +879,8 @@ impl TerminalView {
             if ctrl && shift && matches!(key, Key::A | Key::a) {
                 // Copy all content (scrollback + visible) to clipboard
                 let clipboard = drawing_area_for_clipboard.clipboard();
-                let term = terminal_for_copy.borrow();
-
-                // Collect scrollback lines first
-                let mut lines = Vec::new();
-                for row in term.scrollback() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    lines.push(line.trim_end().to_string());
-                }
-
-                // Then visible grid
-                for row in term.grid().iter() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    lines.push(line.trim_end().to_string());
-                }
-
-                // Join lines and set clipboard
+                // Full buffer: scrollback history plus the visible screen.
+                let lines = terminal_for_copy.borrow().all_text();
                 let text = lines.join("\n");
                 clipboard.set_text(&text);
                 tracing::info!("Copied {} lines to clipboard (select all)", lines.len());
@@ -1122,11 +1032,12 @@ impl TerminalView {
                         .iter()
                         .find(|u| u.row == row && col >= u.start_col && col <= u.end_col)
                     {
-                        // Open URL in default browser using xdg-open
                         tracing::info!("Opening URL: {}", url.url);
                         let url_str = url.url.clone();
                         std::thread::spawn(move || {
-                            let _ = std::process::Command::new("xdg-open").arg(&url_str).spawn();
+                            if let Err(e) = open::that(&url_str) {
+                                tracing::warn!("Failed to open URL {}: {}", url_str, e);
+                            }
                         });
                     }
                 }
@@ -1165,17 +1076,7 @@ impl TerminalView {
             let da_copy = drawing_area_for_context.clone();
             copy_action.connect_activate(move |_, _| {
                 let clipboard = da_copy.clipboard();
-                let term = terminal_copy.borrow();
-                let grid = term.grid();
-
-                let mut lines = Vec::new();
-                for row in grid.iter() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    lines.push(line.trim_end().to_string());
-                }
+                let lines = terminal_copy.borrow().rows_text();
                 let text = lines.join("\n");
                 clipboard.set_text(&text);
             });
@@ -1204,23 +1105,7 @@ impl TerminalView {
             let da_select = drawing_area_for_context.clone();
             select_all_action.connect_activate(move |_, _| {
                 let clipboard = da_select.clipboard();
-                let term = terminal_select.borrow();
-
-                let mut lines = Vec::new();
-                for row in term.scrollback() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    lines.push(line.trim_end().to_string());
-                }
-                for row in term.grid().iter() {
-                    let mut line = String::new();
-                    for cell in row.iter() {
-                        line.push_str(&cell.content);
-                    }
-                    lines.push(line.trim_end().to_string());
-                }
+                let lines = terminal_select.borrow().all_text();
                 let text = lines.join("\n");
                 clipboard.set_text(&text);
                 tracing::info!("Copied {} lines to clipboard", lines.len());
@@ -1264,22 +1149,24 @@ impl TerminalView {
         let terminal_for_scroll = terminal.clone();
         let drawing_area_for_scroll = drawing_area.clone();
         scroll_controller.connect_scroll(move |_, _dx, dy| {
-            let term = terminal_for_scroll.borrow();
-            let scrollback_len = term.scrollback().len();
-            drop(term);
-
-            let mut offset = scroll_offset_for_wheel.borrow_mut();
-
-            // dy > 0 means scroll down (toward bottom/newer), dy < 0 means scroll up (toward top/older)
-            if dy < 0.0 {
-                // Scroll up into history
-                *offset = (*offset + 3).min(scrollback_len);
+            // dy < 0 = scroll up into history; dy > 0 = scroll toward the bottom.
+            // The engine owns the scroll position; mirror it into scroll_offset
+            // for the scrollbar.
+            let delta = if dy < 0.0 {
+                3
             } else if dy > 0.0 {
-                // Scroll down toward current
-                *offset = offset.saturating_sub(3);
+                -3
+            } else {
+                0
+            };
+            if delta != 0 {
+                let mut term = terminal_for_scroll.borrow_mut();
+                term.scroll_lines(delta);
+                let off = term.display_offset();
+                drop(term);
+                *scroll_offset_for_wheel.borrow_mut() = off;
+                drawing_area_for_scroll.queue_draw();
             }
-
-            drawing_area_for_scroll.queue_draw();
             glib::Propagation::Stop
         });
         drawing_area.add_controller(scroll_controller);
@@ -1292,6 +1179,9 @@ impl TerminalView {
         let term_for_read = terminal.clone();
         let drawing_area_clone = drawing_area.clone();
         let scroll_offset_for_reset = scroll_offset.clone();
+        let event_rx_for_poll = event_rx.clone();
+        let pty_for_events = pty.clone();
+        let bell_flash_for_events = bell_flash.clone();
 
         // Create channel for PTY data (background thread -> main loop)
         let (pty_data_tx, pty_data_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
@@ -1341,33 +1231,48 @@ impl TerminalView {
 
         // Poll channel for PTY data in GTK main loop (non-blocking)
         glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-            // Try to receive data from background thread (non-blocking)
+            // Feed any PTY data received from the reader thread. alacritty_terminal
+            // parses malformed sequences gracefully, so there is no health concept.
+            let mut received_any = false;
             while let Ok(data) = pty_data_rx.try_recv() {
-                // Use safe_process for automatic crash recovery
-                let health = term_for_read.borrow_mut().safe_process(&data);
-
-                // Log health status changes for debugging
-                match health {
-                    corgiterm_core::TerminalHealth::Degraded => {
-                        tracing::warn!("Terminal entered degraded mode - attempting recovery");
-                    }
-                    corgiterm_core::TerminalHealth::Recovered => {
-                        tracing::info!("Terminal recovered from error state");
-                    }
-                    corgiterm_core::TerminalHealth::NeedsReset => {
-                        tracing::error!("Terminal needs manual reset");
-                    }
-                    _ => {}
-                }
-
-                // Check scroll_on_output setting - if enabled, scroll to bottom
+                term_for_read.borrow_mut().feed(&data);
+                received_any = true;
+            }
+            if received_any {
                 let scroll_on_output = crate::app::config_manager()
                     .map(|cm| cm.read().config().terminal.scroll_on_output)
                     .unwrap_or(false);
                 if scroll_on_output {
+                    term_for_read.borrow_mut().scroll_to_bottom();
                     *scroll_offset_for_reset.borrow_mut() = 0;
                 }
                 drawing_area_clone.queue_draw();
+            }
+
+            // Drain terminal events: forward PTY replies (DSR, bracketed-paste acks,
+            // device attributes) back to the child, and flash the visual bell.
+            while let Ok(event) = event_rx_for_poll.try_recv() {
+                match event {
+                    corgiterm_core::TerminalEvent::PtyWrite(bytes) => {
+                        if let Some(ref pty) = *pty_for_events.borrow() {
+                            let _ = pty.write(&bytes);
+                        }
+                    }
+                    corgiterm_core::TerminalEvent::Bell => {
+                        *bell_flash_for_events.borrow_mut() = true;
+                        let bf = bell_flash_for_events.clone();
+                        let da = drawing_area_clone.clone();
+                        glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(100),
+                            move || {
+                                *bf.borrow_mut() = false;
+                                da.queue_draw();
+                            },
+                        );
+                        drawing_area_clone.queue_draw();
+                    }
+                    _ => {}
+                }
             }
             glib::ControlFlow::Continue
         });
@@ -1459,22 +1364,9 @@ impl TerminalView {
                 state.active = true;
 
                 // Search through terminal content
-                let term = terminal_for_search.borrow();
-                let grid = term.grid();
+                let rows = terminal_for_search.borrow().rows_text();
 
-                for (row_idx, row) in grid.iter().enumerate() {
-                    // Build line text
-                    let line_text: String = row
-                        .iter()
-                        .map(|c| {
-                            if c.content.is_empty() {
-                                ' '
-                            } else {
-                                c.content.chars().next().unwrap_or(' ')
-                            }
-                        })
-                        .collect();
-
+                for (row_idx, line_text) in rows.iter().enumerate() {
                     // Find all matches in this line (case-insensitive)
                     let lower_line = line_text.to_lowercase();
                     let lower_query = query.to_lowercase();
@@ -1639,29 +1531,30 @@ impl TerminalView {
 
             // Copy selected text to clipboard if selection is valid and copy_on_select is enabled
             if copy_on_select && sel.active && sel.start != sel.end {
-                let term = terminal_for_copy_sel.borrow();
-                let grid = term.grid();
+                let rows = terminal_for_copy_sel.borrow().rows_text();
 
                 let (start_row, start_col, end_row, end_col) =
                     normalize_selection(sel.start.0, sel.start.1, sel.end.0, sel.end.1);
 
                 let mut text = String::new();
                 for row in start_row..=end_row {
-                    if row >= grid.len() {
+                    if row >= rows.len() {
                         break;
                     }
-
+                    let line_chars: Vec<char> = rows[row].chars().collect();
                     let col_start = if row == start_row { start_col } else { 0 };
                     let col_end = if row == end_row {
                         end_col + 1
                     } else {
-                        grid[row].len()
+                        line_chars.len()
                     };
-
-                    for col in col_start..col_end.min(grid[row].len()) {
-                        text.push_str(&grid[row][col].content);
+                    for ch in line_chars
+                        .iter()
+                        .take(col_end.min(line_chars.len()))
+                        .skip(col_start)
+                    {
+                        text.push(*ch);
                     }
-
                     if row < end_row {
                         text.push('\n');
                     }
@@ -1850,27 +1743,9 @@ impl TerminalView {
     /// Get visible lines as strings for thumbnail rendering
     /// Returns up to `max_lines` from the terminal grid
     pub fn get_visible_lines(&self, max_lines: usize) -> Vec<String> {
-        let terminal = self.terminal.borrow();
-        let grid = terminal.grid();
-
-        let mut lines = Vec::new();
-        let start = if grid.len() > max_lines {
-            grid.len() - max_lines
-        } else {
-            0
-        };
-
-        for row in grid.iter().skip(start).take(max_lines) {
-            let mut line = String::new();
-            for cell in row.iter() {
-                if cell.content.is_empty() {
-                    line.push(' ');
-                } else {
-                    line.push_str(&cell.content);
-                }
-            }
-            lines.push(line.trim_end().to_string());
-        }
+        let rows = self.terminal.borrow().rows_text();
+        let start = rows.len().saturating_sub(max_lines);
+        let lines: Vec<String> = rows.into_iter().skip(start).take(max_lines).collect();
         lines
     }
 

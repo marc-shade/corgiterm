@@ -17,6 +17,7 @@
 //! ```
 
 pub mod ascii_art;
+pub mod engine;
 pub mod error;
 pub mod hints;
 pub mod history;
@@ -31,6 +32,10 @@ pub mod terminal;
 pub use ascii_art::{
     all_fonts, AsciiArtConfig, AsciiArtGenerator, AsciiFont, CharacterSet, CorgiArt, ImageFilter,
     FONT_BANNER, FONT_BLOCK, FONT_MINI, FONT_SHADOW, FONT_SMALL, FONT_STANDARD,
+};
+pub use engine::{
+    AlacrittyEngine, CellColor, EngineCursor, EngineCursorShape, RenderCell, RenderFlags,
+    TerminalEngine,
 };
 pub use error::{CoreError, Result};
 pub use hints::{Hint, HintDetector, HintModeState, HintType};

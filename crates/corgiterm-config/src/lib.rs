@@ -155,7 +155,11 @@ impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
             theme: "Corgi Dark".to_string(),
-            font_family: "Source Code Pro".to_string(),
+            // Pango generic family: resolves through Core Text (macOS) / fontconfig
+            // (Linux) to an installed fixed-pitch face. Never hardcode a named font
+            // that may be absent (a missing face falls back to a proportional one,
+            // which breaks the monospace cell grid). See docs/plans/terminal-rebuild-plan.md.
+            font_family: "monospace".to_string(),
             font_size: 11.0,
             line_height: 1.2,
             ligatures: true,
