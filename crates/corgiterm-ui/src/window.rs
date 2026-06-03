@@ -125,12 +125,12 @@ impl MainWindow {
             .unwrap_or(false);
         let safe_mode_indicator = Button::new();
         if safe_mode_enabled {
-            safe_mode_indicator.set_icon_name("security-high-symbolic");
+            safe_mode_indicator.set_icon_name("changes-prevent-symbolic");
             safe_mode_indicator
                 .set_tooltip_text(Some("Safe Mode ON - Commands are reviewed before running"));
             safe_mode_indicator.add_css_class("success");
         } else {
-            safe_mode_indicator.set_icon_name("security-medium-symbolic");
+            safe_mode_indicator.set_icon_name("dialog-warning-symbolic");
             safe_mode_indicator
                 .set_tooltip_text(Some("Safe Mode OFF - Click to enable command review"));
         }

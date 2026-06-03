@@ -1540,7 +1540,7 @@ pub fn show_preferences<W: IsA<Window> + IsA<gtk4::Widget>>(
     // Safe Mode page
     let safe_page = libadwaita::PreferencesPage::builder()
         .title("Safe Mode")
-        .icon_name("security-high-symbolic")
+        .icon_name("changes-prevent-symbolic")
         .build();
 
     let safe_group = libadwaita::PreferencesGroup::builder()
