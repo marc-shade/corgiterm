@@ -6,6 +6,7 @@ set -e
 
 INPUT_SVG="$1"
 OUTPUT_ICNS="$2"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ -z "$INPUT_SVG" ] || [ -z "$OUTPUT_ICNS" ]; then
     echo "Usage: $0 input.svg output.icns"
@@ -39,35 +40,45 @@ else
     exit 1
 fi
 
-# Generate all required icon sizes
-SIZES=(16 32 64 128 256 512 1024)
+generate_png() {
+    local pixels="$1"
+    local output="$2"
 
-for SIZE in "${SIZES[@]}"; do
-    echo "  Generating ${SIZE}x${SIZE}..."
+    echo "  Generating ${output##*/} (${pixels}x${pixels})..."
 
     if [ "$CONVERT_CMD" = "rsvg-convert" ]; then
-        rsvg-convert -w $SIZE -h $SIZE "$INPUT_SVG" -o "$ICONSET_DIR/icon_${SIZE}x${SIZE}.png"
+        rsvg-convert -w "$pixels" -h "$pixels" "$INPUT_SVG" -o "$output"
     elif [ "$CONVERT_CMD" = "convert" ]; then
-        convert -background none -resize ${SIZE}x${SIZE} "$INPUT_SVG" "$ICONSET_DIR/icon_${SIZE}x${SIZE}.png"
+        convert -background none -resize "${pixels}x${pixels}" "$INPUT_SVG" "$output"
     fi
+}
 
-    # Create @2x versions for Retina displays
-    if [ $SIZE -le 512 ]; then
-        DOUBLE=$((SIZE * 2))
-        if [ "$CONVERT_CMD" = "rsvg-convert" ]; then
-            rsvg-convert -w $DOUBLE -h $DOUBLE "$INPUT_SVG" -o "$ICONSET_DIR/icon_${SIZE}x${SIZE}@2x.png"
-        elif [ "$CONVERT_CMD" = "convert" ]; then
-            convert -background none -resize ${DOUBLE}x${DOUBLE} "$INPUT_SVG" "$ICONSET_DIR/icon_${SIZE}x${SIZE}@2x.png"
-        fi
-    fi
-done
-
-# Rename to match Apple's expected naming
-cd "$ICONSET_DIR"
-[ -f icon_1024x1024.png ] && mv icon_1024x1024.png icon_512x512@2x.png 2>/dev/null || true
+# Generate the exact iconset file names required by iconutil.
+generate_png 16 "$ICONSET_DIR/icon_16x16.png"
+generate_png 32 "$ICONSET_DIR/icon_16x16@2x.png"
+generate_png 32 "$ICONSET_DIR/icon_32x32.png"
+generate_png 64 "$ICONSET_DIR/icon_32x32@2x.png"
+generate_png 128 "$ICONSET_DIR/icon_128x128.png"
+generate_png 256 "$ICONSET_DIR/icon_128x128@2x.png"
+generate_png 256 "$ICONSET_DIR/icon_256x256.png"
+generate_png 512 "$ICONSET_DIR/icon_256x256@2x.png"
+generate_png 512 "$ICONSET_DIR/icon_512x512.png"
+generate_png 1024 "$ICONSET_DIR/icon_512x512@2x.png"
 
 echo "Creating icns file..."
-iconutil -c icns "$ICONSET_DIR" -o "$OUTPUT_ICNS"
+if ! iconutil -c icns "$ICONSET_DIR" -o "$OUTPUT_ICNS"; then
+    echo "iconutil rejected the iconset; trying Pillow fallback..."
+
+    BASE_PNG="$(mktemp "${TMPDIR:-/tmp}/corgiterm-icon-1024.XXXXXX.png")"
+    if [ "$CONVERT_CMD" = "rsvg-convert" ]; then
+        rsvg-convert -w 1024 -h 1024 "$INPUT_SVG" -o "$BASE_PNG"
+    elif [ "$CONVERT_CMD" = "convert" ]; then
+        convert -background none -resize 1024x1024 "$INPUT_SVG" "$BASE_PNG"
+    fi
+
+    python3 "$SCRIPT_DIR/create-icns-pillow.py" "$BASE_PNG" "$OUTPUT_ICNS"
+    rm -f "$BASE_PNG"
+fi
 
 # Cleanup
 rm -rf "$(dirname "$ICONSET_DIR")"
