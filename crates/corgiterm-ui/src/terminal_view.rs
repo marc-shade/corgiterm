@@ -26,6 +26,49 @@ use std::path::Path;
 static URL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"https?://[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+").unwrap());
 
+const ACTION_COPY: &str = "copy";
+const ACTION_PASTE: &str = "paste";
+const ACTION_COPY_SCROLLBACK: &str = "copy-scrollback";
+const ACTION_FIND: &str = "find";
+const ACTION_CLEAR_SCREEN: &str = "clear-screen";
+const ACTION_OPEN_LINK: &str = "open-link";
+const ACTION_COPY_LINK: &str = "copy-link";
+const ACTION_INSERT_EMOJI: &str = "insert-emoji";
+const ACTION_INSERT_SNIPPET: &str = "insert-snippet";
+const ACTION_INSERT_ASCII_ART: &str = "insert-ascii-art";
+const ACTION_INSERT_HISTORY: &str = "insert-history";
+const ACTION_SSH_MANAGER: &str = "ssh-manager";
+const ACTION_SESSION_RECORDING: &str = "session-recording";
+const ACTION_KEYBOARD_SHORTCUTS: &str = "keyboard-shortcuts";
+const ACTION_PREFERENCES: &str = "preferences";
+
+const TERMINAL_CONTEXT_CLIPBOARD_ITEMS: &[(&str, &str)] = &[
+    ("Copy Visible Text", ACTION_COPY),
+    ("Paste", ACTION_PASTE),
+    ("Copy Scrollback", ACTION_COPY_SCROLLBACK),
+    ("Find in Terminal...", ACTION_FIND),
+    ("Clear Screen", ACTION_CLEAR_SCREEN),
+];
+
+const TERMINAL_CONTEXT_LINK_ITEMS: &[(&str, &str)] = &[
+    ("Open Link", ACTION_OPEN_LINK),
+    ("Copy Link", ACTION_COPY_LINK),
+];
+
+const TERMINAL_CONTEXT_INSERT_ITEMS: &[(&str, &str)] = &[
+    ("Insert Emoji", ACTION_INSERT_EMOJI),
+    ("Insert Snippet", ACTION_INSERT_SNIPPET),
+    ("Insert ASCII Art", ACTION_INSERT_ASCII_ART),
+    ("Insert From History", ACTION_INSERT_HISTORY),
+];
+
+const TERMINAL_CONTEXT_TOOL_ITEMS: &[(&str, &str)] = &[
+    ("SSH Manager", ACTION_SSH_MANAGER),
+    ("Session Recording", ACTION_SESSION_RECORDING),
+    ("Keyboard Shortcuts", ACTION_KEYBOARD_SHORTCUTS),
+    ("Preferences", ACTION_PREFERENCES),
+];
+
 /// Detected URL with position info
 #[derive(Debug, Clone)]
 struct DetectedUrl {
@@ -1044,14 +1087,42 @@ impl TerminalView {
         let terminal_for_context = terminal.clone();
         let pty_for_context = pty.clone();
         let container_for_context = container.clone();
+        let cell_width_for_context = cell_width.clone();
+        let cell_height_for_context = cell_height.clone();
+        let detected_urls_for_context = detected_urls.clone();
 
         right_click_gesture.connect_pressed(move |_gesture, _n_press, x, y| {
+            let clicked_url = url_at_position(
+                x,
+                y,
+                *cell_width_for_context.borrow(),
+                *cell_height_for_context.borrow(),
+                &detected_urls_for_context.borrow(),
+            );
+            let parent_window = drawing_area_for_context
+                .root()
+                .and_then(|root| root.downcast::<gtk4::Window>().ok());
+
             // Create context menu
             let menu = Menu::new();
-            menu.append(Some("Copy"), Some("term.copy"));
-            menu.append(Some("Paste"), Some("term.paste"));
-            menu.append(Some("Select All"), Some("term.select-all"));
-            menu.append(Some("Find..."), Some("term.find"));
+
+            if clicked_url.is_some() {
+                let link_section = Menu::new();
+                append_term_menu_items(&link_section, TERMINAL_CONTEXT_LINK_ITEMS);
+                menu.append_section(None, &link_section);
+            }
+
+            let clipboard_section = Menu::new();
+            append_term_menu_items(&clipboard_section, TERMINAL_CONTEXT_CLIPBOARD_ITEMS);
+            menu.append_section(None, &clipboard_section);
+
+            let insert_menu = Menu::new();
+            append_term_menu_items(&insert_menu, TERMINAL_CONTEXT_INSERT_ITEMS);
+            menu.append_submenu(Some("Insert"), &insert_menu);
+
+            let tools_menu = Menu::new();
+            append_term_menu_items(&tools_menu, TERMINAL_CONTEXT_TOOL_ITEMS);
+            menu.append_submenu(Some("Tools"), &tools_menu);
 
             // Create popover menu
             let popover = PopoverMenu::from_model(Some(&menu));
@@ -1063,7 +1134,7 @@ impl TerminalView {
             let action_group = gtk4::gio::SimpleActionGroup::new();
 
             // Copy action
-            let copy_action = SimpleAction::new("copy", None);
+            let copy_action = SimpleAction::new(ACTION_COPY, None);
             let terminal_copy = terminal_for_context.clone();
             let da_copy = drawing_area_for_context.clone();
             copy_action.connect_activate(move |_, _| {
@@ -1075,7 +1146,7 @@ impl TerminalView {
             action_group.add_action(&copy_action);
 
             // Paste action
-            let paste_action = SimpleAction::new("paste", None);
+            let paste_action = SimpleAction::new(ACTION_PASTE, None);
             let pty_paste = pty_for_context.clone();
             let da_paste = drawing_area_for_context.clone();
             paste_action.connect_activate(move |_, _| {
@@ -1091,8 +1162,8 @@ impl TerminalView {
             });
             action_group.add_action(&paste_action);
 
-            // Select All action
-            let select_all_action = SimpleAction::new("select-all", None);
+            // Copy scrollback action
+            let select_all_action = SimpleAction::new(ACTION_COPY_SCROLLBACK, None);
             let terminal_select = terminal_for_context.clone();
             let da_select = drawing_area_for_context.clone();
             select_all_action.connect_activate(move |_, _| {
@@ -1105,7 +1176,7 @@ impl TerminalView {
             action_group.add_action(&select_all_action);
 
             // Find action
-            let find_action = SimpleAction::new("find", None);
+            let find_action = SimpleAction::new(ACTION_FIND, None);
             let container_find = container_for_context.clone();
             find_action.connect_activate(move |_, _| {
                 // Find and show the search revealer
@@ -1128,6 +1199,125 @@ impl TerminalView {
                 }
             });
             action_group.add_action(&find_action);
+
+            let clear_screen_action = SimpleAction::new(ACTION_CLEAR_SCREEN, None);
+            let pty_clear = pty_for_context.clone();
+            clear_screen_action.connect_activate(move |_, _| {
+                if !write_terminal_bytes(&pty_clear, b"\x0c") {
+                    tracing::warn!("No active terminal for clear screen action");
+                }
+            });
+            action_group.add_action(&clear_screen_action);
+
+            if let Some(url) = clicked_url.clone() {
+                let open_link_action = SimpleAction::new(ACTION_OPEN_LINK, None);
+                let url_to_open = url.clone();
+                open_link_action.connect_activate(move |_, _| {
+                    let url = url_to_open.clone();
+                    std::thread::spawn(move || {
+                        if let Err(error) = open::that(&url) {
+                            tracing::warn!("Failed to open URL {}: {}", url, error);
+                        }
+                    });
+                });
+                action_group.add_action(&open_link_action);
+
+                let copy_link_action = SimpleAction::new(ACTION_COPY_LINK, None);
+                let da_link = drawing_area_for_context.clone();
+                copy_link_action.connect_activate(move |_, _| {
+                    da_link.clipboard().set_text(&url);
+                });
+                action_group.add_action(&copy_link_action);
+            }
+
+            let insert_emoji_action = SimpleAction::new(ACTION_INSERT_EMOJI, None);
+            let parent_for_emoji = parent_window.clone();
+            let pty_for_emoji = pty_for_context.clone();
+            insert_emoji_action.connect_activate(move |_, _| {
+                if let Some(parent) = parent_for_emoji.clone() {
+                    let pty = pty_for_emoji.clone();
+                    crate::emoji_picker::show_emoji_picker(&parent, move |emoji| {
+                        if !write_terminal_bytes(&pty, emoji.as_bytes()) {
+                            tracing::warn!("No active terminal for emoji insertion");
+                        }
+                    });
+                }
+            });
+            insert_emoji_action.set_enabled(parent_window.is_some());
+            action_group.add_action(&insert_emoji_action);
+
+            let insert_snippet_action = SimpleAction::new(ACTION_INSERT_SNIPPET, None);
+            let parent_for_snippet = parent_window.clone();
+            let pty_for_snippet = pty_for_context.clone();
+            insert_snippet_action.connect_activate(move |_, _| {
+                if let Some(parent) = parent_for_snippet.clone() {
+                    let pty = pty_for_snippet.clone();
+                    crate::snippets::show_quick_insert_dialog(&parent, move |snippet| {
+                        if !write_terminal_command(&pty, &snippet) {
+                            tracing::warn!("No active terminal for snippet insertion");
+                        }
+                    });
+                }
+            });
+            insert_snippet_action.set_enabled(parent_window.is_some());
+            action_group.add_action(&insert_snippet_action);
+
+            let insert_ascii_art_action = SimpleAction::new(ACTION_INSERT_ASCII_ART, None);
+            let parent_for_ascii = parent_window.clone();
+            let pty_for_ascii = pty_for_context.clone();
+            insert_ascii_art_action.connect_activate(move |_, _| {
+                if let Some(parent) = parent_for_ascii.clone() {
+                    let pty = pty_for_ascii.clone();
+                    crate::dialogs::show_ascii_art_dialog(&parent, move |art| {
+                        if !write_terminal_command(&pty, art) {
+                            tracing::warn!("No active terminal for ASCII art insertion");
+                        }
+                    });
+                }
+            });
+            insert_ascii_art_action.set_enabled(parent_window.is_some());
+            action_group.add_action(&insert_ascii_art_action);
+
+            let insert_history_action = SimpleAction::new(ACTION_INSERT_HISTORY, None);
+            let parent_for_history = parent_window.clone();
+            let pty_for_history = pty_for_context.clone();
+            insert_history_action.connect_activate(move |_, _| {
+                if let Some(parent) = parent_for_history.clone() {
+                    let pty = pty_for_history.clone();
+                    crate::history_search::show_history_search_dialog(&parent, move |command| {
+                        if !write_terminal_command(&pty, command) {
+                            tracing::warn!("No active terminal for history insertion");
+                        }
+                    });
+                }
+            });
+            insert_history_action.set_enabled(parent_window.is_some());
+            action_group.add_action(&insert_history_action);
+
+            add_window_forward_action(
+                &action_group,
+                ACTION_SSH_MANAGER,
+                parent_window.clone(),
+                "ssh_manager",
+            );
+            add_window_forward_action(
+                &action_group,
+                ACTION_SESSION_RECORDING,
+                parent_window.clone(),
+                "session_recording",
+            );
+            add_window_forward_action(
+                &action_group,
+                ACTION_KEYBOARD_SHORTCUTS,
+                parent_window.clone(),
+                "shortcuts",
+            );
+            add_window_forward_action(
+                &action_group,
+                ACTION_PREFERENCES,
+                parent_window.clone(),
+                "preferences",
+            );
 
             drawing_area_for_context.insert_action_group("term", Some(&action_group));
 
@@ -1793,6 +1983,80 @@ fn is_cell_selected(row: usize, col: usize, sel: &Selection) -> bool {
     }
 }
 
+fn append_term_menu_items(menu: &Menu, items: &[(&str, &str)]) {
+    for (label, action) in items {
+        menu.append(Some(label), Some(&term_action(action)));
+    }
+}
+
+fn term_action(action: &str) -> String {
+    format!("term.{action}")
+}
+
+fn url_at_position(
+    x: f64,
+    y: f64,
+    cell_width: f64,
+    cell_height: f64,
+    detected_urls: &[DetectedUrl],
+) -> Option<String> {
+    if cell_width <= 0.0 || cell_height <= 0.0 {
+        return None;
+    }
+
+    let padding = 8.0;
+    let col = ((x - padding) / cell_width).max(0.0) as usize;
+    let row = ((y - padding) / cell_height).max(0.0) as usize;
+
+    detected_urls
+        .iter()
+        .find(|url| url.row == row && col >= url.start_col && col <= url.end_col)
+        .map(|url| url.url.clone())
+}
+
+fn write_terminal_bytes(pty_handle: &Rc<RefCell<Option<Pty>>>, bytes: &[u8]) -> bool {
+    if let Some(ref pty) = *pty_handle.borrow() {
+        if let Err(error) = pty.write(bytes) {
+            tracing::warn!("Failed to write to terminal: {}", error);
+            return false;
+        }
+        true
+    } else {
+        false
+    }
+}
+
+fn write_terminal_command(pty_handle: &Rc<RefCell<Option<Pty>>>, command: &str) -> bool {
+    let mut command = command.to_string();
+    if !command.ends_with('\n') && !command.ends_with('\r') {
+        command.push('\n');
+    }
+    write_terminal_bytes(pty_handle, command.as_bytes())
+}
+
+fn add_window_forward_action(
+    action_group: &gtk4::gio::SimpleActionGroup,
+    context_action: &'static str,
+    parent_window: Option<gtk4::Window>,
+    window_action: &'static str,
+) {
+    let action = SimpleAction::new(context_action, None);
+    action.set_enabled(parent_window.is_some());
+    action.connect_activate(move |_, _| {
+        if let Some(parent) = parent_window.clone() {
+            let detailed_action = format!("win.{window_action}");
+            if let Err(error) = parent.activate_action(&detailed_action, None) {
+                tracing::warn!(
+                    "Failed to activate window action {}: {}",
+                    detailed_action,
+                    error
+                );
+            }
+        }
+    });
+    action_group.add_action(&action);
+}
+
 /// Convert GDK key press to terminal bytes
 fn key_to_bytes(key: gtk4::gdk::Key, modifier: gtk4::gdk::ModifierType) -> Vec<u8> {
     use gtk4::gdk::Key;
@@ -1839,5 +2103,74 @@ fn key_to_bytes(key: gtk4::gdk::Key, modifier: gtk4::gdk::ModifierType) -> Vec<u
                 vec![]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn context_menu_insert_section_includes_emoji_and_terminal_tools() {
+        let insert_actions: HashSet<&str> = TERMINAL_CONTEXT_INSERT_ITEMS
+            .iter()
+            .map(|(_, action)| *action)
+            .collect();
+        assert!(insert_actions.contains(ACTION_INSERT_EMOJI));
+        assert!(insert_actions.contains(ACTION_INSERT_SNIPPET));
+        assert!(insert_actions.contains(ACTION_INSERT_ASCII_ART));
+        assert!(insert_actions.contains(ACTION_INSERT_HISTORY));
+
+        let tool_actions: HashSet<&str> = TERMINAL_CONTEXT_TOOL_ITEMS
+            .iter()
+            .map(|(_, action)| *action)
+            .collect();
+        assert!(tool_actions.contains(ACTION_SSH_MANAGER));
+        assert!(tool_actions.contains(ACTION_SESSION_RECORDING));
+        assert!(tool_actions.contains(ACTION_KEYBOARD_SHORTCUTS));
+        assert!(tool_actions.contains(ACTION_PREFERENCES));
+    }
+
+    #[test]
+    fn context_menu_actions_are_unique() {
+        let mut actions = HashSet::new();
+
+        for (_, action) in TERMINAL_CONTEXT_CLIPBOARD_ITEMS
+            .iter()
+            .chain(TERMINAL_CONTEXT_LINK_ITEMS)
+            .chain(TERMINAL_CONTEXT_INSERT_ITEMS)
+            .chain(TERMINAL_CONTEXT_TOOL_ITEMS)
+        {
+            assert!(
+                actions.insert(*action),
+                "duplicate context action: {action}"
+            );
+        }
+    }
+
+    #[test]
+    fn term_action_uses_terminal_action_namespace() {
+        assert_eq!(term_action(ACTION_INSERT_EMOJI), "term.insert-emoji");
+        assert_eq!(term_action(ACTION_COPY_SCROLLBACK), "term.copy-scrollback");
+    }
+
+    #[test]
+    fn url_hit_testing_matches_right_click_cell() {
+        let detected = vec![DetectedUrl {
+            url: "https://example.com".to_string(),
+            row: 2,
+            start_col: 4,
+            end_col: 14,
+        }];
+
+        assert_eq!(
+            url_at_position(8.0 + 5.0 * 10.0, 8.0 + 2.0 * 20.0, 10.0, 20.0, &detected),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            url_at_position(8.0 + 15.0 * 10.0, 8.0 + 2.0 * 20.0, 10.0, 20.0, &detected),
+            None
+        );
     }
 }
