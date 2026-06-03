@@ -416,7 +416,8 @@ mod tests {
 
         assert_eq!(recording.meta.title, "Test Recording");
         assert_eq!(recording.events.len(), 4);
-        assert!(recording.meta.duration_ms >= 0);
+        assert_eq!(recording.meta.event_count, recording.events.len());
+        assert!(recording.meta.ended_at.is_some());
     }
 
     #[test]

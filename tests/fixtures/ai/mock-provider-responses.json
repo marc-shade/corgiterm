@@ -1,0 +1,15 @@
+{
+  "command": {
+    "request": "show files bigger than 1GB",
+    "response": "find . -size +1G -type f"
+  },
+  "explain": {
+    "request": "chmod 755 script.sh",
+    "response": "This makes the script readable and executable by everyone, and writable by the owner."
+  },
+  "chat": {
+    "request": "How do I make a shell script executable?",
+    "response": "Use chmod +x script.sh, then run it with ./script.sh."
+  }
+}
+

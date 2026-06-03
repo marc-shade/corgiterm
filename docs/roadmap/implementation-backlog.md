@@ -10,9 +10,9 @@ Purpose: ensure public claims, specs, and release gates are aligned.
 
 Tasks:
 
-- [ ] Keep README roadmap aligned with `ROADMAP.md`.
+- [x] Keep README roadmap aligned with `ROADMAP.md`.
 - [ ] Add doc links to release notes and contribution docs.
-- [ ] Add docs linting or markdown validation to CI.
+- [x] Add docs linting or markdown validation to CI.
 - [ ] Create a known-gaps section for each release.
 
 Dependencies:
@@ -29,12 +29,12 @@ Purpose: make feature completion measurable.
 
 Tasks:
 
-- [ ] Add workspace integration test folder and fixture layout.
-- [ ] Add test fixtures for SSH config, snippets, AI responses, and recordings.
+- [x] Add workspace integration test folder and fixture layout.
+- [x] Add test fixtures for SSH config, snippets, AI responses, and recordings.
 - [ ] Add a terminal screenshot smoke-test runner for macOS.
 - [ ] Add a Linux screenshot smoke-test runner or document why it is manual.
-- [ ] Add CI jobs for format, clippy, tests, release build, and docs.
-- [ ] Decide on clippy transition gate if current warnings block `-D warnings`.
+- [x] Add CI jobs for format, clippy, tests, release build, and docs.
+- [x] Decide on clippy transition gate if current warnings block `-D warnings`.
 
 Dependencies:
 

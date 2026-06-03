@@ -1,0 +1,41 @@
+{
+  "snippets": [
+    {
+      "id": "git-feature-branch",
+      "name": "Create feature branch",
+      "command": "git checkout -b feature/{{branch_name|short branch name}} && git push -u origin feature/{{branch_name}}",
+      "description": "Create and publish a new feature branch",
+      "tags": ["git", "branch"],
+      "category": "Git/Branches",
+      "pinned": true,
+      "created_at": 1710000000,
+      "last_used": 1710000600,
+      "use_count": 5
+    },
+    {
+      "id": "ssh-connect",
+      "name": "SSH connect",
+      "command": "ssh {{user:deploy|remote user}}@{{host|hostname}} -p {{port:22}}",
+      "description": "Connect to a remote host",
+      "tags": ["ssh", "remote"],
+      "category": "SSH",
+      "pinned": false,
+      "created_at": 1710000100,
+      "last_used": null,
+      "use_count": 0
+    },
+    {
+      "id": "docker-run-port",
+      "name": "Run Docker container",
+      "command": "docker run -d -p {{host_port}}:{{container_port}} --name {{name}} {{image}}",
+      "description": "Run a detached container with port mapping",
+      "tags": ["docker", "container"],
+      "category": "Docker/Run",
+      "pinned": false,
+      "created_at": 1710000200,
+      "last_used": 1710000300,
+      "use_count": 2
+    }
+  ]
+}
+

@@ -1,0 +1,18 @@
+# Sample SSH config used by CorgiTerm integration tests.
+Host prod-web
+  HostName prod-web.example.com
+  User deploy
+  Port 2222
+  IdentityFile ~/.ssh/prod_web
+  ProxyJump bastion
+  ServerAliveInterval 30
+
+Host staging-db
+  HostName 10.20.30.40
+  User postgres
+  IdentityFile ~/.ssh/staging_db
+
+Host wildcard-*
+  HostName wildcard.example.com
+  User test
+

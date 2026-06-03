@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "title": "Sample recording",
+    "description": "Fixture recording for playback tests",
+    "started_at": "2026-06-03T00:00:00Z",
+    "ended_at": "2026-06-03T00:00:02Z",
+    "duration_ms": 2000,
+    "initial_rows": 24,
+    "initial_cols": 80,
+    "cwd": "/tmp/corgiterm-fixture",
+    "shell": "/bin/zsh",
+    "tags": ["fixture"],
+    "event_count": 4
+  },
+  "events": [
+    {
+      "timestamp_ms": 0,
+      "event": {
+        "Input": [101, 99, 104, 111, 32, 104, 105, 10]
+      }
+    },
+    {
+      "timestamp_ms": 50,
+      "event": {
+        "Output": [101, 99, 104, 111, 32, 104, 105, 13, 10]
+      }
+    },
+    {
+      "timestamp_ms": 100,
+      "event": {
+        "Output": [104, 105, 13, 10]
+      }
+    },
+    {
+      "timestamp_ms": 200,
+      "event": {
+        "Resize": {
+          "rows": 40,
+          "cols": 120
+        }
+      }
+    }
+  ]
+}
+
