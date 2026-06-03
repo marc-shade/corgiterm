@@ -434,10 +434,23 @@ impl TerminalEngine for AlacrittyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::terminal::TerminalEvent;
+    use std::time::Duration;
 
     fn engine(rows: usize, cols: usize) -> AlacrittyEngine {
         let (tx, _rx) = crossbeam_channel::unbounded();
         AlacrittyEngine::new(TerminalSize { rows, cols }, tx, 1000)
+    }
+
+    fn engine_with_events(
+        rows: usize,
+        cols: usize,
+    ) -> (AlacrittyEngine, crossbeam_channel::Receiver<TerminalEvent>) {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        (
+            AlacrittyEngine::new(TerminalSize { rows, cols }, tx, 1000),
+            rx,
+        )
     }
 
     /// Find the rendered cell at a viewport coordinate.
@@ -539,5 +552,61 @@ mod tests {
             all.iter().any(|l| l == "line9"),
             "recent line9 missing from all_text"
         );
+    }
+
+    #[test]
+    fn cursor_visibility_follows_dectcem() {
+        let mut e = engine(24, 80);
+        assert!(e.cursor().visible);
+
+        // DECTCEM private mode: hide/show cursor.
+        e.feed(b"\x1b[?25l");
+        assert!(!e.cursor().visible);
+        e.feed(b"\x1b[?25h");
+        assert!(e.cursor().visible);
+    }
+
+    #[test]
+    fn alternate_screen_restores_primary_screen() {
+        let mut e = engine(5, 20);
+        e.feed(b"primary");
+        assert_eq!(e.rows_text()[0], "primary");
+
+        // 1049 swaps to the alternate screen and saves/restores the primary.
+        e.feed(b"\x1b[?1049h\x1b[Halternate");
+        assert_eq!(e.rows_text()[0], "alternate");
+
+        e.feed(b"\x1b[?1049l");
+        assert_eq!(e.rows_text()[0], "primary");
+    }
+
+    #[test]
+    fn osc_title_events_are_forwarded() {
+        let (mut e, rx) = engine_with_events(24, 80);
+        e.feed(b"\x1b]0;CorgiTerm Test\x07");
+
+        let event = rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("title event should be forwarded");
+        match event {
+            TerminalEvent::TitleChanged(title) => assert_eq!(title, "CorgiTerm Test"),
+            other => panic!("expected TitleChanged event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn device_status_report_is_forwarded_to_pty() {
+        let (mut e, rx) = engine_with_events(24, 80);
+        e.feed(b"\x1b[6n");
+
+        let event = rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("DSR response should be forwarded to PTY");
+        match event {
+            TerminalEvent::PtyWrite(bytes) => {
+                assert_eq!(String::from_utf8_lossy(&bytes), "\x1b[1;1R");
+            }
+            other => panic!("expected PtyWrite event, got {other:?}"),
+        }
     }
 }
