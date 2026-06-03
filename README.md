@@ -11,6 +11,10 @@ For people who know their way around a computer but find the command line intimi
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![GTK4](https://img.shields.io/badge/GTK-4.x-green.svg)](https://gtk.org/)
 
+## Current Development Status
+
+CorgiTerm is under active development. The terminal rendering rebuild is complete and verified, but the broader beginner workflow surface is still being hardened. See [ROADMAP.md](ROADMAP.md) and [docs/specs/documentation-index.md](docs/specs/documentation-index.md) for the current feature audit, acceptance specs, and release verification plan.
+
 ---
 
 ## The Problem: Staring at a Blank Canvas
@@ -31,7 +35,7 @@ CorgiTerm solves this.
 
 ### 1. Safe Mode: Review Before You Run
 
-Every command is previewed before execution. See exactly what will happen, with risk assessment and undo suggestions.
+Risky and generated commands can be previewed before execution. See what will happen, with risk assessment and undo suggestions.
 
 ```
 +------------------------------------------------------------------+
@@ -53,7 +57,7 @@ Every command is previewed before execution. See exactly what will happen, with 
 +------------------------------------------------------------------+
 ```
 
-**No more "oh no, what did I just do?"** Safe Mode catches dangerous operations before they happen, explains what commands will do, and suggests safer alternatives.
+**No more "oh no, what did I just do?"** Safe Mode is designed to catch dangerous operations before they happen, explain what commands will do, and suggest safer alternatives.
 
 ### 2. Just Ask: Type What You Want, Not What You Know
 
@@ -224,13 +228,13 @@ CorgiTerm auto-detects what's available:
 
 Already comfortable with the terminal? CorgiTerm has you covered:
 
-- **GPU-accelerated rendering** - 144fps smooth scrolling
+- **Correct terminal rendering core** - alacritty-backed terminal model with GTK/Pango/Cairo rendering
 - **Split panes** - `Ctrl+Shift+H` (horizontal) / `Ctrl+Shift+D` (vertical)
 - **SSH Manager** - Visual saved connections (`Ctrl+Shift+M`)
 - **Quick Switcher** - VS Code-style tab switching (`Ctrl+K`)
 - **URL/Path hints** - Keyboard-driven link navigation
-- **500+ settings** - Customize everything
-- **WASM + Lua plugins** - Extend functionality
+- **Configurable shortcuts, themes, and terminal settings**
+- **Experimental WASM + Lua plugin runtimes**
 
 ---
 
@@ -264,22 +268,26 @@ Already comfortable with the terminal? CorgiTerm has you covered:
 
 ## Roadmap
 
-### Done
-- [x] Safe Mode with risk assessment
-- [x] Natural language to commands
-- [x] AI Chat/Explain/Command modes
-- [x] Multiple AI providers (Claude, Gemini, Ollama, OpenAI)
-- [x] Snippets library with variables
-- [x] SSH Manager
-- [x] Split panes
-- [x] Theme creator
-- [x] Session recording and playback
-- [x] WASM and Lua plugin system
-- [x] macOS support (Apple Silicon & Intel)
-- [x] Cross-platform PTY (via portable-pty)
-- [x] GPU-accelerated rendering (wgpu/glyphon)
+See [ROADMAP.md](ROADMAP.md) for the full roadmap and feature definition of done.
 
-### Coming Soon
+### Verified
+- [x] Terminal rendering rebuild with alacritty-backed terminal model
+- [x] macOS app bundle launch and terminal rendering smoke test
+- [x] Cross-platform PTY foundation via `portable-pty`
+
+### Implemented, Needs Product Verification
+- [ ] Safe Mode with risk assessment and preview UI
+- [ ] Natural-language command generation and Safe Mode handoff
+- [ ] AI Chat/Explain/Command modes
+- [ ] Multiple AI providers (Claude, Gemini, Ollama, OpenAI)
+- [ ] Snippets library with variables
+- [ ] SSH Manager
+- [ ] Split panes
+- [ ] Theme creator
+- [ ] Session recording and playback
+- [ ] WASM and Lua plugin runtimes
+
+### Roadmap
 - [ ] Windows support (ConPTY integration)
 - [ ] Plugin marketplace / repository
 - [ ] Collaborative terminals (pair programming)
@@ -294,7 +302,8 @@ Already comfortable with the terminal? CorgiTerm has you covered:
 - [Rust](https://www.rust-lang.org/) - Fast and safe
 - [GTK4](https://gtk.org/) + [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) - Modern cross-platform UI
 - [portable-pty](https://github.com/wez/wezterm/tree/main/pty) - Cross-platform PTY (Linux, macOS, Windows)
-- [wgpu](https://wgpu.rs/) + [glyphon](https://github.com/grovesNL/glyphon) - GPU-accelerated text rendering
+- [alacritty_terminal](https://github.com/alacritty/alacritty) - Battle-tested terminal model
+- Pango/Cairo - GTK text rendering
 
 ---
 
