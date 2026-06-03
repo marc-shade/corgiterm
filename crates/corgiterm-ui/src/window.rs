@@ -74,8 +74,8 @@ impl MainWindow {
         header.set_title_widget(Some(&title));
 
         // Sidebar toggle button
-        let sidebar_toggle_btn = Button::from_icon_name("sidebar-show-symbolic");
-        sidebar_toggle_btn.set_tooltip_text(Some("Toggle Sidebar (Ctrl+Shift+B)"));
+        let sidebar_toggle_btn = Button::from_icon_name("sidebar-hide-symbolic");
+        sidebar_toggle_btn.set_tooltip_text(Some("Hide Sidebar (Ctrl+Shift+B)"));
         header.pack_start(&sidebar_toggle_btn);
 
         // New tab button
@@ -321,25 +321,44 @@ impl MainWindow {
         content_paned.set_position(220);
         content_paned.set_vexpand(true);
 
+        let sidebar_reopen_btn = Button::from_icon_name("sidebar-show-symbolic");
+        sidebar_reopen_btn.set_tooltip_text(Some("Show Sidebar (Ctrl+Shift+B)"));
+        sidebar_reopen_btn.add_css_class("flat");
+        sidebar_reopen_btn.set_valign(gtk4::Align::Start);
+        sidebar_reopen_btn.set_margin_top(8);
+        sidebar_reopen_btn.set_margin_start(4);
+        sidebar_reopen_btn.set_margin_end(4);
+        sidebar_reopen_btn.set_visible(false);
+
         // Sidebar visibility state (tracked separately to avoid is_visible() issues)
         let sidebar_visible = Rc::new(RefCell::new(true));
 
         // Connect sidebar toggle button - toggle between 0 and 220
         let sidebar_visible_for_btn = sidebar_visible.clone();
         let paned_for_btn = content_paned.clone();
+        let sidebar_toggle_for_btn = sidebar_toggle_btn.clone();
+        let sidebar_reopen_for_btn = sidebar_reopen_btn.clone();
         sidebar_toggle_btn.connect_clicked(move |_| {
-            // Read current paned position to determine actual state
-            // This handles manual dragging by the user
-            let current_pos = paned_for_btn.position();
-            let is_visible = current_pos > 50; // Threshold: >50px = visible
+            toggle_sidebar(
+                &paned_for_btn,
+                &sidebar_toggle_for_btn,
+                &sidebar_reopen_for_btn,
+                &sidebar_visible_for_btn,
+            );
+        });
 
-            if is_visible {
-                paned_for_btn.set_position(0);
-                *sidebar_visible_for_btn.borrow_mut() = false;
-            } else {
-                paned_for_btn.set_position(220);
-                *sidebar_visible_for_btn.borrow_mut() = true;
-            }
+        let sidebar_visible_for_reopen = sidebar_visible.clone();
+        let paned_for_reopen = content_paned.clone();
+        let sidebar_toggle_for_reopen = sidebar_toggle_btn.clone();
+        let sidebar_reopen_for_reopen = sidebar_reopen_btn.clone();
+        sidebar_reopen_btn.connect_clicked(move |_| {
+            set_sidebar_visible(
+                &paned_for_reopen,
+                &sidebar_toggle_for_reopen,
+                &sidebar_reopen_for_reopen,
+                &sidebar_visible_for_reopen,
+                true,
+            );
         });
 
         // Connect NL input to AI translation and terminal execution
@@ -583,6 +602,7 @@ impl MainWindow {
         content_with_ai.set_vexpand(true);
         content_paned.set_hexpand(true);
         content_paned.set_vexpand(true);
+        content_with_ai.append(&sidebar_reopen_btn);
         content_with_ai.append(&content_paned); // Main content (sidebar + terminal)
         content_with_ai.append(&ai_revealer); // AI panel on the right
 
@@ -611,8 +631,8 @@ impl MainWindow {
         // Connect sidebar project folder clicks to tab creation
         let tabs_for_session = tabs.clone();
         sidebar.set_on_session_click(move |name, path| {
-            // Open terminal in the selected folder
-            tabs_for_session.add_terminal_tab(name, Some(path));
+            // Select the location scope and reuse/create its terminal tab.
+            tabs_for_session.select_or_create_terminal_for_scope(name, path);
             tracing::info!("Opened terminal in: {}", path);
         });
 
@@ -641,6 +661,8 @@ impl MainWindow {
         let ai_revealer_for_keys = ai_revealer.clone();
         let sidebar_visible_for_keys = sidebar_visible.clone();
         let paned_for_keys = content_paned.clone();
+        let sidebar_toggle_for_keys = sidebar_toggle_btn.clone();
+        let sidebar_reopen_for_keys = sidebar_reopen_btn.clone();
         let safe_mode_preview_for_keys = safe_mode_preview.clone();
         let shortcuts_for_keys = shortcuts.clone();
         key_controller.connect_key_pressed(move |_, key, _keycode, modifier| {
@@ -743,17 +765,12 @@ impl MainWindow {
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::ToggleSidebar, key, modifier) {
-                // Read current paned position to determine actual state
-                let current_pos = paned_for_keys.position();
-                let is_visible = current_pos > 50; // Threshold: >50px = visible
-
-                if is_visible {
-                    paned_for_keys.set_position(0);
-                    *sidebar_visible_for_keys.borrow_mut() = false;
-                } else {
-                    paned_for_keys.set_position(220);
-                    *sidebar_visible_for_keys.borrow_mut() = true;
-                }
+                toggle_sidebar(
+                    &paned_for_keys,
+                    &sidebar_toggle_for_keys,
+                    &sidebar_reopen_for_keys,
+                    &sidebar_visible_for_keys,
+                );
                 return gtk4::glib::Propagation::Stop;
             }
             if shortcuts_for_keys.matches(ShortcutAction::QuickSwitcher, key, modifier) {
@@ -1018,6 +1035,45 @@ impl MainWindow {
     pub fn widget(&self) -> &ApplicationWindow {
         &self.window
     }
+}
+
+fn toggle_sidebar(
+    content_paned: &Paned,
+    header_button: &Button,
+    reopen_button: &Button,
+    sidebar_visible: &Rc<RefCell<bool>>,
+) {
+    // Read the paned position so manual dragging is treated as the source of truth.
+    let is_visible = content_paned.position() > 50;
+    set_sidebar_visible(
+        content_paned,
+        header_button,
+        reopen_button,
+        sidebar_visible,
+        !is_visible,
+    );
+}
+
+fn set_sidebar_visible(
+    content_paned: &Paned,
+    header_button: &Button,
+    reopen_button: &Button,
+    sidebar_visible: &Rc<RefCell<bool>>,
+    visible: bool,
+) {
+    if visible {
+        content_paned.set_position(220);
+        header_button.set_icon_name("sidebar-hide-symbolic");
+        header_button.set_tooltip_text(Some("Hide Sidebar (Ctrl+Shift+B)"));
+        reopen_button.set_visible(false);
+    } else {
+        content_paned.set_position(0);
+        header_button.set_icon_name("sidebar-show-symbolic");
+        header_button.set_tooltip_text(Some("Show Sidebar (Ctrl+Shift+B)"));
+        reopen_button.set_visible(true);
+    }
+
+    *sidebar_visible.borrow_mut() = visible;
 }
 
 /// Execute a command with safe mode checking

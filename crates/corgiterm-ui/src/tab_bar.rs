@@ -1,7 +1,7 @@
 //! Tab management using libadwaita TabView
 
-use gtk4::gio;
 use gtk4::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita::{TabBar, TabPage, TabView};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -67,19 +67,33 @@ impl TabContent {
     }
 }
 
+struct TabEntry {
+    title: String,
+    scope: String,
+    content: TabContent,
+    page: TabPage,
+    visible: bool,
+}
+
 /// Tab manager with libadwaita TabView
 pub struct TerminalTabs {
     tab_view: TabView,
+    parking_tab_view: TabView,
     tab_bar: TabBar,
-    contents: Rc<RefCell<Vec<TabContent>>>,
+    entries: Rc<RefCell<Vec<TabEntry>>>,
+    visible_indices: Rc<RefCell<Vec<usize>>>,
+    active_scope: Rc<RefCell<String>>,
 }
 
 impl Clone for TerminalTabs {
     fn clone(&self) -> Self {
         Self {
             tab_view: self.tab_view.clone(),
+            parking_tab_view: self.parking_tab_view.clone(),
             tab_bar: self.tab_bar.clone(),
-            contents: self.contents.clone(),
+            entries: self.entries.clone(),
+            visible_indices: self.visible_indices.clone(),
+            active_scope: self.active_scope.clone(),
         }
     }
 }
@@ -88,6 +102,7 @@ impl TerminalTabs {
     pub fn new() -> Self {
         // Create TabView for content
         let tab_view = TabView::new();
+        let parking_tab_view = TabView::new();
 
         // Create TabBar header
         let tab_bar = TabBar::new();
@@ -95,13 +110,19 @@ impl TerminalTabs {
         tab_bar.set_autohide(false);
         tab_bar.set_expand_tabs(false);
 
-        let contents = Rc::new(RefCell::new(Vec::new()));
+        let entries = Rc::new(RefCell::new(Vec::new()));
+        let visible_indices = Rc::new(RefCell::new(Vec::new()));
 
         let tabs = Self {
             tab_view,
+            parking_tab_view,
             tab_bar,
-            contents,
+            entries,
+            visible_indices,
+            active_scope: Rc::new(RefCell::new(default_scope_key())),
         };
+
+        tabs.connect_tab_close_handler();
 
         // Add initial terminal tab
         tabs.add_terminal_tab("Terminal", None);
@@ -119,22 +140,159 @@ impl TerminalTabs {
         tabs
     }
 
+    fn connect_tab_close_handler(&self) {
+        let entries_for_close = self.entries.clone();
+        let visible_indices_for_close = self.visible_indices.clone();
+
+        self.tab_view.connect_close_page(move |view, page| {
+            rebuild_visible_indices_for(view, &entries_for_close, &visible_indices_for_close);
+
+            if visible_indices_for_close.borrow().len() <= 1 {
+                return glib::Propagation::Stop;
+            }
+
+            {
+                let mut entries = entries_for_close.borrow_mut();
+                if let Some(idx) = entries
+                    .iter()
+                    .position(|entry| entry.visible && same_page(&entry.page, page))
+                {
+                    entries.remove(idx);
+                }
+            }
+
+            let view_for_idle = view.clone();
+            let entries_for_idle = entries_for_close.clone();
+            let visible_indices_for_idle = visible_indices_for_close.clone();
+            glib::idle_add_local_once(move || {
+                rebuild_visible_indices_for(
+                    &view_for_idle,
+                    &entries_for_idle,
+                    &visible_indices_for_idle,
+                );
+            });
+
+            glib::Propagation::Proceed
+        });
+
+        let entries_for_reorder = self.entries.clone();
+        let visible_indices_for_reorder = self.visible_indices.clone();
+        self.tab_view.connect_page_reordered(move |view, _, _| {
+            rebuild_visible_indices_for(view, &entries_for_reorder, &visible_indices_for_reorder);
+        });
+    }
+
     pub fn toggle_broadcast_on_active(&self) {
         if let Some(page) = self.tab_view.selected_page() {
-            if let Some(idx) = Some(self.tab_view.page_position(&page) as usize) {
-                if let Some(TabContent::Terminal(sp)) = self.contents.borrow().get(idx) {
-                    let enabled = sp.toggle_broadcast();
-                    if enabled {
-                        page.set_title(&format!("{} (broadcast)", page.title()));
-                    } else {
-                        // Strip suffix if present
-                        let title = page.title();
-                        let cleaned = title.replace(" (broadcast)", "");
-                        page.set_title(&cleaned);
+            if let Some(idx) = self.current_content() {
+                if let Some(entry) = self.entries.borrow_mut().get_mut(idx) {
+                    if let TabContent::Terminal(sp) = &entry.content {
+                        let enabled = sp.toggle_broadcast();
+                        if enabled {
+                            page.set_title(&format!("{} (broadcast)", page.title()));
+                        } else {
+                            // Strip suffix if present
+                            let title = page.title();
+                            let cleaned = title.replace(" (broadcast)", "");
+                            page.set_title(&cleaned);
+                        }
+                        entry.title = page.title().to_string();
                     }
                 }
             }
         }
+    }
+
+    /// Get the active location scope for new tabs.
+    pub fn active_scope(&self) -> String {
+        self.active_scope.borrow().clone()
+    }
+
+    /// Change the visible tab scope to a project/location.
+    pub fn set_active_scope(&self, scope: &str) {
+        let next_scope = normalize_scope(scope);
+        let changed = {
+            let mut active_scope = self.active_scope.borrow_mut();
+            if *active_scope == next_scope {
+                false
+            } else {
+                *active_scope = next_scope;
+                true
+            }
+        };
+
+        if changed {
+            self.sync_visible_pages();
+        } else {
+            self.rebuild_visible_indices();
+        }
+    }
+
+    /// Select an existing terminal for a location, or create one if none exists.
+    pub fn select_or_create_terminal_for_scope(&self, title: &str, working_dir: &str) -> TabPage {
+        let scope = normalize_scope(working_dir);
+        self.set_active_scope(&scope);
+
+        if let Some(page) = self.terminal_page_for_scope(&scope) {
+            self.tab_view.set_selected_page(&page);
+            return page;
+        }
+
+        self.add_terminal_tab(title, Some(working_dir))
+    }
+
+    fn terminal_page_for_scope(&self, scope: &str) -> Option<TabPage> {
+        self.entries.borrow().iter().find_map(|entry| {
+            if entry.scope == scope && matches!(entry.content, TabContent::Terminal(_)) {
+                Some(entry.page.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn sync_visible_pages(&self) {
+        let active_scope = self.active_scope();
+
+        {
+            let mut entries = self.entries.borrow_mut();
+            for entry in entries.iter_mut() {
+                let should_be_visible = entry.scope == active_scope;
+
+                match (entry.visible, should_be_visible) {
+                    (true, false) => {
+                        let target_position = self.parking_tab_view.n_pages();
+                        self.tab_view.transfer_page(
+                            &entry.page,
+                            &self.parking_tab_view,
+                            target_position,
+                        );
+                        entry.visible = false;
+                    }
+                    (false, true) => {
+                        let target_position = self.tab_view.n_pages();
+                        self.parking_tab_view.transfer_page(
+                            &entry.page,
+                            &self.tab_view,
+                            target_position,
+                        );
+                        entry.visible = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        self.rebuild_visible_indices();
+
+        if self.tab_view.n_pages() > 0 && self.tab_view.selected_page().is_none() {
+            let first_page = self.tab_view.nth_page(0);
+            self.tab_view.set_selected_page(&first_page);
+        }
+    }
+
+    fn rebuild_visible_indices(&self) {
+        rebuild_visible_indices_for(&self.tab_view, &self.entries, &self.visible_indices);
     }
 
     /// Add a new terminal tab
@@ -145,18 +303,21 @@ impl TerminalTabs {
             SplitPane::new()
         };
         let widget = split_pane.widget().clone();
-
-        // Store content (SplitPane wraps TerminalView internally)
-        self.contents
-            .borrow_mut()
-            .push(TabContent::Terminal(split_pane));
-
-        // Add to tab view
         let page = self.tab_view.append(&widget);
         page.set_title(title);
         page.set_icon(Some(&gtk4::gio::ThemedIcon::new(
             "utilities-terminal-symbolic",
         )));
+
+        self.entries.borrow_mut().push(TabEntry {
+            title: title.to_string(),
+            scope: self.active_scope(),
+            content: TabContent::Terminal(split_pane),
+            page: page.clone(),
+            visible: true,
+        });
+
+        self.rebuild_visible_indices();
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
@@ -176,16 +337,19 @@ impl TerminalTabs {
         }
 
         let widget = document.widget().clone();
-
-        // Store content
-        self.contents
-            .borrow_mut()
-            .push(TabContent::Document(document));
-
-        // Add to tab view
         let page = self.tab_view.append(&widget);
         page.set_title(title);
         page.set_icon(Some(&gtk4::gio::ThemedIcon::new("text-x-generic-symbolic")));
+
+        self.entries.borrow_mut().push(TabEntry {
+            title: title.to_string(),
+            scope: self.active_scope(),
+            content: TabContent::Document(document),
+            page: page.clone(),
+            visible: true,
+        });
+
+        self.rebuild_visible_indices();
 
         // Select the new tab
         self.tab_view.set_selected_page(&page);
@@ -203,33 +367,38 @@ impl TerminalTabs {
         &self.tab_view
     }
 
-    /// Get number of tabs
+    /// Get number of visible tabs in the active location
     pub fn tab_count(&self) -> i32 {
         self.tab_view.n_pages()
     }
 
     /// Close the currently selected tab
     pub fn close_current_tab(&self) {
+        self.rebuild_visible_indices();
+
+        if self.visible_indices.borrow().len() <= 1 {
+            return;
+        }
+
         if let Some(page) = self.tab_view.selected_page() {
-            if self.tab_view.n_pages() > 1 {
-                // Find and remove the content
-                let position = self.tab_view.page_position(&page);
-                if position >= 0 {
-                    let idx = position as usize;
-                    if idx < self.contents.borrow().len() {
-                        self.contents.borrow_mut().remove(idx);
-                    }
-                }
-                self.tab_view.close_page(&page);
-            }
+            self.tab_view.close_page(&page);
         }
     }
 
-    /// Get the content at the current tab position
+    /// Get the logical content index for the current visible tab position
     pub fn current_content(&self) -> Option<usize> {
-        self.tab_view
-            .selected_page()
-            .map(|page| self.tab_view.page_position(&page) as usize)
+        self.rebuild_visible_indices();
+
+        let page = self.tab_view.selected_page()?;
+        let position = self.tab_view.page_position(&page);
+        if position < 0 {
+            return None;
+        }
+
+        self.visible_indices
+            .borrow()
+            .get(position as usize)
+            .copied()
     }
 
     /// Switch to the next tab (wraps around to first tab)
@@ -282,9 +451,9 @@ impl TerminalTabs {
     /// Returns true if command was sent, false if not a terminal tab
     pub fn send_command_to_current(&self, command: &str) -> bool {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                return content.send_command(command);
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                return entry.content.send_command(command);
             }
         }
         false
@@ -293,17 +462,12 @@ impl TerminalTabs {
     /// Send text to the currently selected terminal tab without newline
     pub fn send_text_to_current(&self, text: &str) -> bool {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                return content.send_text(text);
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                return entry.content.send_text(text);
             }
         }
         false
-    }
-
-    /// Get a reference to the contents for direct access
-    pub fn contents(&self) -> &Rc<RefCell<Vec<TabContent>>> {
-        &self.contents
     }
 
     /// Access current split pane for direct operations
@@ -312,9 +476,9 @@ impl TerminalTabs {
         F: FnOnce(&SplitPane) -> R,
     {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                if let Some(sp) = content.as_split_pane() {
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                if let Some(sp) = entry.content.as_split_pane() {
                     return Some(f(sp));
                 }
             }
@@ -325,9 +489,9 @@ impl TerminalTabs {
     /// Split the current pane horizontally
     pub fn split_current_horizontal(&self) {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                content.split_horizontal();
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                entry.content.split_horizontal();
             }
         }
     }
@@ -335,9 +499,9 @@ impl TerminalTabs {
     /// Split the current pane vertically
     pub fn split_current_vertical(&self) {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                content.split_vertical();
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                entry.content.split_vertical();
             }
         }
     }
@@ -345,9 +509,9 @@ impl TerminalTabs {
     /// Close the currently focused pane
     pub fn close_focused_pane(&self) {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                if let Some(sp) = content.as_split_pane() {
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                if let Some(sp) = entry.content.as_split_pane() {
                     sp.close_focused();
                 }
             }
@@ -357,9 +521,9 @@ impl TerminalTabs {
     /// Focus the next pane in the current tab
     pub fn focus_next_pane(&self) {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                if let Some(sp) = content.as_split_pane() {
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                if let Some(sp) = entry.content.as_split_pane() {
                     sp.focus_next();
                 }
             }
@@ -369,9 +533,9 @@ impl TerminalTabs {
     /// Focus the previous pane in the current tab
     pub fn focus_prev_pane(&self) {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                if let Some(sp) = content.as_split_pane() {
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                if let Some(sp) = entry.content.as_split_pane() {
                     sp.focus_prev();
                 }
             }
@@ -381,9 +545,9 @@ impl TerminalTabs {
     /// Get visible lines from current terminal (for thumbnails)
     pub fn get_current_visible_lines(&self, max_lines: usize) -> Vec<String> {
         if let Some(idx) = self.current_content() {
-            let contents = self.contents.borrow();
-            if let Some(content) = contents.get(idx) {
-                if let Some(sp) = content.as_split_pane() {
+            let entries = self.entries.borrow();
+            if let Some(entry) = entries.get(idx) {
+                if let Some(sp) = entry.content.as_split_pane() {
                     return sp.get_visible_lines(max_lines);
                 }
             }
@@ -394,16 +558,15 @@ impl TerminalTabs {
     /// Update tab titles based on current working directory
     /// This should be called periodically to keep titles in sync
     pub fn update_tab_titles(&self) {
-        let contents = self.contents.borrow();
-        for (idx, content) in contents.iter().enumerate() {
-            if let TabContent::Terminal(sp) = content {
+        let mut entries = self.entries.borrow_mut();
+        for entry in entries.iter_mut() {
+            if let TabContent::Terminal(sp) = &entry.content {
                 let dir_name = sp.current_directory_name();
-                let page = self.tab_view.nth_page(idx as i32);
 
                 // Only update if the title has actually changed
-                let current_title = page.title();
-                if current_title.as_str() != dir_name {
-                    page.set_title(&dir_name);
+                if entry.title != dir_name {
+                    entry.title = dir_name.clone();
+                    entry.page.set_title(&dir_name);
                 }
             }
         }
@@ -411,9 +574,9 @@ impl TerminalTabs {
 
     /// Queue redraw on all terminal panes (for theme changes)
     pub fn queue_redraw_all_terminals(&self) {
-        let contents = self.contents.borrow();
-        for content in contents.iter() {
-            if let TabContent::Terminal(sp) = content {
+        let entries = self.entries.borrow();
+        for entry in entries.iter() {
+            if let TabContent::Terminal(sp) = &entry.content {
                 sp.queue_redraw_all();
             }
         }
@@ -424,4 +587,46 @@ impl Default for TerminalTabs {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn default_scope_key() -> String {
+    dirs::home_dir()
+        .map(|path| path.to_string_lossy().to_string())
+        .or_else(|| std::env::var("HOME").ok())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+fn normalize_scope(scope: &str) -> String {
+    let trimmed = scope.trim();
+    if trimmed.is_empty() {
+        default_scope_key()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn same_page(left: &TabPage, right: &TabPage) -> bool {
+    left == right
+}
+
+fn rebuild_visible_indices_for(
+    tab_view: &TabView,
+    entries: &Rc<RefCell<Vec<TabEntry>>>,
+    visible_indices: &Rc<RefCell<Vec<usize>>>,
+) {
+    let entries = entries.borrow();
+    let mut next_indices = Vec::new();
+
+    for position in 0..tab_view.n_pages() {
+        let page = tab_view.nth_page(position);
+        if let Some((idx, _)) = entries
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| entry.visible && same_page(&entry.page, &page))
+        {
+            next_indices.push(idx);
+        }
+    }
+
+    *visible_indices.borrow_mut() = next_indices;
 }
