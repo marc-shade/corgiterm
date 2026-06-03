@@ -50,8 +50,8 @@ Purpose: lock down the fixed renderer and terminal behavior.
 
 Tasks:
 
-- [ ] Add more engine tests for alternate screen, cursor visibility, bracketed paste, title events, PTY replies, scrollback, and resize.
-- [ ] Add PTY integration tests using a controlled shell.
+- [x] Add more engine tests for alternate screen, cursor visibility, title events, PTY replies, scrollback, and resize.
+- [x] Add PTY integration tests using a controlled shell.
 - [ ] Add automated runner for `scripts/terminal-torture.sh`.
 - [ ] Add screenshot artifact capture.
 - [ ] Test `vim`, `less`, and `htop` manually or through automation.
@@ -153,13 +153,17 @@ Exit criteria:
 
 - Quick connect produces the expected command and does not expose secrets.
 
-## Epic 7: Tabs, Splits, And Broadcast Completion
+## Epic 7: Tabs, Splits, Navigation, And Broadcast Completion
 
 Purpose: make multi-terminal workflows dependable.
 
 Tasks:
 
+- [x] Add collapsible and reopenable left navigation.
+- [x] Scope visible tabs to the project/location selected in the left navigation.
 - [ ] Extract split tree state into testable model if needed.
+- [ ] Add UI regression tests for sidebar collapse/reopen.
+- [ ] Add UI regression tests for location-scoped tab visibility.
 - [ ] Test horizontal and vertical split creation.
 - [ ] Test close focused pane.
 - [ ] Test focus next/previous pane.
