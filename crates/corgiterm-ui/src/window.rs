@@ -22,6 +22,20 @@ use crate::widgets::safe_mode_preview::SafeModePreviewWidget;
 use corgiterm_core::SafeMode;
 use std::path::PathBuf;
 
+const ACTION_ASCII_ART: &str = "ascii_art";
+const ACTION_EMOJIS: &str = "emojis";
+const ACTION_HISTORY_SEARCH: &str = "history_search";
+const ACTION_SESSION_RECORDING: &str = "session_recording";
+const ACTION_SSH_MANAGER: &str = "ssh_manager";
+
+const TOOL_MENU_ITEMS: &[(&str, &str)] = &[
+    ("_SSH Manager", ACTION_SSH_MANAGER),
+    ("_ASCII Art Generator", ACTION_ASCII_ART),
+    ("_Emojis", ACTION_EMOJIS),
+    ("_History Search", ACTION_HISTORY_SEARCH),
+    ("_Session Recording", ACTION_SESSION_RECORDING),
+];
+
 /// Main application window
 pub struct MainWindow {
     window: ApplicationWindow,
@@ -95,11 +109,10 @@ impl MainWindow {
 
         // Tools submenu
         let tools_menu = Menu::new();
-        tools_menu.append(Some("_SSH Manager"), Some("win.ssh_manager"));
-        tools_menu.append(Some("_ASCII Art Generator"), Some("win.ascii_art"));
-        tools_menu.append(Some("_Emojis"), Some("win.emojis"));
-        tools_menu.append(Some("_History Search"), Some("win.history_search"));
-        tools_menu.append(Some("_Session Recording"), Some("win.session_recording"));
+        for (label, action) in TOOL_MENU_ITEMS {
+            let detailed_action = format!("win.{action}");
+            tools_menu.append(Some(label), Some(&detailed_action));
+        }
         menu.append_submenu(Some("_Tools"), &tools_menu);
 
         menu.append(Some("_Preferences"), Some("win.preferences"));
@@ -181,7 +194,7 @@ impl MainWindow {
         });
         window.add_action(&shortcuts_action);
 
-        let ascii_art_action = SimpleAction::new("ascii_art", None);
+        let ascii_art_action = SimpleAction::new(ACTION_ASCII_ART, None);
         let win_for_ascii = window.clone();
         let tabs_for_ascii = tabs.clone();
         ascii_art_action.connect_activate(move |_, _| {
@@ -197,7 +210,7 @@ impl MainWindow {
         window.add_action(&ascii_art_action);
 
         // SSH Manager action
-        let ssh_manager_action = SimpleAction::new("ssh_manager", None);
+        let ssh_manager_action = SimpleAction::new(ACTION_SSH_MANAGER, None);
         let win_for_ssh = window.clone();
         ssh_manager_action.connect_activate(move |_, _| {
             let ssh_manager = crate::ssh_manager::SshManager::new(&win_for_ssh);
@@ -206,7 +219,7 @@ impl MainWindow {
         window.add_action(&ssh_manager_action);
 
         // Emojis action
-        let emojis_action = SimpleAction::new("emojis", None);
+        let emojis_action = SimpleAction::new(ACTION_EMOJIS, None);
         let win_for_emojis = window.clone();
         let tabs_for_emojis = tabs.clone();
         emojis_action.connect_activate(move |_, _| {
@@ -222,7 +235,7 @@ impl MainWindow {
         window.add_action(&emojis_action);
 
         // History Search action
-        let history_action = SimpleAction::new("history_search", None);
+        let history_action = SimpleAction::new(ACTION_HISTORY_SEARCH, None);
         let win_for_history = window.clone();
         let tabs_for_history = tabs.clone();
         history_action.connect_activate(move |_, _| {
@@ -238,7 +251,7 @@ impl MainWindow {
         window.add_action(&history_action);
 
         // Session Recording action
-        let recording_action = SimpleAction::new("session_recording", None);
+        let recording_action = SimpleAction::new(ACTION_SESSION_RECORDING, None);
         let win_for_recording = window.clone();
         recording_action.connect_activate(move |_, _| {
             show_recording_dialog(&win_for_recording);
@@ -1304,4 +1317,32 @@ fn extract_port(text: &str) -> Option<u16> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tools_menu_items_have_window_actions() {
+        let actions: Vec<&str> = TOOL_MENU_ITEMS.iter().map(|(_, action)| *action).collect();
+
+        assert_eq!(
+            actions,
+            vec![
+                ACTION_SSH_MANAGER,
+                ACTION_ASCII_ART,
+                ACTION_EMOJIS,
+                ACTION_HISTORY_SEARCH,
+                ACTION_SESSION_RECORDING,
+            ]
+        );
+    }
+
+    #[test]
+    fn tools_menu_includes_emojis_action() {
+        assert!(TOOL_MENU_ITEMS
+            .iter()
+            .any(|(label, action)| *label == "_Emojis" && *action == ACTION_EMOJIS));
+    }
 }

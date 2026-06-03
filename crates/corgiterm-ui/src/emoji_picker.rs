@@ -13,9 +13,10 @@
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box, Button, Entry, FlowBox, Label, Notebook, Orientation, PolicyType, Popover, ScrolledWindow,
+    Box, Button, Entry, FlowBox, Label, Notebook, Orientation, PolicyType, ScrolledWindow,
     SelectionMode, ToggleButton,
 };
+use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
 use std::rc::Rc;
@@ -1934,13 +1935,16 @@ fn apply_skin_tone(emoji: &str, skin_tone_modifier: &str) -> String {
     )
 }
 
-/// Show the emoji picker popover
+/// Show the emoji picker dialog
 pub fn show_emoji_picker(
     parent: &impl IsA<gtk4::Widget>,
     on_emoji_selected: impl Fn(String) + 'static,
 ) {
-    let popover = Popover::new();
-    popover.set_parent(parent);
+    let dialog = libadwaita::Dialog::builder()
+        .title("Emojis")
+        .content_width(440)
+        .content_height(560)
+        .build();
 
     let state = Rc::new(RefCell::new(EmojiPickerState::default()));
 
@@ -1949,7 +1953,6 @@ pub fn show_emoji_picker(
     container.set_margin_bottom(8);
     container.set_margin_start(8);
     container.set_margin_end(8);
-    container.set_size_request(400, 480);
 
     // Search entry
     let search_entry = Entry::new();
@@ -2011,7 +2014,7 @@ pub fn show_emoji_picker(
     notebook.set_scrollable(true);
 
     let on_select = Rc::new(on_emoji_selected);
-    let popover_ref = Rc::new(popover.clone());
+    let dialog_ref = Rc::new(dialog.clone());
 
     // Recent emojis tab
     let recent_scrolled = ScrolledWindow::new();
@@ -2059,7 +2062,7 @@ pub fn show_emoji_picker(
         flow_box.set_max_children_per_line(12);
 
         for emoji in cat.emojis {
-            let btn = create_emoji_button(emoji, &state, &on_select, &popover_ref);
+            let btn = create_emoji_button(emoji, &state, &on_select, &dialog_ref);
             flow_box.append(&btn);
         }
 
@@ -2085,14 +2088,14 @@ pub fn show_emoji_picker(
         btn.set_tooltip_text(Some(name));
 
         let cb = on_select.clone();
-        let p = popover_ref.clone();
+        let dialog = dialog_ref.clone();
         let k = kaomoji.to_string();
         let state_clone = state.clone();
 
         btn.connect_clicked(move |_| {
             state_clone.borrow_mut().add_recent(&k);
             cb(k.clone());
-            p.popdown();
+            dialog.close();
         });
 
         kaomoji_flow.append(&btn);
@@ -2106,7 +2109,7 @@ pub fn show_emoji_picker(
     // Search functionality
     let notebook_clone = notebook.clone();
     let on_select_search = on_select.clone();
-    let popover_search = popover_ref.clone();
+    let dialog_search = dialog_ref.clone();
     let state_search = state.clone();
 
     search_entry.connect_changed(move |entry| {
@@ -2140,7 +2143,7 @@ pub fn show_emoji_picker(
                         emoji,
                         &state_search,
                         &on_select_search,
-                        &popover_search,
+                        &dialog_search,
                     );
                     search_flow.append(&btn);
                 }
@@ -2156,14 +2159,14 @@ pub fn show_emoji_picker(
                 btn.set_tooltip_text(Some(name));
 
                 let cb = on_select_search.clone();
-                let p = popover_search.clone();
+                let dialog = dialog_search.clone();
                 let k = kaomoji.to_string();
                 let state_c = state_search.clone();
 
                 btn.connect_clicked(move |_| {
                     state_c.borrow_mut().add_recent(&k);
                     cb(k.clone());
-                    p.popdown();
+                    dialog.close();
                 });
 
                 search_flow.append(&btn);
@@ -2185,8 +2188,9 @@ pub fn show_emoji_picker(
         notebook_clone.set_current_page(Some(0));
     });
 
-    popover.set_child(Some(&container));
-    popover.popup();
+    dialog.set_child(Some(&container));
+    dialog.present(Some(parent));
+    search_entry.grab_focus();
 }
 
 /// Create an emoji button with click and right-click handlers
@@ -2194,7 +2198,7 @@ fn create_emoji_button(
     emoji: &Emoji,
     state: &Rc<RefCell<EmojiPickerState>>,
     on_select: &Rc<impl Fn(String) + 'static>,
-    popover_ref: &Rc<Popover>,
+    dialog_ref: &Rc<libadwaita::Dialog>,
 ) -> Button {
     let state_for_skin = state.borrow();
     let skin_tone = SKIN_TONES[state_for_skin.skin_tone_index].0;
@@ -2213,7 +2217,7 @@ fn create_emoji_button(
 
     // Left click - select emoji
     let cb = on_select.clone();
-    let p = popover_ref.clone();
+    let dialog = dialog_ref.clone();
     let e = display_emoji.clone();
     let state_click = state.clone();
     let emoji_base = emoji.char.to_string();
@@ -2221,7 +2225,7 @@ fn create_emoji_button(
     btn.connect_clicked(move |_| {
         state_click.borrow_mut().add_recent(&emoji_base);
         cb(e.clone());
-        p.popdown();
+        dialog.close();
     });
 
     // Right-click - add to favorites
@@ -2242,4 +2246,54 @@ fn create_emoji_button(
 
     btn.add_controller(gesture);
     btn
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emoji_categories_are_populated() {
+        assert!(!EMOJI_CATEGORIES.is_empty());
+
+        for category in EMOJI_CATEGORIES {
+            assert!(!category.name.is_empty());
+            assert!(!category.icon.is_empty());
+            assert!(
+                !category.emojis.is_empty(),
+                "emoji category '{}' should not be empty",
+                category.name
+            );
+        }
+    }
+
+    #[test]
+    fn emoji_entries_are_searchable() {
+        for category in EMOJI_CATEGORIES {
+            for emoji in category.emojis {
+                assert!(!emoji.char.is_empty());
+                assert!(!emoji.name.is_empty());
+                assert!(
+                    !emoji.keywords.is_empty(),
+                    "emoji '{}' should have search keywords",
+                    emoji.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn skin_tone_modifier_applies_after_base_emoji() {
+        assert_eq!(apply_skin_tone("👋", "\u{1F3FD}"), "👋🏽");
+        assert_eq!(apply_skin_tone("👍", ""), "👍");
+    }
+
+    #[test]
+    fn kaomoji_catalog_is_populated() {
+        assert!(!KAOMOJI.is_empty());
+        for (kaomoji, name) in KAOMOJI {
+            assert!(!kaomoji.is_empty());
+            assert!(!name.is_empty());
+        }
+    }
 }
